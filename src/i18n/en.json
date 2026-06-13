@@ -1,0 +1,22 @@
+{
+  "app.title": "VIBECODER",
+  "ui.comms.empty": "No messages",
+  "ui.comms.title": "Comms",
+  "ui.dock.achievements": "Achievements",
+  "ui.dock.ariaLabel": "Workspace screens",
+  "ui.dock.devFloor": "Dev Floor",
+  "ui.dock.projects": "Projects",
+  "ui.dock.research": "Research",
+  "ui.dock.rewrite": "Rewrite+",
+  "ui.dock.settings": "Settings",
+  "ui.dock.stats": "Stats",
+  "ui.main.empty": "Awaiting bootstrapped systems",
+  "ui.model.label": "Model",
+  "ui.resource.compute": "Compute",
+  "ui.resource.hype": "Hype",
+  "ui.resource.loc": "LoC",
+  "ui.resource.money": "Money",
+  "ui.terminal.prompt": "PROMPT",
+  "ui.terminal.tickCounter": "Test ticks",
+  "ui.terminal.title": "Terminal"
+}

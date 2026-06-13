@@ -1,0 +1,14 @@
+.claude/
+.claude-flow/
+.swarm/
+.lighthouse*.json
+.tmp-lighthouse/
+.vite-*.log
+coverage/
+dist/
+node_modules/
+plan/
+review/
+AGENTS.md
+README.md
+package-lock.json

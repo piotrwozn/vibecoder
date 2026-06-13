@@ -1,0 +1,14 @@
+.claude/
+.claude-flow/
+.idea/
+.swarm/
+node_modules/
+dist/
+coverage/
+.vite/
+.tmp-validate/
+.tmp-lighthouse/
+.tmp-lighthouse-profile/
+.lighthouse*.json
+.vite-*.log
+npm-debug.log*

@@ -1,0 +1,265 @@
+.app-shell {
+  --dock-size: 72px;
+  --topbar-size: 64px;
+  --terminal-size: 176px;
+  --comms-size: 320px;
+
+  display: grid;
+  grid-template-areas:
+    "dock topbar model"
+    "dock main comms"
+    "dock terminal comms";
+  grid-template-columns: var(--dock-size) minmax(0, 1fr) var(--comms-size);
+  grid-template-rows: var(--topbar-size) minmax(0, 1fr) var(--terminal-size);
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+.dock,
+.topbar,
+.model-panel,
+.main-view,
+.terminal,
+.comms {
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-1);
+  border-color: var(--border);
+  border-style: solid;
+}
+
+.dock {
+  grid-area: dock;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: var(--sp-3) var(--sp-2);
+  border-width: 0 1px 0 0;
+}
+
+.dock__button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  color: var(--fg-1);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-s);
+  cursor: pointer;
+}
+
+.dock__button:hover,
+.dock__button:focus-visible {
+  color: var(--acc);
+  background: var(--bg-2);
+  border-color: var(--border-bright);
+  outline: none;
+}
+
+.dock__icon {
+  width: 22px;
+  height: 22px;
+}
+
+.topbar {
+  grid-area: topbar;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(112px, 1fr));
+  gap: var(--sp-3);
+  align-items: center;
+  padding: 0 var(--sp-4);
+  border-width: 0 0 1px;
+}
+
+.resource-counter {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.resource-counter__label,
+.model-panel__label,
+.terminal__counter-label {
+  color: var(--fg-1);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.resource-counter__value,
+.terminal__counter-value,
+.model-panel__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.resource-counter__value {
+  color: var(--fg-0);
+  font-size: 1rem;
+}
+
+.model-panel {
+  grid-area: model;
+  display: grid;
+  gap: var(--sp-1);
+  align-content: center;
+  padding: 0 var(--sp-4);
+  border-width: 0 0 1px 1px;
+}
+
+.model-panel__value {
+  color: var(--acc);
+  font-size: 1.05rem;
+}
+
+.main-view {
+  grid-area: main;
+  padding: var(--sp-6);
+  overflow: auto;
+  border-width: 0 0 1px;
+  contain: content;
+}
+
+.main-view__title,
+.comms__title {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.main-view__empty,
+.comms__empty {
+  margin: var(--sp-3) 0 0;
+  color: var(--fg-1);
+}
+
+.terminal {
+  grid-area: terminal;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-4);
+  border-width: 0;
+  box-shadow: inset 0 1px 0 var(--border);
+  contain: content;
+}
+
+.terminal__header {
+  color: var(--fg-1);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.terminal__counter {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal__counter-value {
+  min-width: 8ch;
+  color: var(--acc);
+  font-size: 1.5rem;
+}
+
+.terminal__frame-track {
+  grid-column: 1 / 2;
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  background: var(--bg-3);
+  border-radius: var(--r-s);
+}
+
+.terminal__frame-bar {
+  width: 100%;
+  height: 100%;
+  background: var(--acc);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.terminal__prompt {
+  grid-row: 1 / 4;
+  grid-column: 2 / 3;
+  align-self: stretch;
+  min-width: 128px;
+  color: var(--bg-0);
+  background: var(--acc);
+  border: 0;
+  border-radius: var(--r-s);
+  box-shadow: var(--glow-acc);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.terminal__prompt:focus-visible {
+  outline: 2px solid var(--fg-0);
+  outline-offset: 2px;
+}
+
+.comms {
+  grid-area: comms;
+  padding: var(--sp-4);
+  overflow: auto;
+  border-width: 0 0 0 1px;
+  contain: content;
+}
+
+@media (max-width: 1279px) {
+  .app-shell {
+    grid-template-areas:
+      "dock topbar"
+      "dock main"
+      "dock terminal";
+    grid-template-columns: var(--dock-size) minmax(0, 1fr);
+    grid-template-rows: var(--topbar-size) minmax(0, 1fr) var(--terminal-size);
+  }
+
+  .model-panel,
+  .comms {
+    display: none;
+  }
+}
+
+@media (max-width: 899px) {
+  .app-shell {
+    grid-template-areas:
+      "topbar"
+      "main"
+      "terminal"
+      "dock";
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(420px, 1fr) 96px 64px;
+    overflow: auto;
+  }
+
+  .dock {
+    flex-direction: row;
+    justify-content: center;
+    border-width: 1px 0 0;
+  }
+
+  .topbar {
+    grid-template-columns: repeat(2, minmax(128px, 1fr));
+    gap: var(--sp-2);
+    padding: var(--sp-3);
+  }
+
+  .terminal {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: 1fr;
+    padding: var(--sp-3);
+  }
+
+  .terminal__header,
+  .terminal__frame-track {
+    display: none;
+  }
+}

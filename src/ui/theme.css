@@ -1,0 +1,75 @@
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("../assets/fonts/InterLatin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("../assets/fonts/JetBrainsMonoLatin.woff2") format("woff2");
+}
+
+:root {
+  --bg-0: #07090d;
+  --bg-1: #0c1016;
+  --bg-2: #11161f;
+  --bg-3: #182030;
+  --border: #1f2937;
+  --border-bright: #2e3d54;
+  --fg-0: #e6edf7;
+  --fg-1: #9fb0c7;
+  --fg-2: #5d6b80;
+  --acc: #46e2b4;
+  --acc-2: #7c8cff;
+  --gold: #ffc86b;
+  --warn: #ffb224;
+  --danger: #ff5d5d;
+  --hype: #ff7ad9;
+  --paradox: #b388ff;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-ui: "Inter", system-ui, sans-serif;
+  --r-s: 6px;
+  --r-m: 10px;
+  --r-l: 14px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --glow-acc: 0 0 12px color-mix(in srgb, var(--acc) 35%, transparent);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  color: var(--fg-0);
+  background: var(--bg-0);
+  font-family: var(--font-ui);
+  letter-spacing: 0;
+}
+
+button {
+  font: inherit;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+strong {
+  font-weight: 700;
+}
