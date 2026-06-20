@@ -16,6 +16,18 @@ export const APP_IDS = [
 
 export type AppId = (typeof APP_IDS)[number];
 export type SceneId = "boot" | "desktop";
+export const TUTORIAL_STEPS = [
+  "welcome",
+  "vibex",
+  "resources",
+  "projects",
+  "agents",
+  "hardware",
+  "comms",
+  "settings",
+  "done"
+] as const;
+export type TutorialStep = (typeof TUTORIAL_STEPS)[number];
 
 export interface WindowFrame {
   h: number;
@@ -36,7 +48,14 @@ export interface WindowState extends WindowFrame {
 export interface GameUiState {
   bootSeen: boolean;
   scene: SceneId;
+  tutorial: TutorialState;
   windows: Record<AppId, WindowState>;
+}
+
+export interface TutorialState {
+  active: boolean;
+  completed: boolean;
+  step: TutorialStep;
 }
 
 export interface WindowDefinition {
@@ -117,7 +136,16 @@ export function createDefaultUiState(scene: SceneId = "boot", bootSeen = false):
   return {
     bootSeen,
     scene,
+    tutorial: createDefaultTutorialState(false),
     windows: createDefaultWindowStates()
+  };
+}
+
+export function createDefaultTutorialState(completed: boolean): TutorialState {
+  return {
+    active: false,
+    completed,
+    step: completed ? "done" : "welcome"
   };
 }
 

@@ -1,10 +1,10 @@
-import { createDefaultUiState } from "./ui-state";
+import { createDefaultTutorialState, createDefaultUiState } from "./ui-state";
 import { C } from "../data/constants";
 import { LEGACY_HARDWARE_ID, OLD_HARDWARE_TIERS } from "../data/hardware";
 
 type RawSaveObject = Record<string, unknown>;
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface MigrationResult {
   readonly raw: RawSaveObject;
@@ -46,7 +46,8 @@ const migrations: readonly Migration[] = [
     },
     v: 4
   }),
-  migrateM16Hardware
+  migrateM16Hardware,
+  migrateTutorialUi
 ];
 
 export function migrateRawSave(rawValue: unknown): MigrationResult {
@@ -167,6 +168,20 @@ function migrateM16Hardware(raw: RawSaveObject): RawSaveObject {
   };
 }
 
+function migrateTutorialUi(raw: RawSaveObject): RawSaveObject {
+  const ui = isRecord(raw.ui) ? raw.ui : {};
+  const completed = !isCompletelyFreshSave(raw);
+
+  return {
+    ...raw,
+    ui: {
+      ...ui,
+      tutorial: createDefaultTutorialState(completed)
+    },
+    v: 6
+  };
+}
+
 function calculateOldHardwareCap(ownedHardware: RawSaveObject): number {
   let cap = 0;
 
@@ -182,4 +197,68 @@ function calculateOldHardwareCap(ownedHardware: RawSaveObject): number {
 
 function isOldHardwareTier(id: string): boolean {
   return OLD_HARDWARE_TIERS.some((tier) => tier.id === id);
+}
+
+function isCompletelyFreshSave(raw: RawSaveObject): boolean {
+  const meta = isRecord(raw.meta) ? raw.meta : {};
+  const res = isRecord(raw.res) ? raw.res : {};
+  const lifetime = isRecord(raw.lifetime) ? raw.lifetime : {};
+  const owned = isRecord(raw.owned) ? raw.owned : {};
+  const story = isRecord(raw.story) ? raw.story : {};
+  const projects = isRecord(raw.projects) ? raw.projects : {};
+
+  return (
+    isZeroNumber(meta.playtimeS) &&
+    (raw.era === undefined || raw.era === 1) &&
+    isZeroishBig(res.loc) &&
+    isZeroishBig(res.money) &&
+    isZeroishBig(lifetime.loc) &&
+    isZeroishBig(lifetime.money) &&
+    !hasOwnedProgress(owned) &&
+    isEmptyArray(projects.portfolio) &&
+    isFreshStory(story)
+  );
+}
+
+function hasOwnedProgress(owned: RawSaveObject): boolean {
+  return (
+    hasPositiveNumberValue(owned.generators) ||
+    hasPositiveNumberValue(owned.hardware) ||
+    !isEmptyArray(owned.equityPerks) ||
+    !isEmptyArray(owned.insightNodes) ||
+    !isEmptyArray(owned.paradoxItems) ||
+    !isEmptyArray(owned.research) ||
+    !isEmptyArray(owned.upgrades)
+  );
+}
+
+function isFreshStory(story: RawSaveObject): boolean {
+  return (
+    (story.act === undefined || story.act === 0) &&
+    isEmptyArray(story.inbox) &&
+    isEmptyArray(story.seen) &&
+    isEmptyArray(story.flags)
+  );
+}
+
+function hasPositiveNumberValue(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return Object.values(value).some(
+    (entry) => typeof entry === "number" && Number.isFinite(entry) && entry > 0
+  );
+}
+
+function isEmptyArray(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.length === 0);
+}
+
+function isZeroNumber(value: unknown): boolean {
+  return value === undefined || value === 0;
+}
+
+function isZeroishBig(value: unknown): boolean {
+  return value === undefined || value === 0 || value === "0" || value === "0e0";
 }

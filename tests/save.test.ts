@@ -4,6 +4,7 @@ import v1Fixture from "./fixtures/saves/v1.json";
 import v2Fixture from "./fixtures/saves/v2.json";
 import v3Fixture from "./fixtures/saves/v3.json";
 import v4Fixture from "./fixtures/saves/v4.json";
+import v5Fixture from "./fixtures/saves/v5.json";
 import { Big } from "../src/core/bignum";
 import { SAVE_VERSION } from "../src/core/migrations";
 import {
@@ -40,6 +41,11 @@ describe("M4 save/load", () => {
     state.settings.notation = "suffix";
     state.settings.doNotDisturb = true;
     state.settings.vibexLocalAi = true;
+    state.ui.tutorial = {
+      active: true,
+      completed: false,
+      step: "projects"
+    };
 
     const result = deserializeGameState(serializeGameState(state), {
       edition: "demo",
@@ -55,6 +61,11 @@ describe("M4 save/load", () => {
     expect(result.state.settings.notation).toBe("suffix");
     expect(result.state.settings.doNotDisturb).toBe(true);
     expect(result.state.settings.vibexLocalAi).toBe(true);
+    expect(result.state.ui.tutorial).toEqual({
+      active: true,
+      completed: false,
+      step: "projects"
+    });
     expect(result.state.meta.lastSeen).toBe(2_000);
   });
 
@@ -105,6 +116,11 @@ describe("M4 save/load", () => {
     expect(result.state.v).toBe(SAVE_VERSION);
     expect(result.state.ui.scene).toBe("desktop");
     expect(result.state.ui.bootSeen).toBe(true);
+    expect(result.state.ui.tutorial).toEqual({
+      active: false,
+      completed: false,
+      step: "welcome"
+    });
     expect(result.state.ui.windows.agents.open).toBe(false);
   });
 
@@ -153,5 +169,26 @@ describe("M4 save/load", () => {
     expect(recomputeComputeCap(result.state)).toBe(3130);
     expect(result.state.hardware.pcComplete).toBe(true);
     expect(result.state.res.computeCap).toBe(C.HW_BASE_CAP + 3124);
+    expect(result.state.ui.tutorial).toEqual({
+      active: false,
+      completed: true,
+      step: "done"
+    });
+  });
+
+  it("migrates v5 saves to v6 with completed tutorial for established runs", () => {
+    const result = deserializeGameState(JSON.stringify(v5Fixture), {
+      edition: "full",
+      nowMs: 10_000
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.state.v).toBe(SAVE_VERSION);
+    expect(result.state.ui.tutorial).toEqual({
+      active: false,
+      completed: true,
+      step: "done"
+    });
+    expect(result.state.owned.hardware[LEGACY_HARDWARE_ID]).toBe(3124);
   });
 });

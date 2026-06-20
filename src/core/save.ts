@@ -16,10 +16,13 @@ import {
 } from "./state";
 import {
   APP_IDS,
+  TUTORIAL_STEPS,
   createDefaultWindowState,
   isAppId,
   type AppId,
   type SceneId,
+  type TutorialState,
+  type TutorialStep,
   type WindowFrame,
   type WindowState
 } from "./ui-state";
@@ -431,6 +434,7 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   const ui = readRecord(raw, "ui", mark);
   defaults.ui.scene = repairScene(ui.scene, defaults.ui.scene, mark);
   defaults.ui.bootSeen = repairBoolean(ui.bootSeen, defaults.ui.bootSeen, "ui.bootSeen", mark);
+  defaults.ui.tutorial = repairTutorial(ui.tutorial, defaults.ui.tutorial, "ui.tutorial", mark);
   defaults.ui.windows = repairWindows(ui.windows, defaults.ui.windows, "ui.windows", mark);
 
   defaults.rngSeed = repairNumber(raw.rngSeed, defaults.rngSeed, "rngSeed", mark, {
@@ -558,6 +562,41 @@ function repairScene(value: unknown, fallback: SceneId, mark: (path: string) => 
   }
 
   mark("ui.scene");
+  return fallback;
+}
+
+function repairTutorial(
+  value: unknown,
+  fallback: TutorialState,
+  path: string,
+  mark: (path: string) => void
+): TutorialState {
+  if (!isRecord(value)) {
+    mark(path);
+    return { ...fallback };
+  }
+
+  const completed = repairBoolean(value.completed, fallback.completed, `${path}.completed`, mark);
+  return {
+    active: completed
+      ? false
+      : repairBoolean(value.active, fallback.active, `${path}.active`, mark),
+    completed,
+    step: completed ? "done" : repairTutorialStep(value.step, fallback.step, `${path}.step`, mark)
+  };
+}
+
+function repairTutorialStep(
+  value: unknown,
+  fallback: TutorialStep,
+  path: string,
+  mark: (path: string) => void
+): TutorialStep {
+  if (typeof value === "string" && (TUTORIAL_STEPS as readonly string[]).includes(value)) {
+    return value as TutorialStep;
+  }
+
+  mark(path);
   return fallback;
 }
 

@@ -152,6 +152,23 @@ describe("M4 Settings rendering", () => {
     expect(input.value).toBe("15");
     expect(input.defaultValue).toBe("15");
   });
+
+  it("wires the replay tutorial action from desktop settings", () => {
+    installDom();
+    const root = document.createElement("div");
+    let replayCount = 0;
+
+    mountApp(root, createDevFloorView(false), {
+      ...createActions(),
+      replayTutorial: () => {
+        replayCount += 1;
+      }
+    });
+
+    findButton(root, "Replay tutorial")?.click();
+
+    expect(replayCount).toBe(1);
+  });
 });
 
 describe("M11 Rewrite rendering", () => {
@@ -473,6 +490,78 @@ describe("M13 desktop shell rendering", () => {
     expect(agentsItem?.classList.contains("taskbar-item--active")).toBe(false);
     expect(rewriteItem?.classList.contains("taskbar-item--active")).toBe(true);
   });
+
+  it("renders and updates the first-run tutorial overlay", () => {
+    installDom();
+    const root = document.createElement("div");
+    let backCount = 0;
+    let nextCount = 0;
+    let skipCount = 0;
+    const base = createDevFloorView(false);
+    const view = {
+      ...base,
+      tutorial: {
+        active: true,
+        completed: false,
+        index: 0,
+        step: "welcome" as const,
+        total: 9
+      }
+    };
+
+    const app = mountApp(root, view, {
+      ...createActions(),
+      tutorialBack: () => {
+        backCount += 1;
+      },
+      tutorialNext: () => {
+        nextCount += 1;
+      },
+      tutorialSkip: () => {
+        skipCount += 1;
+      }
+    });
+
+    const overlay = root.querySelector<HTMLElement>(".tutorial-overlay");
+    const back = findButton(overlay!, "Back");
+    const next = findButton(overlay!, "Next");
+    const skip = findButton(overlay!, "Skip");
+
+    expect(overlay?.hidden).toBe(false);
+    expect(overlay?.dataset.step).toBe("welcome");
+    expect(root.querySelector<HTMLElement>(".desktop")?.dataset.tutorialStep).toBe("welcome");
+    expect(overlay?.textContent).toContain("Step 1/9");
+    expect(overlay?.textContent).toContain("Welcome to the desktop");
+    expect(back?.disabled).toBe(true);
+
+    back?.click();
+    next?.click();
+    skip?.click();
+
+    expect(backCount).toBe(0);
+    expect(nextCount).toBe(1);
+    expect(skipCount).toBe(1);
+
+    app.updateDevFloor({
+      ...view,
+      tutorial: {
+        active: true,
+        completed: false,
+        index: 8,
+        step: "done" as const,
+        total: 9
+      }
+    });
+
+    expect(overlay?.dataset.step).toBe("done");
+    expect(next?.hidden).toBe(true);
+    expect(skip?.hidden).toBe(true);
+
+    const finish = findButton(overlay!, "Finish");
+    expect(finish?.hidden).toBe(false);
+    finish?.click();
+    expect(nextCount).toBe(2);
+  });
 });
 
 function createCommsView(entryIds: readonly string[]): CommsView {
@@ -518,6 +607,12 @@ function installDom(): void {
   vi.stubGlobal("window", dom.window);
 }
 
+function findButton(root: ParentNode, label: string): HTMLButtonElement | undefined {
+  return Array.from(root.querySelectorAll<HTMLButtonElement>("button")).find(
+    (button) => button.textContent === label
+  );
+}
+
 function createActions(): AppActions {
   return {
     buyEra(): void {},
@@ -556,6 +651,7 @@ function createActions(): AppActions {
     quitToTitle(): void {},
     resetSettings(): void {},
     resetWindowLayout(): void {},
+    replayTutorial(): void {},
     resizeApp(): void {},
     rewrite(): void {},
     selectRunModifier(): void {},
@@ -569,6 +665,9 @@ function createActions(): AppActions {
     startProject(): void {},
     startRefactor(): void {},
     toggleAutomation(): void {},
+    tutorialBack(): void {},
+    tutorialNext(): void {},
+    tutorialSkip(): void {},
     wipeSave(): void {}
   };
 }
@@ -677,6 +776,13 @@ function createDevFloorView(booting: boolean): DevFloorView {
       sparklineEmpty: true,
       sparklineLabel: "",
       sparklinePath: ""
+    },
+    tutorial: {
+      active: false,
+      completed: true,
+      index: 8,
+      step: "done",
+      total: 9
     },
     ui: createShellUiView("desktop"),
     upgrades: [],

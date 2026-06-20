@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { Big } from "../src/core/bignum";
-import { createDefaultGameState, type GameState } from "../src/core/state";
+import { createDefaultGameState, type EndingChoice, type GameState } from "../src/core/state";
 import { REFACTOR_COMPLETED_STAT } from "../src/data/conditions";
 import { PRESTIGE } from "../src/data/constants";
 import { calculateDebtD0 } from "../src/systems/debt";
 import {
   chooseStoryOption,
   getUnreadStoryCount,
+  getStoryEvent,
   markStoryInboxRead,
   tickStory
 } from "../src/systems/story";
@@ -110,6 +111,49 @@ describe("M7 story engine", () => {
 
     expect(chooseStoryOption(state, "a1_10_act_end", "accept").ok).toBe(true);
     expect(state.story.act).toBe(2);
+    expect(state.story.flags.has("accepted_term_sheet")).toBe(true);
+  });
+
+  it("applies every story choice branch", () => {
+    expect(choosePrepared("a1_10_act_end", "accept").state.story.act).toBe(2);
+
+    const later = choosePrepared("a1_10_act_end", "later", 12);
+    expect(later.state.story.act).toBe(1);
+    expect(later.state.stats["story.snoozeUntil.a1_10_act_end"]).toBe(12 + 30 * 60);
+
+    const rollback = choosePrepared("a2_06_demo_day_incident", "rollback");
+    expect(rollback.state.story.flags.has("incident.rollback_demo_day")).toBe(true);
+
+    const hotfix = choosePrepared("a2_06_demo_day_incident", "hotfix");
+    expect(hotfix.state.story.flags.has("incident.hotfix_demo_day")).toBe(true);
+    expect(hotfix.state.res.hype).toBeGreaterThan(1);
+
+    const sell = choosePrepared("a3_02_takeover_offer", "sell");
+    expect(sell.state.story.flags.has("exit_unlocked")).toBe(true);
+    expect(sell.state.res.hype).toBe(1);
+
+    const reject = choosePrepared("a3_02_takeover_offer", "reject", 90);
+    expect(reject.state.story.flags.has("exit_unlocked")).toBe(true);
+    expect(reject.state.res.hype).toBeGreaterThan(1);
+    expect(reject.state.stats["story.snoozeUntil.a3_02_takeover_offer"]).toBe(90 + 30 * 60);
+
+    const isolate = choosePrepared("a3_09_incident_two", "isolate");
+    expect(isolate.state.story.flags.has("incident.isolated_region")).toBe(true);
+    expect(isolate.state.res.hype).toBe(1);
+
+    const reroute = choosePrepared("a3_09_incident_two", "reroute");
+    expect(reroute.state.story.flags.has("incident.rerouted_region")).toBe(true);
+    expect(reroute.state.res.hype).toBeGreaterThan(1);
+
+    const audit = choosePrepared("a4_04_codebase_dreams", "audit");
+    expect(audit.state.story.flags.has("lore.audit_dreams")).toBe(true);
+
+    const ignore = choosePrepared("a4_04_codebase_dreams", "ignore");
+    expect(ignore.state.story.flags.has("incident.ignored_dreams")).toBe(true);
+
+    expectEndingChoice("merge", "achievement.ending_merge");
+    expectEndingChoice("unplug", "achievement.ending_unplug");
+    expectEndingChoice("fork", "achievement.ending_fork");
   });
 
   it("persists unread archive state through story flags", () => {
@@ -161,4 +205,30 @@ function getInsightGainThreshold(gain: number): Big {
     Big.fromNumber(PRESTIGE.INSIGHT_DIV),
     Big.powNumber(gain, 1 / PRESTIGE.INSIGHT_EXP)
   );
+}
+
+function choosePrepared(
+  eventId: string,
+  choiceId: string,
+  playtimeS = 0
+): { readonly state: GameState } {
+  const state = createDefaultGameState();
+  state.meta.edition = "full";
+  state.meta.playtimeS = playtimeS;
+  state.story.act = getStoryEvent(eventId)?.act ?? state.story.act;
+  state.story.seen.add(eventId);
+  state.story.inbox.push({ eventId });
+
+  const result = chooseStoryOption(state, eventId, choiceId);
+  expect(result.ok).toBe(true);
+
+  return { state };
+}
+
+function expectEndingChoice(choice: EndingChoice, achievementFlag: string): void {
+  const result = choosePrepared("a5_12_final_choice", choice);
+
+  expect(result.state.prestige.endingChoice).toBe(choice);
+  expect(result.state.story.flags.has("iteration_unlocked")).toBe(true);
+  expect(result.state.story.flags.has(achievementFlag)).toBe(true);
 }

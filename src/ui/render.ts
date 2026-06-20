@@ -3,6 +3,7 @@ import {
   APP_IDS,
   type AppId,
   type SceneId,
+  type TutorialStep,
   type WindowFrame,
   type WindowState
 } from "../core/ui-state";
@@ -369,6 +370,14 @@ export interface OfflineView {
   readonly visible: boolean;
 }
 
+export interface TutorialView {
+  readonly active: boolean;
+  readonly completed: boolean;
+  readonly index: number;
+  readonly step: TutorialStep;
+  readonly total: number;
+}
+
 export interface FullGameView {
   readonly visible: boolean;
 }
@@ -425,6 +434,7 @@ export interface DevFloorView {
   readonly resources: ResourceView;
   readonly settings: SettingsView;
   readonly stats: StatsView;
+  readonly tutorial: TutorialView;
   readonly ui: ShellUiView;
   readonly upgrades: readonly UpgradeRowView[];
   readonly vibex: VibexView;
@@ -472,12 +482,16 @@ export interface AppActions {
   iterate(): void;
   rewrite(): void;
   resetWindowLayout(): void;
+  replayTutorial(): void;
   resizeApp(appId: AppId, frame: WindowFrame, bounds: WindowBounds): void;
   selectRunModifier(id: string | undefined): void;
   startDesktop(): void;
   startProject(id: string): void;
   startRefactor(): void;
   toggleAutomation(id: string, enabled: boolean): void;
+  tutorialBack(): void;
+  tutorialNext(): void;
+  tutorialSkip(): void;
   downloadVibexModel(): void;
   quitToTitle(): void;
   resetSettings(): void;
@@ -761,6 +775,7 @@ interface DesktopNodes {
   readonly iconNodes: Record<AppId, DesktopIconNodes>;
   readonly root: HTMLElement;
   readonly taskbarNodes: TaskbarNodes;
+  readonly tutorialNodes: TutorialNodes;
   readonly windowNodes: Record<AppId, WindowNodes>;
   readonly windowsLayer: HTMLElement;
   currentWindows: Record<AppId, WindowState>;
@@ -785,6 +800,17 @@ interface TaskbarItemNodes {
 interface WindowNodes {
   readonly content: HTMLElement;
   readonly root: HTMLElement;
+  readonly title: Text;
+}
+
+interface TutorialNodes {
+  readonly back: HTMLButtonElement;
+  readonly body: Text;
+  readonly finish: HTMLButtonElement;
+  readonly next: HTMLButtonElement;
+  readonly progress: Text;
+  readonly root: HTMLElement;
+  readonly skip: HTMLButtonElement;
   readonly title: Text;
 }
 
@@ -1927,12 +1953,14 @@ function createDesktop(
   const windowsLayer = el("section", { className: "desktop__windows" });
   const notes = createStickyNotes(counters);
   const taskbar = createTaskbar(actions);
+  const tutorial = createTutorialOverlay(view.tutorial, actions);
   const desktop: DesktopNodes = {
     currentScene: view.ui.scene,
     currentWindows: view.ui.windows,
     iconNodes: icons.nodes,
     root,
     taskbarNodes: taskbar,
+    tutorialNodes: tutorial,
     windowNodes: {} as Record<AppId, WindowNodes>,
     windowsLayer
   };
@@ -1944,7 +1972,7 @@ function createDesktop(
     windowsLayer.append(windowNodes.root);
   }
 
-  root.append(wallpaper, icons.root, windowsLayer, notes, taskbar.root);
+  root.append(wallpaper, icons.root, windowsLayer, notes, taskbar.root, tutorial.root);
   updateDesktop(desktop, view);
   return desktop;
 }
@@ -2014,6 +2042,73 @@ function createTaskbar(actions: AppActions): TaskbarNodes {
   }
 
   return { items, root };
+}
+
+function createTutorialOverlay(view: TutorialView, actions: AppActions): TutorialNodes {
+  const root = el("section", {
+    ariaLabel: t("ui.tutorial.ariaLabel"),
+    className: "tutorial-overlay"
+  });
+  const card = el("article", { className: "tutorial-card" });
+  const progress = text("");
+  const progressNode = el("span", { className: "tutorial-card__progress" });
+  progressNode.append(progress);
+  const title = text("");
+  const titleNode = el("h2", { className: "tutorial-card__title" });
+  titleNode.append(title);
+  const body = text("");
+  const bodyNode = el("p", { className: "tutorial-card__body" });
+  bodyNode.append(body);
+  const actionsRow = el("div", { className: "tutorial-card__actions" });
+  const back = createTutorialButton("ui.tutorial.back", actions.tutorialBack);
+  const skip = createTutorialButton("ui.tutorial.skip", actions.tutorialSkip);
+  const next = createTutorialButton("ui.tutorial.next", actions.tutorialNext);
+  const finish = createTutorialButton("ui.tutorial.finish", actions.tutorialNext);
+  next.classList.add("tutorial-card__button--primary");
+  finish.classList.add("tutorial-card__button--primary");
+  actionsRow.append(back, skip, next, finish);
+  card.append(progressNode, titleNode, bodyNode, actionsRow);
+  root.append(card);
+
+  const nodes = { back, body, finish, next, progress, root, skip, title };
+  updateTutorialOverlay(nodes, view);
+  return nodes;
+}
+
+function createTutorialButton(labelKey: string, onClick: () => void): HTMLButtonElement {
+  const button = el("button", {
+    className: "tutorial-card__button",
+    title: t(labelKey)
+  });
+  button.type = "button";
+  button.append(text(t(labelKey)));
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function updateTutorialOverlay(nodes: TutorialNodes, view: TutorialView): void {
+  nodes.root.hidden = !view.active;
+
+  if (!view.active) {
+    delete nodes.root.dataset.step;
+    return;
+  }
+
+  nodes.root.dataset.step = view.step;
+  setText(
+    nodes.progress,
+    t("ui.tutorial.progress", { current: view.index + 1, total: view.total })
+  );
+  setText(nodes.title, t(`ui.tutorial.${view.step}.title`));
+  setText(nodes.body, t(`ui.tutorial.${view.step}.body`));
+  nodes.back.disabled = view.index === 0;
+  nodes.next.hidden = view.step === "done";
+  nodes.skip.hidden = view.step === "done";
+  nodes.finish.hidden = view.step !== "done";
+  setTextContent(nodes.back, t("ui.tutorial.back"));
+  setTextContent(nodes.next, t("ui.tutorial.next"));
+  setTextContent(nodes.skip, t("ui.tutorial.skip"));
+  setTextContent(nodes.finish, t("ui.tutorial.finish"));
 }
 
 function createStickyNotes(counters: ResourceCounterSet): HTMLElement {
@@ -2197,6 +2292,12 @@ function updateDesktop(nodes: DesktopNodes, view: DevFloorView): void {
   nodes.currentScene = view.ui.scene;
   nodes.root.hidden = view.ui.scene !== "desktop";
   nodes.currentWindows = view.ui.windows;
+  if (view.tutorial.active) {
+    nodes.root.dataset.tutorialStep = view.tutorial.step;
+  } else {
+    delete nodes.root.dataset.tutorialStep;
+  }
+  updateTutorialOverlay(nodes.tutorialNodes, view.tutorial);
   updateDesktopWindows(nodes, view);
   updateDesktopIcons(nodes, view);
   updateTaskbar(nodes, view);
@@ -3382,6 +3483,9 @@ function createSettingsScreen(view: SettingsView, actions: AppActions): HTMLElem
   const resetWindowsButton = createSettingsButton("ui.settings.resetWindows", () => {
     actions.resetWindowLayout();
   });
+  const replayTutorialButton = createSettingsButton("ui.settings.replayTutorial", () => {
+    actions.replayTutorial();
+  });
   const quitButton = createSettingsButton("ui.settings.quitToTitle", () => {
     actions.quitToTitle();
   });
@@ -3408,7 +3512,14 @@ function createSettingsScreen(view: SettingsView, actions: AppActions): HTMLElem
   const saveTitle = el("h2", { className: "section-title" });
   saveTitle.append(text(t("ui.settings.saveTools")));
   const actionsRow = el("div", { className: "settings-save__actions" });
-  actionsRow.append(exportButton, importButton, resetWindowsButton, quitButton, wipeButton);
+  actionsRow.append(
+    exportButton,
+    importButton,
+    resetWindowsButton,
+    replayTutorialButton,
+    quitButton,
+    wipeButton
+  );
   savePanel.append(saveTitle, exportArea, actionsRow);
 
   settingsNodes = {

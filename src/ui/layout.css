@@ -3022,6 +3022,139 @@
   white-space: nowrap;
 }
 
+.tutorial-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 0.28), transparent 36%),
+    linear-gradient(180deg, rgb(0 0 0 / 0.18), transparent 44%);
+}
+
+.tutorial-overlay[hidden] {
+  display: none;
+}
+
+.tutorial-card {
+  position: absolute;
+  top: 188px;
+  right: clamp(20px, 4vw, 72px);
+  display: grid;
+  gap: var(--sp-3);
+  width: min(390px, calc(100vw - 40px));
+  padding: var(--sp-4);
+  color: var(--fg-0);
+  background: linear-gradient(180deg, rgb(12 31 39 / 0.96), rgb(5 12 18 / 0.98)), var(--bg-1);
+  border: 1px solid rgb(33 242 231 / 0.54);
+  border-radius: var(--r-s);
+  box-shadow:
+    0 24px 70px rgb(0 0 0 / 0.52),
+    var(--glow-acc);
+  pointer-events: auto;
+}
+
+.tutorial-overlay[data-step="resources"] .tutorial-card,
+.tutorial-overlay[data-step="done"] .tutorial-card {
+  top: auto;
+  right: clamp(20px, 4vw, 72px);
+  bottom: 96px;
+}
+
+.tutorial-overlay[data-step="projects"] .tutorial-card,
+.tutorial-overlay[data-step="agents"] .tutorial-card,
+.tutorial-overlay[data-step="hardware"] .tutorial-card,
+.tutorial-overlay[data-step="comms"] .tutorial-card,
+.tutorial-overlay[data-step="settings"] .tutorial-card {
+  top: 170px;
+  right: clamp(18px, 3vw, 52px);
+}
+
+.tutorial-card__progress {
+  color: var(--acc-2);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.tutorial-card__title {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.tutorial-card__body {
+  margin: 0;
+  color: var(--fg-1);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.tutorial-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+
+.tutorial-card__button {
+  min-height: 34px;
+  padding: 0 var(--sp-3);
+  color: var(--fg-0);
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: var(--r-s);
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.tutorial-card__button--primary {
+  color: var(--bg-0);
+  background: var(--acc);
+  border-color: var(--acc);
+  font-weight: 700;
+}
+
+.tutorial-card__button:disabled {
+  color: var(--fg-2);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.tutorial-card__button:focus-visible,
+.tutorial-card__button:hover:not(:disabled) {
+  box-shadow: var(--glow-acc);
+  outline: none;
+}
+
+.desktop[data-tutorial-step="resources"] .sticky-notes,
+.desktop[data-tutorial-step="done"] .taskbar,
+.desktop[data-tutorial-step="vibex"] .desktop-icon[data-app-id="vibex"],
+.desktop[data-tutorial-step="vibex"] .desktop-window[data-app-id="vibex"],
+.desktop[data-tutorial-step="projects"] .desktop-icon[data-app-id="projects"],
+.desktop[data-tutorial-step="projects"] .desktop-window[data-app-id="projects"],
+.desktop[data-tutorial-step="agents"] .desktop-icon[data-app-id="agents"],
+.desktop[data-tutorial-step="agents"] .desktop-window[data-app-id="agents"],
+.desktop[data-tutorial-step="hardware"] .desktop-icon[data-app-id="hardware"],
+.desktop[data-tutorial-step="hardware"] .desktop-window[data-app-id="hardware"],
+.desktop[data-tutorial-step="settings"] .desktop-icon[data-app-id="settings"],
+.desktop[data-tutorial-step="settings"] .desktop-window[data-app-id="settings"],
+.desktop[data-tutorial-step="comms"] .desktop-icon[data-app-id="chat"],
+.desktop[data-tutorial-step="comms"] .desktop-icon[data-app-id="mail"],
+.desktop[data-tutorial-step="comms"] .desktop-icon[data-app-id="feed"],
+.desktop[data-tutorial-step="comms"] .desktop-window[data-app-id="chat"] {
+  outline: 2px solid var(--acc);
+  outline-offset: 4px;
+  box-shadow:
+    0 0 0 6px rgb(33 242 231 / 0.12),
+    var(--glow-acc);
+}
+
+.desktop[data-tutorial-step="welcome"] .desktop-icons {
+  outline: 2px solid rgb(255 200 107 / 0.82);
+  outline-offset: 8px;
+}
+
 .sticky-notes {
   top: 22px;
   right: clamp(18px, 3vw, 52px);

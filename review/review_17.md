@@ -1,6 +1,6 @@
 # Review #17 — M16
 Reviewer: Claude Opus 4.8 | Data: 2026-06-15
-Status: OPEN   <!-- OPEN → FIXED (Codex) → DONE / ESCALATE (reviewer, runda 2) -->
+Status: FIXED   <!-- OPEN → FIXED (Codex) → DONE / ESCALATE (reviewer, runda 2) -->
 VERDICT: APPROVED
 
 <!-- Kontekst (zweryfikowane przez reviewera; przegląd wieloagentowy 6 wymiarów: component-numbers, compute-cap-phases, save-migration-v5, balance-sim-ac, hardware-ui-hotpath, hardrules-scope-data + weryfikacja adwersarialna + sweep, 8 agentów; reviewer własnoręcznie potwierdził liczby komponentów PC, stałe HW, sim balansu, baseCost=Big):
@@ -12,8 +12,8 @@ VERDICT: APPROVED
 _(brak)_
 
 ## ADVISORY (P2 — nie blokuje)
-- [ ] **P2-1** | `src/i18n/en.json:65-73` — 9 osieroconych kluczy nazw starych tierów hardware (`hardware.h_datacenter/h_dyson_lattice/h_gaming_rig/h_home_server/h_hyperscale/h_micro_dc/h_orbital_ring/h_server_rack/h_workstation .name`): po redesignie M16 stare tiery usunięto z `HARDWARE`; `OLD_HARDWARE_TIERS` (hardware.ts:35-43) odwołuje się do nich tylko po `id` (mapowanie cap w migracji), nigdy po nameKey, a zmigrowane save'y zwijają je do syntetycznego `LEGACY_HARDWARE_ID` „h_legacy" (nie w HARDWARE → nigdy renderowany z nazwą); render mapuje po HARDWARE (`t(hardware.nameKey)`, main.ts:1302), więc te klucze są nieosiągalne (grep poza en.json: 0 referencji) — dlaczego: 09 §4.3 (stare tiery zretirowane do tabeli migracyjnej bez nazw) + higiena „all UI text via i18n"; zero wpływu runtime, ale localizatorzy utrzymują 9 martwych stringów (mogą maskować realnie brakujący klucz) → P2 (orphaned i18n key) — fix: usuń 9 martwych kluczy nazw starych tierów z en.json.
-  - fix-note: _(Codex naprawia tylko gdy <10 linii; inaczej wpisz "→ backlog")_
+- [x] **P2-1** | `src/i18n/en.json:65-73` — 9 osieroconych kluczy nazw starych tierów hardware (`hardware.h_datacenter/h_dyson_lattice/h_gaming_rig/h_home_server/h_hyperscale/h_micro_dc/h_orbital_ring/h_server_rack/h_workstation .name`): po redesignie M16 stare tiery usunięto z `HARDWARE`; `OLD_HARDWARE_TIERS` (hardware.ts:35-43) odwołuje się do nich tylko po `id` (mapowanie cap w migracji), nigdy po nameKey, a zmigrowane save'y zwijają je do syntetycznego `LEGACY_HARDWARE_ID` „h_legacy" (nie w HARDWARE → nigdy renderowany z nazwą); render mapuje po HARDWARE (`t(hardware.nameKey)`, main.ts:1302), więc te klucze są nieosiągalne (grep poza en.json: 0 referencji) — dlaczego: 09 §4.3 (stare tiery zretirowane do tabeli migracyjnej bez nazw) + higiena „all UI text via i18n"; zero wpływu runtime, ale localizatorzy utrzymują 9 martwych stringów (mogą maskować realnie brakujący klucz) → P2 (orphaned i18n key) — fix: usuń 9 martwych kluczy nazw starych tierów z en.json.
+  - fix-note: Usunięto 9 martwych nazw starych tierów hardware z `src/i18n/en.json`; po M16 runtime renderuje wyłącznie aktywne `HARDWARE` i syntetyczny legacy cap nie potrzebuje nameKey.
 
 ## DISPUTED (wypełnia Codex, rozstrzyga człowiek)
 _(brak)_

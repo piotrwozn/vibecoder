@@ -57,7 +57,9 @@ export const ACT0_EVENTS: readonly StoryEvent[] = [
   {
     id: "a0_07_tutorial_done",
     act: 0,
-    trigger: { all: [{ era: 1 }, { shipCountGte: 3 }] },
+    trigger: {
+      all: [{ era: 1 }, { shipCountGte: 3 }, { seen: "a0_05_agent" }, { seen: "a0_06_compute" }]
+    },
     channel: "chat",
     speaker: "zora",
     textKey: "story.a0_07_tutorial_done",

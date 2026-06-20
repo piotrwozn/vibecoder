@@ -12,6 +12,34 @@ describe("M9 campaign sim", () => {
     expect(sane.state.story.act).toBeGreaterThan(idle.state.story.act);
     expect(sane.state.lifetime.loc.gt(idle.state.lifetime.loc)).toBe(true);
   });
+
+  it("finishes sane 80h inside the target window with all campaign events", () => {
+    const result = runCampaignSim({ strategy: "sane", hours: 80 });
+
+    expect(result.completeH).toBeGreaterThanOrEqual(45);
+    expect(result.completeH).toBeLessThanOrEqual(70);
+    expect(result.missingEvents).toEqual([]);
+    expect(result.seenEvents).toBe(73);
+  }, 20_000);
+
+  it("finishes maxer 80h without skipping the Act 0 agent event", () => {
+    const result = runCampaignSim({ strategy: "maxer", hours: 80 });
+
+    expect(result.completeH).toBeDefined();
+    expect(result.missingEvents).toEqual([]);
+    expect(result.state.story.seen.has("a0_05_agent")).toBe(true);
+    expect(result.seenEvents).toBe(73);
+  }, 20_000);
+
+  it("keeps idle-only 80h stable and intentionally incomplete", () => {
+    const result = runCampaignSim({ strategy: "idle_only", hours: 80 });
+
+    expect(result.completeH).toBeUndefined();
+    expect(result.state.prestige.endingChoice).toBeUndefined();
+    expect(result.state.story.act).toBeGreaterThanOrEqual(3);
+    expect(Number.isFinite(result.state.lifetime.loc.e)).toBe(true);
+    expect(Number.isFinite(result.state.res.money.e)).toBe(true);
+  }, 20_000);
 });
 
 describe("M10 endless sim", () => {

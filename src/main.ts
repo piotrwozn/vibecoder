@@ -4,7 +4,7 @@ import { formatBig, formatTime, type NumberNotation } from "./core/format";
 import { OFFLINE_CATCH_UP_MS, startLoop } from "./core/loop";
 import { exportGameState, importGameState, loadGameState, saveGameState } from "./core/save";
 import { createDefaultGameState } from "./core/state";
-import type { AppId, WindowFrame } from "./core/ui-state";
+import { TUTORIAL_STEPS, type AppId, type TutorialStep, type WindowFrame } from "./core/ui-state";
 import { createViewInvalidation, markResourceEvent } from "./core/view-invalidation";
 import { ACHIEVEMENTS, ACHIEVEMENT_LOC_BONUS } from "./data/achievements";
 import { C } from "./data/constants";
@@ -177,6 +177,7 @@ import {
   type VibexView,
   type StatsRowView,
   type StatsView,
+  type TutorialView,
   type UpgradeRowView
 } from "./ui/render";
 import { createAudioController } from "./ui/audio";
@@ -210,9 +211,7 @@ let state = loaded.state;
 await loadLocale(state.settings.lang);
 document.documentElement.lang = state.settings.lang;
 platform.setTitle(t("app.title"));
-if (state.ui.scene === "boot" && state.ui.bootSeen && state.settings.skipIntro) {
-  state.ui.scene = "desktop";
-}
+syncSceneAfterLoad();
 const bus = createEventBus();
 const cache = createDerivedCache();
 ensureProjectBoard(state);
@@ -550,6 +549,17 @@ const appActions: AppActions = {
     void persistNow();
   },
 
+  replayTutorial(): void {
+    state.ui.scene = "desktop";
+    state.ui.tutorial = {
+      active: true,
+      completed: false,
+      step: "welcome"
+    };
+    updateVisibleView();
+    void persistNow();
+  },
+
   resetSettings(): void {
     const defaults = createDefaultGameState(Date.now(), platform.edition).settings;
     state.settings = { ...defaults };
@@ -574,6 +584,9 @@ const appActions: AppActions = {
   startDesktop(): void {
     state.ui.scene = "desktop";
     state.ui.bootSeen = true;
+    if (!state.ui.tutorial.completed) {
+      state.ui.tutorial.active = true;
+    }
     audio.play("unlock");
     updateVisibleView();
     void persistNow();
@@ -599,9 +612,26 @@ const appActions: AppActions = {
     void persistNow();
   },
 
+  tutorialBack(): void {
+    moveTutorialStep(-1);
+  },
+
+  tutorialNext(): void {
+    if (state.ui.tutorial.step === "done") {
+      completeTutorial();
+    } else {
+      moveTutorialStep(1);
+    }
+  },
+
+  tutorialSkip(): void {
+    completeTutorial();
+  },
+
   quitToTitle(): void {
     state.ui.scene = "boot";
     state.ui.bootSeen = true;
+    state.ui.tutorial.active = false;
     updateVisibleView();
     void persistNow();
   },
@@ -725,9 +755,7 @@ function persistNow(): Promise<boolean> {
 
 function installState(nextState: typeof state): void {
   state = nextState;
-  if (state.ui.scene === "boot" && state.ui.bootSeen && state.settings.skipIntro) {
-    state.ui.scene = "desktop";
-  }
+  syncSceneAfterLoad();
   ensureProjectBoard(state);
   recomputeDerivedCache(state, cache);
   audio.setSettings(state.settings);
@@ -744,6 +772,82 @@ function resetVibexTransientState(): void {
   currentVibexCanned = drawVibexCannedPair(vibexCannedBag);
   vibexCodeState = createVibexCodeState();
   currentVibexCodeFrame = getVibexCodeFrame(vibexCodeState);
+}
+
+function syncSceneAfterLoad(): void {
+  if (state.ui.scene === "boot" && state.ui.bootSeen && state.settings.skipIntro) {
+    state.ui.scene = "desktop";
+  }
+
+  if (state.ui.scene === "desktop" && !state.ui.tutorial.completed) {
+    state.ui.tutorial.active = true;
+  }
+}
+
+function moveTutorialStep(offset: -1 | 1): void {
+  if (!state.ui.tutorial.active || state.ui.tutorial.completed) {
+    return;
+  }
+
+  const index = getTutorialStepIndex(state.ui.tutorial.step);
+  const nextIndex = Math.min(TUTORIAL_STEPS.length - 1, Math.max(0, index + offset));
+  const nextStep = TUTORIAL_STEPS[nextIndex];
+
+  if (nextStep === undefined || nextStep === state.ui.tutorial.step) {
+    return;
+  }
+
+  state.ui.tutorial.step = nextStep;
+  openTutorialStepTarget(nextStep);
+  updateVisibleView();
+  void persistNow();
+}
+
+function completeTutorial(): void {
+  state.ui.tutorial = {
+    active: false,
+    completed: true,
+    step: "done"
+  };
+  updateVisibleView();
+  void persistNow();
+}
+
+function openTutorialStepTarget(step: TutorialStep): void {
+  const appId = getTutorialStepApp(step);
+
+  if (appId === undefined) {
+    return;
+  }
+
+  openWindow(state.ui.windows, appId, getNotificationWindowBounds());
+  markCommsAppRead(appId);
+  state.ui.scene = "desktop";
+}
+
+function getTutorialStepApp(step: TutorialStep): AppId | undefined {
+  switch (step) {
+    case "vibex":
+      return "vibex";
+    case "projects":
+      return "projects";
+    case "agents":
+      return "agents";
+    case "hardware":
+      return "hardware";
+    case "comms":
+      return "chat";
+    case "settings":
+      return "settings";
+    case "welcome":
+    case "resources":
+    case "done":
+      return undefined;
+  }
+}
+
+function getTutorialStepIndex(step: TutorialStep): number {
+  return Math.max(0, TUTORIAL_STEPS.indexOf(step));
 }
 
 function applyOfflineOnReturn(nowMs: number): OfflineProgressResult | undefined {
@@ -846,6 +950,7 @@ function createDevFloorView(derived: DerivedCache, includeClosedApps = false): D
     },
     settings: createSettingsView(),
     stats: buildStats ? createStatsView(derived) : (previous?.stats ?? createStatsView(derived)),
+    tutorial: createTutorialView(),
     ui: {
       bootSeen: state.ui.bootSeen,
       scene: state.ui.scene,
@@ -886,6 +991,16 @@ function createSettingsView(): SettingsView {
     sound: state.settings.sound,
     vibexLocalAi: state.settings.vibexLocalAi,
     volume: state.settings.volume.toFixed(2)
+  };
+}
+
+function createTutorialView(): TutorialView {
+  return {
+    active: state.ui.tutorial.active,
+    completed: state.ui.tutorial.completed,
+    index: getTutorialStepIndex(state.ui.tutorial.step),
+    step: state.ui.tutorial.step,
+    total: TUTORIAL_STEPS.length
   };
 }
 
