@@ -67,14 +67,51 @@
 - [ ] Soak test 8h (`10 §5`), balans finalny simem, QA checklist (`10 §6`).
 - **AC:** instalator działa na czystym Windows; demo w przeglądarce; save demo importuje się do desktop; auto-update z wersji testowej przechodzi.
 
-**Suma: ~25–30 dni roboczych** (z Codexem realnie szybciej przy dyscyplinie milestone'ów).
+---
+
+## Aktualizacja UI — powłoka „desktop OS" (milestony M13–M16)
+
+> Decyzje właściciela (czerwiec 2026). Pełna specyfikacja: `06 §10–§17`. Te milestony **przebudowują top-level UI** (z jednego layoutu §3 na pulpit z oknami) — nie ruszają ekonomii (`02`/`03`). Ta sama dyscyplina: jeden milestone = jeden PR, `npm run check` zielony, AC odhaczone. **Kolejność/zależności:** M13 (powłoka) najpierw; **M14 wymaga istniejącej fabuły z M7**; **M16** — dane (tabele komponentów + migracja) już zdefiniowane w `09 §4.1–4.3` i `03 §3.4`, gotowe do implementacji; **M15** — lokalny model jest desktop-first (web demo bez modelu), więc część „model" może lądować w oknie M12, a reszta Vibex wcześniej.
+
+## M13 — Powłoka desktop: boot + pulpit + okna + karteczki (2–3 dni)
+- [ ] Scena **BOOT** (`06 §11`): ciemny pokój + migający monitor (CSS/SVG, reduced-motion safe); przyciski START / CONTINUE / SETTINGS / język / credits; Settings współdzielone z apką Settings.
+- [ ] Animacja wejścia: zoom „w ekran" (tylko `transform`/`opacity`, skippable, reduced-motion = fade) → scena **DESKTOP**.
+- [ ] Pulpit + ikony apek (`06 §12`); menedżer okien `ui/wm/`: przesuwanie/resize/min/max/close, z-order, jedno okno na apkę, min-size per apka; persist `GameState.ui.windows` (+ bump `SAVE_VERSION` + migracja).
+- [ ] Karteczki statystyk (`06 §13`): 3 post-ity (Money + Money/s; LoC + LoC/s + dopisek „LoC = Lines of Code"; RP + Compute used/cap + Hype); `--font-hand` vendorowany (zweryfikować licencję), tabular-nums, ResourceCounter, tooltip mnożników; warstwa nad oknami.
+- [ ] Nowe tokeny (`06 §2/§10`); skróty klawiszowe pod nowy zestaw apek (`06 §8/§12`).
+- **AC:** boot→zoom→desktop działa i jest skippable; `prefers-reduced-motion` = bez zoomu; okno otwiera się w granicach min-size…pulpit; układ okien przeżywa reload (test save/migracja); karteczki bez layout-shiftu przy tickach (tabular-nums); budżet perf `07 §9` trzyma się (okno zamknięte/min nic nie liczy).
+
+## M14 — Apki: podział ekranów + Chat/Mail/Feed + powiadomienia (2 dni)
+- [ ] Opakować istniejące ekrany (`06 §4`) w okna; rozdzielić dawny Dev Floor → **Agents** (lista agentów + rozbicie Compute) / **Hardware** / **Upgrades** (`06 §17`).
+- [ ] Rozdzielić comms dock → apki **Chat / Mail / Feed**: routing kanału z `systems/story.ts` (treść i triggery eventów **bez zmian**); badge unread + pulse na ikonie.
+- [ ] Powiadomienia narożne (`06 §14`): toasty „New mail/chat/feed" (reuse `Toast`), klik → otwiera właściwą apkę; **treść tylko w apce**; bleep „message"; „Do not disturb" w Settings.
+- **AC:** każda apka działa w oknie z funkcjami sprzed podziału; toast nie pokazuje treści wiadomości; unread liczone poprawnie i zerowane po otwarciu; przejście Aktu 0–1 nadal odpala się wg triggerów (regression jak M7).
+
+## M15 — Vibex: terminal promptów + pula humoru + lokalny model + wizualizer kodu (3–4 dni)
+- [ ] Układ Vibex (`06 §15`): lewy fake file-tree (**nieklikalny**), środek code-stream, prawy terminal + **Send**; nagłówek `model: <era>` (`02 §5`).
+- [ ] Send = istniejąca akcja PROMPT (`02 §3`/`03 §4`) podpięta **bez zmian w balansie**; flow meter.
+- [ ] Pula generyczna `vibex.canned.*` (pary prompt↔odpowiedź, **z humorem**; ⚠️ teksty do napisania jak fabuła; shuffle bag; idle **nie woła modelu** → P3).
+- [ ] Wizualizer kodu: pisanie linii → czyszczenie → przejście do kolejnego fikcyjnego pliku (podświetlenie w file-tree) → raz na cykl `commited` w terminalu; pula reużywanych elementów (`transform`/`opacity`); fragmenty w `data/` (bez logiki).
+- [ ] Lokalny model w `platform/ai.ts` + **Web Worker**: **wllama** (MIT) + **SmolLM2-135M-Instruct** (Apache-2.0, GGUF Q4 ≈95–135 MB); system-prompt z humorem, ≤~60 tok; **desktop** = pobranie+cache (offline po pobraniu), **web demo** = canned-only; Settings: toggle „Vibex local AI" + „Download model" (rozmiar/postęp) + nota licencyjna; fallback na pulę gdy brak modelu.
+- [ ] LICENSE/NOTICE modelu i silnika dołączone do dystrybucji; **wyjątek od P2 udokumentowany i izolowany** w `platform/ai.*` (jedyna dozwolona wyspa zależności runtime).
+- **AC:** idle pokazuje pary canned **bez kosztu CPU** (P3); wpisany prompt → odpowiedź modelu **w workerze bez zacięcia ticka** (budżet `07 §9`); brak/wyłączony model → fallback na pulę; **liczby niezmienione** (test: Send daje identyczny burst LoC jak przed przebudową UI).
+
+## M16 — Hardware: komponenty PC → serwer od zera (2–3 dni)
+- [x] **Dane zdefiniowane:** tabele komponentów (PC + serwer) i migracja w `09 §4.1–4.3`; wzory/stałe (`totalCap`, `HW_BASE_CAP=6`, `HW_PC_MAX_CAP=3486`, `pcComplete`) w `03 §3.4`. (Liczby wstępne — tuning po simie.)
+- [ ] Przepisać `data/hardware.ts` 1:1 z `09 §4` (schemat: `id, phase pc|server, slot, maxLevel, baseCost, growth, capPerLevel, unlock, isEnclosure`).
+- [ ] `systems/compute.ts`: cap liczony z komponentów/faz/slotów; **faza 2 (serwer) odblokowana po zmaksowaniu PC**; szafa sama = 0 cap; blokada zakupu gdy nie stać.
+- [ ] Apka Hardware: SVG płyty głównej + szafy rack, sloty, „wskakiwanie" komponentu, liczniki `+cap` (`transform`/`opacity`).
+- [ ] Migracja save: stare tiery hardware → ekwiwalent cap/komponentów; bump `SAVE_VERSION` + fixture test.
+- **AC:** faza 1 daje cap i odblokowuje fazę 2 po maxie PC; szafa bez modułów = 0 cap; sim balansu (`10 §3`) przechodzi z nowym hardware bez regresji rytmu „wall & release"; stary save migruje się zachowując dostępny cap.
+
+**Suma M0–M12: ~25–30 dni roboczych.** **M13–M16 (aktualizacja UI „desktop OS"): ~9–12 dni** (z Codexem realnie szybciej przy dyscyplinie milestone'ów).
 
 ## 13. Zasady pracy z Codexem (przeczytaj zanim zaczniesz)
 
 1. **Jeden milestone = jedna rozmowa/PR.** Nie mieszaj zakresów; kontekst z `plan/` podawaj wybiórczo (patrz §14).
 2. **Liczby tylko z planu.** Jeśli Codex proponuje stałą — każ mu wskazać źródło w `03`/`04`/`09`. Brak źródła = poprawka planu NAJPIERW.
 3. **Po każdym tasku:** `npm run check`. Czerwone = nie idziemy dalej.
-4. **Zakaz zależności runtime.** Codex lubi dorzucać biblioteki — odrzucaj (filar P2). DevDeps wolno.
+4. **Zakaz zależności runtime.** Codex lubi dorzucać biblioteki — odrzucaj (filar P2). DevDeps wolno. **Jedyny zatwierdzony wyjątek:** wyspa Vibex local-AI w `platform/ai.*` (`wllama` + model GGUF) — izolowana, bez wycieku importów; `06 §15`, `M15`.
 5. **Zakaz logiki w `data/` i DOM w `systems/`** — validate.ts + review importów.
 6. Gdy Codex utknie na czymś wizualnym: daj mu screenshot. Gdy na balansie: odpal sim i wklej wynik.
 7. Commituj często z prefixem milestone'u: `M3: project board UI`.

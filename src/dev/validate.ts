@@ -9,6 +9,8 @@ interface PackageJson {
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const failures: string[] = [];
+const ALLOWED_RUNTIME_DEPENDENCIES = new Set(["@wllama/wllama"]);
+const LOCAL_AI_IMPORT_RE = /\b(?:from\s+|import\s*\(\s*|import\s+)["']@wllama\/wllama(?:\/|["'])/;
 
 function readText(path: string): string {
   return readFileSync(join(repoRoot, path), "utf8");
@@ -44,7 +46,9 @@ function fail(message: string): void {
 
 function validatePackage(): void {
   const pkg = JSON.parse(readText("package.json")) as PackageJson;
-  const runtimeDependencies = Object.keys(pkg.dependencies ?? {});
+  const runtimeDependencies = Object.keys(pkg.dependencies ?? {}).filter(
+    (name) => !ALLOWED_RUNTIME_DEPENDENCIES.has(name)
+  );
 
   if (runtimeDependencies.length > 0) {
     fail(`runtime dependencies are forbidden: ${runtimeDependencies.join(", ")}`);
@@ -79,6 +83,10 @@ function validateLayering(tsFiles: readonly string[]): void {
 
     if (file.startsWith("src/ui/") && /from\s+["'].*\/systems\//.test(source)) {
       fail(`${file} imports game systems from UI`);
+    }
+
+    if (!file.startsWith("src/platform/ai.") && LOCAL_AI_IMPORT_RE.test(source)) {
+      fail(`${file} imports the M15 local-AI dependency outside platform/ai.*`);
     }
   }
 }

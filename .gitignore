@@ -4,6 +4,7 @@
 .swarm/
 node_modules/
 dist/
+src-tauri/target/
 coverage/
 .vite/
 .tmp-validate/
@@ -12,3 +13,6 @@ coverage/
 .lighthouse*.json
 .vite-*.log
 npm-debug.log*
+ruvector.db
+agentdb.rvf*
+x.verdict

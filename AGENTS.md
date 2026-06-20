@@ -17,7 +17,7 @@ The full design lives in `plan/` (Polish prose, English identifiers). It is the 
 - `npm run tauri build` — desktop build (M12+)
 
 ## Hard rules
-1. **No runtime dependencies.** devDependencies only. If you think you need a library, you don't — implement it (specs are in `plan/07`).
+1. **No runtime dependencies.** devDependencies only. If you think you need a library, you don't — implement it (specs are in `plan/07`). **Sole owner-approved exception:** the Vibex local-AI island in `src/platform/ai.*` (engine `wllama`, MIT + a bundled GGUF model, Apache-2.0) — isolated, must not leak imports into `core/`, `systems/`, `data/` or `ui/`; spec in `plan/06 §15`, milestone `08 §M15`.
 2. **Never invent numbers.** Every constant comes from `plan/03`, `plan/04` or `plan/09`. Missing constant → stop and ask.
 3. **Layering:** `data/` has no logic. `systems/` never touches DOM. `ui/` never computes game math. Enforced by the validator.
 4. **All user-facing text via i18n** (`src/i18n/en.json`). No string literals in `ui/`.

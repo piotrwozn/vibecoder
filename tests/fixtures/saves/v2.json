@@ -1,0 +1,183 @@
+{
+  "v": 2,
+  "meta": {
+    "createdAt": 1000,
+    "edition": "demo",
+    "lastSeen": 1000,
+    "playtimeS": 0
+  },
+  "res": {
+    "computeCap": 6,
+    "computeUsed": 0,
+    "debt": "0e0",
+    "equity": 0,
+    "hype": 1,
+    "insight": "0e0",
+    "loc": "0e0",
+    "money": "0e0",
+    "paradox": 0,
+    "rp": 0
+  },
+  "lifetime": {
+    "insightSinceExit": 0,
+    "loc": "0e0",
+    "locSinceExit": "0e0",
+    "money": "0e0"
+  },
+  "owned": {
+    "equityPerks": [],
+    "generators": {
+      "g_autocomplete": 0,
+      "g_parrot": 0,
+      "g_macro": 0
+    },
+    "hardware": {},
+    "insightNodes": [],
+    "paradoxItems": [],
+    "research": [],
+    "upgrades": []
+  },
+  "era": 1,
+  "projects": {
+    "active": [],
+    "board": [],
+    "boardRefreshAt": 0,
+    "portfolio": [],
+    "prioritySetting": "payout"
+  },
+  "bugs": [],
+  "flow": {
+    "activeUntil": 0,
+    "meter": 0
+  },
+  "prestige": {
+    "exits": 0,
+    "iteration": 0,
+    "rewrites": 0
+  },
+  "story": {
+    "act": 0,
+    "choices": {},
+    "flags": [],
+    "inbox": [],
+    "seen": []
+  },
+  "automation": {},
+  "stats": {},
+  "settings": {
+    "autosaveS": 10,
+    "glitch": true,
+    "lang": "en",
+    "notation": "sci",
+    "reducedFx": false,
+    "skipIntro": false,
+    "sound": true,
+    "volume": 0.3
+  },
+  "ui": {
+    "bootSeen": true,
+    "scene": "desktop",
+    "windows": {
+      "achievements": {
+        "appId": "achievements",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 216,
+        "y": 232,
+        "z": 0
+      },
+      "agents": {
+        "appId": "agents",
+        "h": 560,
+        "maximized": false,
+        "minimized": false,
+        "open": true,
+        "w": 860,
+        "x": 96,
+        "y": 132,
+        "z": 1
+      },
+      "comms": {
+        "appId": "comms",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 232,
+        "y": 244,
+        "z": 0
+      },
+      "projects": {
+        "appId": "projects",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 120,
+        "y": 152,
+        "z": 0
+      },
+      "research": {
+        "appId": "research",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 144,
+        "y": 172,
+        "z": 0
+      },
+      "rewrite": {
+        "appId": "rewrite",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 168,
+        "y": 192,
+        "z": 0
+      },
+      "settings": {
+        "appId": "settings",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 248,
+        "y": 264,
+        "z": 0
+      },
+      "stats": {
+        "appId": "stats",
+        "h": 520,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 760,
+        "x": 192,
+        "y": 212,
+        "z": 0
+      },
+      "vibex": {
+        "appId": "vibex",
+        "h": 640,
+        "maximized": false,
+        "minimized": false,
+        "open": false,
+        "w": 1000,
+        "x": 72,
+        "y": 112,
+        "z": 0
+      }
+    }
+  },
+  "rngSeed": 1
+}

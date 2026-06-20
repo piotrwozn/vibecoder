@@ -18,7 +18,8 @@ export function formatBig(value: BigInput, notation: NumberNotation = "sci"): st
   const abs = big.abs();
 
   if (abs.e < 6) {
-    return `${sign}${formatFull(abs.toNumber())}`;
+    const full = formatFull(abs.toNumber());
+    return full === "0" ? full : `${sign}${full}`;
   }
 
   if (abs.e < LETTER_SUFFIX_START_E) {
@@ -63,7 +64,13 @@ export function formatTime(seconds: number): string {
 }
 
 function formatScientific(value: Big, sign: string): string {
-  return `${sign}${formatSignificant(value.m)}e${value.e}`;
+  const rounded = Number(formatSignificant(value.m));
+
+  if (rounded >= 10) {
+    return `${sign}${formatSignificant(rounded / 10)}e${value.e + 1}`;
+  }
+
+  return `${sign}${formatSignificant(rounded)}e${value.e}`;
 }
 
 function formatLetterSuffix(value: Big, sign: string): string {
@@ -86,10 +93,11 @@ function formatFull(value: number): string {
 }
 
 function formatSignificant(value: number): string {
-  const abs = Math.abs(value);
+  const rounded = Number(value.toPrecision(SIGNIFICANT_DIGITS));
+  const abs = Math.abs(rounded);
   const digitsBeforeDecimal = abs >= 1 ? Math.floor(Math.log10(abs)) + 1 : 1;
   const fractionDigits = Math.max(0, SIGNIFICANT_DIGITS - digitsBeforeDecimal);
-  return value.toFixed(fractionDigits);
+  return rounded.toFixed(fractionDigits);
 }
 
 function letterSuffix(index: number): string {

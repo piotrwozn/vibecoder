@@ -1,0 +1,14 @@
+VIBECODER M15 Vibex local AI model notice
+
+Model: SmolLM2-135M-Instruct
+Original model source: HuggingFaceTB/SmolLM2-135M-Instruct
+GGUF source used by the worker: bartowski/SmolLM2-135M-Instruct-GGUF
+GGUF file: SmolLM2-135M-Instruct-Q4_K_M.gguf
+License: Apache-2.0
+
+The local AI path is the project-approved M15 runtime dependency island. Engine
+imports are restricted to src/platform/ai.* and user prompts fall back to canned
+Vibex responses when the model is unavailable, disabled, or still downloading.
+
+No separate upstream NOTICE file was found for this model artifact at the time
+of integration.

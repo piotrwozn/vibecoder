@@ -31,4 +31,4 @@ Plus `/AGENTS.md` w korzeniu repo — twarde zasady dla Codexa (czyta je automat
 
 ## Stan decyzji (zamrożone)
 
-TS+Vite, zero runtime deps • oprawa: nowoczesne IDE/terminal • język gry: EN przez i18n (PL po 1.0) • kampania 50h+ • demo web = Akt 0–1 + E2, save przenosi się do pełnej wersji • desktop: Tauri 2 (fallback Electron) • tytuł roboczy: VIBECODER.
+TS+Vite, zero runtime deps (jedyny wyjątek: lokalny model Vibex w `platform/ai`, `06 §15`) • oprawa: powłoka „desktop OS" — boot → pulpit → okna apek (`06 §10–§17`; nadpisuje stary layout IDE z `06 §3`) • język gry: EN przez i18n (PL po 1.0) • kampania 50h+ • demo web = Akt 0–1 + E2, save przenosi się do pełnej wersji • desktop: Tauri 2 (fallback Electron) • tytuł roboczy: VIBECODER.

@@ -35,6 +35,10 @@ describe("geometric costs", () => {
         }
       }
     }
+
+    expect(Big.maxAffordable(Big.one(), 1.1, 400, bruteForceBulkCost(1.1, 400, 250))).toBe(250);
+    expect(Big.bulkCost(Big.fromNumber(5), 1, 3, 4).toNumber()).toBe(20);
+    expect(Big.maxAffordable(Big.fromNumber(5), 1, 3, Big.fromNumber(20))).toBe(4);
   });
 });
 

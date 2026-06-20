@@ -55,19 +55,69 @@ Skoki ×250–2500 — celowo nierówne (ery fabularne droższe). `eraMult = 1.5
 
 Unlock: `{ era: <era agenta> }` + poprzedni typ ≥ 1 (poza pierwszym w erze). Flavor-teksty (1 linijka/agent) → `en.json` klucze `gen.<id>.flavor` — do napisania w M9 (lekkie, żartobliwe).
 
-## 4. Hardware (`data/hardware.ts`) — compute cap; start: Old Laptop, cap bazowy 6
+## 4. Hardware (`data/hardware.ts`) — compute cap z komponentów (M16)
 
-| id | Era | Nazwa EN | baseCost $ | growth | +cap/szt |
-|----|----|----------|-----------|--------|----------|
-| h_gaming_rig | E1 | Gaming Rig | 400 | 1.9 | 12 |
-| h_workstation | E2 | Workstation | 6.0e3 | 1.9 | 35 |
-| h_home_server | E2 | Home Server | 9.0e4 | 2.0 | 100 |
-| h_server_rack | E3 | Server Rack | 2.0e6 | 2.0 | 300 |
-| h_micro_dc | E4 | Micro Datacenter | 8.0e7 | 2.0 | 900 |
-| h_datacenter | E5 | Datacenter | 5.0e9 | 2.1 | 2.8e3 |
-| h_hyperscale | E6 | Hyperscale Campus | 8.0e11 | 2.1 | 9.0e3 |
-| h_orbital_ring | E8 | Orbital Compute Ring | 5.0e14 | 2.2 | 3.0e4 |
-| h_dyson_lattice | E10 | Dyson Lattice | 1.0e18 | 2.2 | 1.0e5 |
+> Model i wizualizacja: `06 §16`. Wzory i stałe: `03 §3.4`. Hardware = **tylko cap compute** (`02 §3`). `HW_BASE_CAP = 6` (goła maszyna). Cap komponentu = `level × capPerLevel`; koszt poziomu = `baseCost × growth^level` (`03 §1`). Kolumny: `phase` (pc|server), `slot`, `maxLevel` (∞ = bez sufitu, P6), `baseCost $`, `growth`, `capPerLevel`, `unlock`, `isEnclosure`. Wartości wstępne — tuning po simie (`10 §3`).
+
+### 4.1 Faza 1 — PC (komponenty skończone; `maxLevel` osiągnięty na wszystkich → `pcComplete` odblokowuje fazę 2)
+
+| id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
+|----|------|---------|-----------|--------|-------------|--------|-------------|
+| h_cpu | cpu | 20 | 80 | 1.55 | 40 | start | false |
+| h_ram | ram | 16 | 60 | 1.50 | 25 | h_cpu≥3 | false |
+| h_ssd | storage | 12 | 40 | 1.45 | 10 | h_cpu≥3 | false |
+| h_psu_pc | psu | 16 | 70 | 1.50 | 20 | h_cpu≥5 | false |
+| h_cooling_pc | cooling | 16 | 50 | 1.50 | 15 | h_psu_pc≥3 | false |
+| h_gpu | gpu | 20 | 300 | 1.60 | 80 | h_cooling_pc≥3 | false |
+
+Σ cap przy maxie = **3486** (= `HW_PC_MAX_CAP`); pełny build PC ≈ **$7,2 mln** (dominuje GPU ~$6,0 mln, ostatni poziom GPU ~$2,3 mln). Tempo: tanie poziomy w E1, dokończenie na styku E2→E3.
+
+### 4.2 Faza 2 — serwer (od pustej szafy; moduły compute `maxLevel = ∞`, cap ograniczany kosztem)
+
+**Obudowy (struktura — `capPerLevel = 0`, bramkują moduły i dają skalę wizualną):**
+
+| id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
+|----|------|---------|-----------|--------|-------------|--------|-------------|
+| h_rack | enclosure | ∞ (n szaf) | 1.0e6 | 2.0 | 0 | pcComplete (≈E3) | true |
+| h_row | enclosure | 1 | 1.0e10 | — | 0 | E5, h_rack≥4 | true |
+| h_datahall | enclosure | 1 | 2.0e12 | — | 0 | E6, h_row≥1 | true |
+| h_dc_campus | enclosure | 1 | 2.0e15 | — | 0 | E8, h_datahall≥1 | true |
+| h_dyson_frame | enclosure | 1 | 5.0e18 | — | 0 | E10, h_dc_campus≥1 | true |
+
+**Infrastruktura szafy (stała, level-owana; „wypełnia" pustą szafę cap-em):**
+
+| id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
+|----|------|---------|-----------|--------|-------------|--------|-------------|
+| h_srv_board | board | ∞ | 1.5e6 | 2.0 | 120 | h_rack≥1 | false |
+| h_srv_psu | psu | ∞ | 1.2e6 | 2.0 | 90 | h_rack≥1 | false |
+| h_srv_cooling | cooling | ∞ | 1.8e6 | 2.0 | 110 | h_srv_board≥1 | false |
+| h_srv_net | network | ∞ | 2.5e6 | 2.0 | 140 | h_srv_board≥1 | false |
+
+**Moduły compute (główne źródło cap; eskalują z erą — zakotwiczone w starych tierach):**
+
+| id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
+|----|------|---------|-----------|--------|-------------|--------|-------------|
+| h_blade | compute | ∞ | 2.0e6 | 2.0 | 300 | h_rack≥1 (E3) | false |
+| h_gpu_pod | compute | ∞ | 8.0e7 | 2.0 | 900 | E4 | false |
+| h_dc_module | compute | ∞ | 5.0e9 | 2.1 | 2.8e3 | E5, h_row≥1 | false |
+| h_accel_array | compute | ∞ | 8.0e11 | 2.1 | 9.0e3 | E6, h_datahall≥1 | false |
+| h_photonic_rack | compute | ∞ | 3.0e13 | 2.1 | 1.6e4 | E7 | false |
+| h_quantum_node | compute | ∞ | 5.0e14 | 2.2 | 3.0e4 | E8, h_dc_campus≥1 | false |
+| h_neuromorphic | compute | ∞ | 4.0e16 | 2.2 | 5.5e4 | E9 | false |
+| h_exotic_core | compute | ∞ | 1.0e18 | 2.2 | 1.0e5 | E10, h_dyson_frame≥1 | false |
+
+Krzywa cap/szt (300 → 900 → 2.8e3 → 9.0e3 → 1.6e4 → 3.0e4 → 5.5e4 → 1.0e5) i baseCosty (2.0e6 → 8.0e7 → 5.0e9 → 8.0e11 → 3.0e13 → 5.0e14 → 4.0e16 → 1.0e18) odtwarzają/uzupełniają stare tiery (E7 i E9 były luką; `h_blade`=stary rack, `h_quantum_node`=stary orbital, `h_exotic_core`=stary dyson). Skala E10 (10³⁵⁺ LoC/s, `03 §8`) bierze się z **poziomowania** modułu (`growth 2.2^level`), nie z baseCostu. Bramkowanie obudowami (`h_row`/`h_datahall`/`h_dc_campus`/`h_dyson_frame`) wymusza beat „najpierw postaw budynek, potem serwery".
+
+### 4.3 Migracja starych saveów (stare tiery → komponenty)
+
+Stare id i ich `+cap/szt` (do odczytu starych saveów): `h_gaming_rig` 12 · `h_workstation` 35 · `h_home_server` 100 · `h_server_rack` 300 · `h_micro_dc` 900 · `h_datacenter` 2.8e3 · `h_hyperscale` 9.0e3 · `h_orbital_ring` 3.0e4 · `h_dyson_lattice` 1.0e5 (baza 6).
+
+Migracja deterministyczna (P7 — save święty, fixture test `10 §4`):
+
+1. Policz `tiersCap = Σ_tier (count × +cap/szt_tier)` — **sam wkład starych tierów, BEZ bazy**. (Pełny stary cap = `HW_BASE_CAP + tiersCap`.)
+2. Nadaj **`h_legacy`** (komponent **tylko-migracyjny**, ukryty, niekupowalny, `capPerLevel = 1`, `isEnclosure=false`) na `level = tiersCap` → `newTotalCap = HW_BASE_CAP + tiersCap` = **stary cap 1:1** (baza liczona raz, bez podwójnego naliczenia). Pieniędzy nie zwracamy.
+3. Ustaw `pcComplete = ((HW_BASE_CAP + tiersCap) ≥ HW_PC_MAX_CAP) || (era ≥ E3)` — gracz w erze ≥E3 nie jest zmuszany do „re-maxowania" PC; nowe komponenty (PC i serwer) dokupuje normalnie ponad `h_legacy`.
+4. Bump `SAVE_VERSION` + migracja (M16); test: stary fixture → `newTotalCap == C_old`.
 
 ## 5. Upgrade'y unikalne (`data/upgrades.ts`) — 36 + formułowe
 

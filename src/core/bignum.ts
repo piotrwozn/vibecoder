@@ -421,7 +421,8 @@ export class Big implements BigParts {
       return 0;
     }
 
-    return this.m * 10 ** this.e;
+    const value = this.m * 10 ** this.e;
+    return Number.isFinite(value) ? value : Math.sign(this.m) * Number.MAX_VALUE;
   }
 
   toString(): string {

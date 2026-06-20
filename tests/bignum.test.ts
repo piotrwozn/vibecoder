@@ -65,6 +65,15 @@ describe("Big", () => {
   it("clamps toNumber for exponent overflow", () => {
     expect(Big.fromString("1e309").toNumber()).toBe(Number.MAX_VALUE);
     expect(Big.fromString("-1e309").toNumber()).toBe(-Number.MAX_VALUE);
+    expect(Big.from("3e154").mul("3e154").toNumber()).toBe(Number.MAX_VALUE);
+    expect(Number.isFinite(Big.from("3e154").mul("3e154").toNumber())).toBe(true);
+  });
+
+  it("keeps growth-one maxAffordable finite after toNumber clamps overflow", () => {
+    const result = Big.maxAffordable(Big.one(), 1, 0, Big.from("9e308"));
+
+    expect(Number.isFinite(result)).toBe(true);
+    expect(result).toBe(Number.MAX_VALUE);
   });
 });
 

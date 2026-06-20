@@ -14,34 +14,61 @@
   src: url("../assets/fonts/JetBrainsMonoLatin.woff2") format("woff2");
 }
 
+@font-face {
+  font-family: "Patrick Hand";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../assets/fonts/PatrickHand-Regular.ttf") format("truetype");
+}
+
 :root {
-  --bg-0: #07090d;
-  --bg-1: #0c1016;
-  --bg-2: #11161f;
-  --bg-3: #182030;
-  --border: #1f2937;
-  --border-bright: #2e3d54;
-  --fg-0: #e6edf7;
-  --fg-1: #9fb0c7;
-  --fg-2: #5d6b80;
-  --acc: #46e2b4;
-  --acc-2: #7c8cff;
-  --gold: #ffc86b;
-  --warn: #ffb224;
+  --bg-0: #02070b;
+  --bg-1: #071018;
+  --bg-2: #0b1822;
+  --bg-3: #102637;
+  --panel-glass: rgb(5 15 22 / 0.82);
+  --panel-raised: rgb(8 22 32 / 0.94);
+  --panel-soft: rgb(10 34 45 / 0.58);
+  --border: #153344;
+  --border-bright: #1f6c7d;
+  --fg-0: #e9fbff;
+  --fg-1: #9cc3cf;
+  --fg-2: #5b7885;
+  --acc: #21f2e7;
+  --acc-2: #69a7ff;
+  --gold: #ffd06e;
+  --warn: #ffb044;
   --danger: #ff5d5d;
   --hype: #ff7ad9;
   --paradox: #b388ff;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
   --font-ui: "Inter", system-ui, sans-serif;
+  --font-hand: "Patrick Hand", var(--font-ui);
   --r-s: 6px;
-  --r-m: 10px;
-  --r-l: 14px;
+  --r-m: 8px;
+  --r-l: 10px;
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
   --sp-4: 16px;
+  --sp-5: 20px;
   --sp-6: 24px;
-  --glow-acc: 0 0 12px color-mix(in srgb, var(--acc) 35%, transparent);
+  --glow-acc: 0 0 18px color-mix(in srgb, var(--acc) 42%, transparent);
+  --glow-acc-strong:
+    0 0 18px color-mix(in srgb, var(--acc) 58%, transparent),
+    0 0 42px color-mix(in srgb, var(--acc) 24%, transparent);
+  --note-yellow: #fff2a8;
+  --note-mint: #bff5df;
+  --note-pink: #ffd1e8;
+  --note-ink: #182033;
+  --win-titlebar: rgb(8 20 30 / 0.96);
+  --win-titlebar-active: rgb(12 42 55 / 0.98);
+  --win-shadow: 0 34px 90px rgb(0 0 0 / 0.58), inset 0 1px 0 rgb(255 255 255 / 0.05);
+  --modal-shadow:
+    0 34px 90px rgb(0 0 0 / 0.72), 0 0 48px color-mix(in srgb, var(--acc) 24%, transparent);
+  --crt-glow:
+    0 0 28px color-mix(in srgb, var(--acc) 44%, transparent), inset 0 0 34px rgb(33 242 231 / 0.08);
 }
 
 * {

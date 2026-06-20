@@ -1,0 +1,43 @@
+# Review #8 — M7
+Reviewer: Claude Opus 4.8 | Data: 2026-06-14
+Status: DONE   <!-- OPEN → FIXED (Codex) → DONE / ESCALATE (reviewer, runda 2) -->
+VERDICT: CHANGES REQUIRED
+
+<!-- Kontekst (zweryfikowane przez reviewera; przegląd wieloagentowy 5 wymiarów + weryfikacja adwersarialna + sweep, 20 agentów):
+  DoD: `npm run check` zielony (tsc + eslint + prettier + 58× vitest + validate PASS).
+  AC1 (przejście Aktu 0+1 wg triggerów na świeżym savie, test sim): story.test.ts symuluje Akt 0 w kolejności (a0_01..a0_07 → act=1 + achievement) ORAZ Akt 1. Engine story.ts: sprawdzanie co 1 s (nie co tick), kolejka per-akt, once/seen, choice+snooze. Triggery i efekty 17 eventów == 05 §4-5 (struktura). OK.
+  AC2 (brak stringów w kodzie): zweryfikowano — BRAK literałów user-facing w src/ui (text()/setText/title/ariaLabel wszystkie przez t()); validate.ts przechodzi. (Ale enforcement ma lukę — P2-2.)
+  AC3 (a1_10 oba warianty): story.test.ts:102-112 testuje "later" (snooze 30 min → wraca) i "accept" (→ act 2). OK.
+  Nowe pola Condition (conditions.ts) generatorTotalGte/refactorGte/insightGainGte obsłużone w checkCondition; insightGain = floor((locSinceExit/INSIGHT_DIV)^INSIGHT_EXP) == 04 §2; REFACTOR_COMPLETED_STAT inkrementowany w projects.ts completeBuild (a1_04 odpali się). Hard rules OK; GameState bez nowego pola (inbox/choices/seen/flags od M2) → SAVE_VERSION bez zmian. -->
+
+## MUST FIX (P0/P1 — blokuje merge)
+- [x] **P1-1** | `src/ui/render.ts:1010-1019` — `updateComms` przy KAŻDEJ odświeżonej klatce widoku re-`append`uje (czyli usuwa+wstawia) KAŻDY widoczny węzeł wiadomości comms (linia 1017 `nodes.list.append(existing.root)` bez warunku), mimo że kolejność jest stała (inbox tylko dopisuje); dodatkowo alokuje filter-array + map + nowy Set co klatkę (`:997-1002`) — dlaczego: plan/07 §9 ("Listy re-renderowane tylko przy zmianie struktury", "brak tworzenia DOM w pętli", "zero GC churn") i 06 §3/§60 ("show/hide, nie re-render"); trigger: każdy tick z produkcją (`locRate>0`) emituje `res:changed loc` → viewDirty → `updateVisibleView`→`updateComms` ~60×/s, a domyślna zakładka "archive" pokazuje całe inbox (rośnie do ~83 eventów) → O(widoczne) mutacji DOM/klatkę — fix: synchronizuj przyrostowo (dołączaj tylko NOWE węzły, nie re-`append`uj węzłów o stałej kolejności) i nie alokuj tablic/Set co klatkę.
+  - fix-note: Cached the comms view in `main.ts`, skipped unchanged comms updates, replaced filter/map/Set/re-append with incremental append + hide/show in `render.ts`; regression covered by `tests/render.test.ts` M7 comms rendering.
+
+## ADVISORY (P2 — nie blokuje)
+- [x] **P2-1** | `src/i18n/en.json:151` — podwójnie zaescapowane sekwencje `\u` w tekstach story: `story.a0_06_compute` ma `97\\u00b0C` (podwójny backslash) → po `JSON.parse` zostaje literalne `97°C`, a `story.a1_01_muse_ad` (`:153`) ma `MUSE\\u2122` → `MUSE™`; `t()` (i18n.ts) nie odescapowuje `\u`, więc w docku renderuje się kod ucieczki zamiast `°`/`™` — dlaczego: 05 §4-5 tekst finalny to "CPU at 97°C" / "MUSE™" (zniekształcony glif) — fix: użyj surowego znaku `°`/`™` (lub pojedynczego `\u`) i przeskanuj en.json pod kątem innych `\\u`.
+  - fix-note: Replaced both double-escaped sequences with the intended `°` and `™` glyphs and verified `rg "\\\\u" src/i18n/en.json` finds no remaining double escapes.
+- [x] **P2-2** | `src/dev/validate.ts:86-104` — egzekwowanie AC2 jest tylko nominalne: `validateUiText` łapie wyłącznie `innerHTML`/`.textContent="..."`/`createTextNode("...")`, a NIE projektowe ścieżki `text("...")`/`setText(node,"...")`/`el(tag,{title|ariaLabel:"..."})` (dom.ts), więc przyszły `text("Buy")` przejdzie; ponadto walidator nie sprawdza, czy story textKey/speaker/choice istnieją w en.json (brakujący klucz renderuje surowy klucz) — dlaczego: AC2 "validate.ts to sprawdza" + 07 §8; obecnie BRAK realnego literału/brakującego klucza (zweryfikowane), więc słabe egzekwowanie, nie naruszenie — fix: rozszerz `validateUiText` o ścieżki `text(`/`setText(`/`el`-opcje i dodaj cross-check kluczy story↔en.json.
+  - fix-note: → backlog; proper validator expansion and story↔i18n cross-check exceeds the <10-line P2 limit.
+- [x] **P2-3** | `src/main.ts:206-213` — przełączenie zakładki comms nie odświeża widoku, gdy nic nie zostaje oznaczone jako przeczytane: handler kliknięcia (`render.ts:979-982`) zmienia `activeCommsChannel` i woła `markCommsRead`, ale jedyne odświeżenie to `markVisibleChanged(changed)` gdzie `changed = markStoryInboxRead(...)` = false dla kanału już przeczytanego/pustego → przy idle (wczesny Akt 0, brak produkcji) podświetlenie aktywnej zakładki i filtr listy zamarzają do następnej akcji brudzącej — dlaczego: 06 §3/§5 (zakładki docku) — fix: ustaw viewDirty bezwarunkowo przy zmianie zakładki (sama zmiana `activeCommsChannel` to zmiana widoku).
+  - fix-note: `markCommsRead` now marks the view dirty unconditionally while only persisting when read state changed; covered by existing type/check run.
+- [x] **P2-4** | `src/systems/story.ts:237-239` — efekt `unlock` zapisuje flagę `unlock.<id>` do `story.flags` i emituje event, ale ŻADEN kod nie czyta tych flag (grep: tylko zapis); funkcje są bramkowane niezależnie (generatory era/previousId, hardware era, projekty zawsze) → tutorialowe „unlocki" (prompt/projects/hardware/agent/...) są tylko narracją, feature jest dostępny zanim padnie beat — dlaczego: 05 §3 kontrakt efektu / 02 §8 (hidden→announced→unlocked); nie narusza AC (eventy odpalają się wg triggerów) — fix: albo bramkuj widoczność feature na fladze `unlock.<id>`, albo usuń martwy zapis flagi (zostaw event busa).
+  - fix-note: Removed the dead `unlock.<id>` flag write and kept the story unlock bus event; covered by `npm run check`.
+- [x] **P2-5** | `src/ui/layout.css:785-787` — deliverable „typing animacja" (M7 / 06 §3 „animacją typing (skippable)") to generyczne wejście slide+fade 260 ms (`comms-message--typing` → `comms-enter`), nie animacja pisania znak-po-znaku i nie da się jej pominąć (brak skip w CSS/JS) — dlaczego: 06 §3 wymaga typing, skippable; (osobno: brak reguły `prefers-reduced-motion` w src/ui — to jednak deliverable M11, nie M7) — fix: dodaj pomijalną animację typing dla wiadomości (reduced-motion zostaw do M11 wg jego DoD).
+  - fix-note: → backlog; adding a real skippable typewriter interaction exceeds the <10-line P2 limit.
+- [x] **P2-6** | `({`, `x.verdict` (root repo) — puste pliki-artefakty w drzewie roboczym (najpewniej z narzędzi/powłoki, nie z kodu M7); przy `git add .` trafią do commitu — dlaczego: higiena zakresu (powtarzający się problem z M2/M5/M6) — fix: usuń przed commitem.
+  - fix-note: Removed the two reviewed empty artefacts plus three adjacent zero-byte shell artefacts with the same root-cause pattern.
+
+## DISPUTED (wypełnia Codex, rozstrzyga człowiek)
+<!-- pozycje, z którymi Codex się nie zgadza: id znaleziska + uzasadnienie z cytatem z planu -->
+_(brak)_
+
+## PLAN-ISSUES (uwagi reviewera do samego planu — nieblokujące)
+_(brak)_
+
+## Runda 2 — weryfikacja (wypełnia reviewer)
+- Naprawy zweryfikowane:
+  - **P1-1 OK** — `updateComms` (`render.ts:1000-1034`) bramkowany przez `shouldSkipCommsUpdate` (ref-equality na cache widoku + kanał), per-wiadomość przełącza `root.hidden` (BEZ re-`append`), a `syncCommsMessageNodes` (`:1036-1056`) dokłada tylko NOWE węzły (pełny rebuild jedynie przy skróceniu/reorderze). main.ts cache'uje widok comms (`commsViewCache`/`commsViewDirty` `:115-116`), inwalidowany na `story:message` (`:137-139`), `markCommsRead` (`:214`) i `installState` (`:332`) → nowa wiadomość: markCommsViewDirty → nowy obiekt widoku → nie pominięty → `isCommsStructureChanged` → append. Koniec re-append i alokacji co klatkę. Test `tests/render.test.ts` (59/59).
+  - P2-1 OK (`°`/`™` jako surowe znaki, brak pozostałych `\\u`); P2-3 OK (`markCommsRead` bezwarunkowo `markVisibleChanged(true)` + porównanie kanału w `shouldSkip` → przełączenie zakładki przerysowuje); P2-4 OK (usunięty martwy zapis `unlock.<id>`, event busa zostaje); P2-6 OK (oba + 3 kolejne pliki-śmieci usunięte). P2-2, P2-5 → backlog (świadomie, P2).
+- Nowe P0 wprowadzone poprawkami: brak. Sprawdzone: cache widoku comms poprawnie inwalidowany (story:message/markCommsRead/installState) → nowe wiadomości NIE są gubione przez `shouldSkip` (ref-equality + rebuild); usunięcie flagi `unlock.<id>` bezpieczne (brak konsumenta, event busa zachowany); `markCommsRead`-bezwarunkowy `markVisibleChanged` tylko na klik zakładki (nie hot-path). `npm run check` 59/59 zielone, validate PASS, pliki-śmieci usunięte.
+- Decyzja: DONE — jedyny blocker (P1-1) rozwiązany i zweryfikowany (przyrostowy sync + cache, bez re-render), P2 naprawione (1/3/4/6) lub w backlogu (2/5), poprawki bez nowych P0.

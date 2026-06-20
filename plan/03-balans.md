@@ -17,7 +17,7 @@ maxAffordable(n, budget): k = floor(log_growth(budget×(growth−1)/(baseCost×g
 ```
 
 - Agenci: `growth` 1,10–1,15 (per typ, tabela `09 §3`; wyższe tiery = niższy growth).
-- Hardware: `growth` 1,8–2,2 (skokowe, rzadkie zakupy).
+- Hardware: `growth` 1,8–2,2 (skokowe, rzadkie zakupy). **Komponenty (M16, `§3.4`/`09 §4`):** PC `growth` 1,45–1,60 (poziomy skończone, kupowane często), serwer `growth` 2,0–2,2 (jak stare tiery).
 - Upgrade'y unikalne: koszty stałe (tabela `09 §5`).
 - Model ery E(k): koszt podany wprost w `09 §2` (skok ×250–2500 między erami, fabularne droższe).
 
@@ -53,6 +53,21 @@ progi: 10, 25, 50, 100, 250, 500, 1000, potem co 500
 milestoneMult = 2^(liczba osiągniętych progów)
 ```
 Zero ręcznego contentu; UI pokazuje pasek do następnego progu.
+
+### 3.4 Hardware: compute z komponentów (M16)
+
+Hardware = **cap compute** (capacity, nie produkcja — `02 §3`). Od M16 budowany z **komponentów** w dwóch fazach (model: `06 §16`, tabele: `09 §4`).
+
+```
+totalCap = HW_BASE_CAP + Σ_komponent ( level × capPerLevel )
+koszt poziomu (level → level+1) = baseCost × growth^level     // uniwersalny wzór §1, n = level
+HW_BASE_CAP = 6                                                // goła maszyna startowa, bez komponentów
+```
+
+- **Faza 1 (PC):** każdy komponent ma skończony `maxLevel`; `×10/MAX` klampuje do `maxLevel`. Σ zmaksowanych PC = **`HW_PC_MAX_CAP = 3486`** (CPU 800 + GPU 1600 + RAM 400 + PSU 320 + Cooling 240 + SSD 120 + baza 6). Pełny build PC ≈ **$7,2 mln** — wypada na styku E2→E3 (tam, gdzie w starym balansie zaczynała się serwerownia).
+- **Bramka fazy 2:** `pcComplete` = wszystkie komponenty PC na `maxLevel`. Dopiero wtedy odblokowuje się ścieżka serwerowa (zgodnie z wizją: „zmaksuj PC, potem buduj serwer").
+- **Faza 2 (serwer):** moduły compute mają `maxLevel = ∞` (cap ograniczany **kosztem**, nie sufitem — filar P6). **Obudowy** (`isEnclosure = true`, np. pusta szafa) dają `capPerLevel = 0` — są prerekwizytem/bramką kolejnych modułów i skalą wizualną, same nie dają compute.
+- Ściana compute nadal ~2×/era (`§3.2`); wartości serwera są zakotwiczone w starych tierach (migracja `09 §4`), więc rytm „wall & release" zachowany. Wartości wstępne — tuning po simie (`10 §3`).
 
 ## 4. Klik PROMPT
 
@@ -158,6 +173,7 @@ export const C = {
   REVENUE_RATIO: 0.004,
   OFFLINE_CAP_H: 8, OFFLINE_HYPE_KEEP: 0.5,
   ERA_MULT: 1.5,
+  HW_BASE_CAP: 6, HW_PC_MAX_CAP: 3486, HW_PHASE2_UNLOCK: 'pcComplete',   // hardware komponentowy §3.4 / 09 §4
   MILESTONES: [10, 25, 50, 100, 250, 500, 1000], MILESTONE_STEP_AFTER: 500,
   PROJECT_REFRESH_S: 60,
   SOFTCAP_LOC_EXP: 0.9, SOFTCAP_LOC_AT_E: 35, SOFTCAP_SHIFT_PER_ITER: 15,

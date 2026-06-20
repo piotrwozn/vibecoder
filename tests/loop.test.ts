@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { C } from "../src/data/constants";
-import { TICK_MS, createLoopStepper } from "../src/core/loop";
+import { OFFLINE_CATCH_UP_MS, TICK_MS, createLoopStepper } from "../src/core/loop";
 
 describe("fixed timestep loop", () => {
   it("ticks exactly 10 times for one second", () => {
@@ -60,5 +60,55 @@ describe("fixed timestep loop", () => {
     expect(result.ticks).toBe(20);
     expect(result.accumulatorMs).toBe(0);
     expect(ticks).toBe(20);
+  });
+
+  it("routes long frames through offline catch-up when provided", () => {
+    let caughtMs = 0;
+    let ticks = 0;
+    let alpha = 1;
+    const stepper = createLoopStepper(
+      () => {
+        ticks += 1;
+      },
+      (nextAlpha) => {
+        alpha = nextAlpha;
+      },
+      (elapsedMs) => {
+        caughtMs = elapsedMs;
+      }
+    );
+
+    const result = stepper.step(OFFLINE_CATCH_UP_MS + 1);
+
+    expect(caughtMs).toBe(OFFLINE_CATCH_UP_MS + 1);
+    expect(result.ticks).toBe(0);
+    expect(result.accumulatorMs).toBe(0);
+    expect(result.alpha).toBe(0);
+    expect(alpha).toBe(0);
+    expect(ticks).toBe(0);
+  });
+
+  it("records measured tick and frame durations when instrumentation is enabled", () => {
+    let nowMs = 0;
+    const tickMs: number[] = [];
+    const frameMs: number[] = [];
+    const stepper = createLoopStepper(
+      () => {},
+      () => {},
+      undefined,
+      {
+        frame: (ms) => frameMs.push(ms),
+        now: () => {
+          nowMs += 0.25;
+          return nowMs;
+        },
+        tick: (ms) => tickMs.push(ms)
+      }
+    );
+
+    stepper.step(TICK_MS);
+
+    expect(tickMs).toEqual([0.25]);
+    expect(frameMs).toEqual([0.25]);
   });
 });

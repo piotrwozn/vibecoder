@@ -1,0 +1,96 @@
+{
+  "v": 3,
+  "meta": {
+    "createdAt": 1000,
+    "edition": "demo",
+    "lastSeen": 1000,
+    "playtimeS": 0
+  },
+  "res": {
+    "computeCap": 6,
+    "computeUsed": 0,
+    "debt": "0e0",
+    "equity": 0,
+    "hype": 1,
+    "insight": "0e0",
+    "loc": "0e0",
+    "money": "0e0",
+    "paradox": 0,
+    "rp": 0
+  },
+  "lifetime": {
+    "insightSinceExit": 0,
+    "loc": "0e0",
+    "locSinceExit": "0e0",
+    "money": "0e0"
+  },
+  "owned": {
+    "equityPerks": [],
+    "generators": {
+      "g_autocomplete": 0,
+      "g_parrot": 0,
+      "g_macro": 0
+    },
+    "hardware": {},
+    "insightNodes": [],
+    "paradoxItems": [],
+    "research": [],
+    "upgrades": []
+  },
+  "era": 1,
+  "projects": {
+    "active": [],
+    "board": [],
+    "boardRefreshAt": 0,
+    "portfolio": [],
+    "prioritySetting": "payout"
+  },
+  "bugs": [],
+  "flow": {
+    "activeUntil": 0,
+    "meter": 0
+  },
+  "prestige": {
+    "exits": 0,
+    "iteration": 0,
+    "rewrites": 0
+  },
+  "story": {
+    "act": 0,
+    "choices": {},
+    "flags": [],
+    "inbox": [],
+    "seen": []
+  },
+  "automation": {},
+  "stats": {},
+  "settings": {
+    "autosaveS": 10,
+    "doNotDisturb": false,
+    "glitch": true,
+    "lang": "en",
+    "notation": "sci",
+    "reducedFx": false,
+    "skipIntro": false,
+    "sound": true,
+    "volume": 0.3
+  },
+  "ui": {
+    "bootSeen": true,
+    "scene": "desktop",
+    "windows": {
+      "vibex": {
+        "appId": "vibex",
+        "h": 640,
+        "maximized": false,
+        "minimized": false,
+        "open": true,
+        "w": 1000,
+        "x": 72,
+        "y": 112,
+        "z": 1
+      }
+    }
+  },
+  "rngSeed": 1
+}

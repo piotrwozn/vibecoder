@@ -9,6 +9,7 @@ dist/
 node_modules/
 plan/
 review/
+ruvector.db
 AGENTS.md
 README.md
 package-lock.json

@@ -1,0 +1,10 @@
+VIBECODER M15 Vibex local AI engine notice
+
+Engine: wllama
+Package: @wllama/wllama
+Source: https://github.com/ngxson/wllama
+License: MIT
+
+This engine is used only by the isolated local-AI island in src/platform/ai.*
+and is the sole approved M15 exception to the project's no-runtime-dependency
+rule.
