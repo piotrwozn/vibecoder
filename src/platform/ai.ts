@@ -16,6 +16,7 @@ export interface VibexAiSnapshot {
 }
 
 export interface VibexAiClient {
+  dispose(): void;
   downloadModel(): Promise<boolean>;
   generate(prompt: string, eraModel: string): Promise<string | undefined>;
   snapshot(): VibexAiSnapshot;
@@ -47,6 +48,13 @@ export function createVibexAiClient(
   };
 
   return {
+    dispose(): void {
+      client?.dispose();
+      client = undefined;
+      loading = undefined;
+      onChange();
+    },
+
     async downloadModel(): Promise<boolean> {
       return (await loadClient()).downloadModel();
     },
@@ -72,6 +80,8 @@ export function createIdleSnapshot(): VibexAiSnapshot {
 
 function createUnavailableAiClient(): VibexAiClient {
   return {
+    dispose(): void {},
+
     async downloadModel(): Promise<boolean> {
       return false;
     },

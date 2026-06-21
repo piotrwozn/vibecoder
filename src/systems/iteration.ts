@@ -2,12 +2,14 @@ import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
 import { C, PRESTIGE } from "../data/constants";
 
-export function calculateIterationCostMultiplier(iteration: number): number {
-  return 10 ** (PRESTIGE.ITER_COST_E_PER_K * iteration);
+export function calculateIterationCostMultiplier(iteration: number): Big {
+  return Big.fromLog10(PRESTIGE.ITER_COST_E_PER_K * iteration);
 }
 
-export function calculateIterationProductionMultiplier(iteration: number): number {
-  return PRESTIGE.PARADOX_BASE ** (PRESTIGE.ITER_PROD_POW_PER_K * iteration);
+export function calculateIterationProductionMultiplier(iteration: number): Big {
+  return Big.fromLog10(
+    Math.log10(PRESTIGE.PARADOX_BASE) * PRESTIGE.ITER_PROD_POW_PER_K * iteration
+  );
 }
 
 export function calculateParadoxGain(iteration: number): number {

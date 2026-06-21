@@ -1045,6 +1045,8 @@
   "ui.toast.newChat": "New chat message",
   "ui.toast.newFeed": "New post in feed",
   "ui.toast.newMail": "New mail",
+  "ui.toast.saveNewerVersion": "This save is from a newer version. Please update.",
+  "ui.toast.saveUnreadable": "Save could not be read; a backup was kept.",
   "ui.toast.shipped": "Shipped {name} for {payout}",
   "ui.toast.unlock": "Unlocked {name}",
   "ui.terminal.bugFixedLog": "[FIXED] {name}",

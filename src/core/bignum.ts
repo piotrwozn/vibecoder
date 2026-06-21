@@ -45,6 +45,14 @@ export class Big implements BigParts {
   }
 
   static fromNumber(value: number): Big {
+    if (!Number.isFinite(value)) {
+      return Big.fromNonFiniteNumber(value);
+    }
+
+    return Big.fromFiniteNumber(value);
+  }
+
+  static fromFiniteNumber(value: number): Big {
     assertFinite(value, "value");
 
     if (value === 0) {
@@ -53,6 +61,11 @@ export class Big implements BigParts {
 
     const e = Math.floor(Math.log10(Math.abs(value)));
     return new Big(value / 10 ** e, e);
+  }
+
+  private static fromNonFiniteNumber(value: number): Big {
+    const sign = value < 0 ? -1 : 1;
+    return new Big(sign, MAX_NUMBER_EXPONENT);
   }
 
   static fromString(value: string): Big {

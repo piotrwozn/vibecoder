@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import v1Fixture from "./fixtures/saves/v1.json";
 import v2Fixture from "./fixtures/saves/v2.json";
@@ -6,6 +6,7 @@ import v3Fixture from "./fixtures/saves/v3.json";
 import v4Fixture from "./fixtures/saves/v4.json";
 import v5Fixture from "./fixtures/saves/v5.json";
 import v6Fixture from "./fixtures/saves/v6.json";
+import v7Fixture from "./fixtures/saves/v7.json";
 import { Big } from "../src/core/bignum";
 import { SAVE_VERSION } from "../src/core/migrations";
 import {
@@ -68,21 +69,93 @@ describe("M4 save/load", () => {
       step: "projects"
     });
     expect(result.state.meta.lastSeen).toBe(2_000);
+    expect(result.state.meta.lastSimTickMs).toBe(1_000);
   });
 
   it("repairs broken localStorage JSON into a bootable default state", async () => {
+    const backupCorrupt = vi.fn<() => Promise<void>>(() => Promise.resolve());
     const result = await loadGameState(
       {
+        backupCorrupt,
         edition: "demo",
+        listBackups: async () => [],
         load: async () => "{broken"
       },
       42
     );
 
     expect(result.repaired).toBe(true);
+    expect(result.reset).toBe(true);
+    expect(result.resetReason).toBe("corrupt");
     expect(result.state.v).toBe(SAVE_VERSION);
     expect(result.state.meta.lastSeen).toBe(42);
+    expect(result.state.meta.lastSimTickMs).toBe(42);
     expect(result.state.res.loc.eq0()).toBe(true);
+    expect(backupCorrupt).toHaveBeenCalledWith("{broken", 42);
+  });
+
+  it("backs up non-object save roots before resetting", async () => {
+    const backupCorrupt = vi.fn<() => Promise<void>>(() => Promise.resolve());
+    const result = await loadGameState(
+      {
+        backupCorrupt,
+        edition: "demo",
+        listBackups: async () => [],
+        load: async () => "[]"
+      },
+      43
+    );
+
+    expect(result.reset).toBe(true);
+    expect(result.warnings).toContain("save root was not an object");
+    expect(backupCorrupt).toHaveBeenCalledWith("[]", 43);
+  });
+
+  it("restores the most recent valid backup when the primary save is corrupt", async () => {
+    const backupState = createDefaultGameState(100, "demo");
+    backupState.res.loc = Big.fromNumber(77);
+    const backupCorrupt = vi.fn<() => Promise<void>>(() => Promise.resolve());
+
+    const result = await loadGameState(
+      {
+        backupCorrupt,
+        edition: "demo",
+        listBackups: async () => ["vibecoder_save.bak1"],
+        load: async () => "{broken",
+        loadBackup: async () => serializeGameState(backupState)
+      },
+      44
+    );
+
+    expect(result.reset).toBe(false);
+    expect(result.repaired).toBe(true);
+    expect(result.warnings).toContain("save restored from backup");
+    expect(result.state.res.loc.toNumber()).toBe(77);
+    expect(backupCorrupt).toHaveBeenCalledWith("{broken", 44);
+  });
+
+  it("refuses newer saves without loading backups or downgrading the payload", async () => {
+    const raw = JSON.stringify({ v: 999 });
+    const backupCorrupt = vi.fn<() => Promise<void>>(() => Promise.resolve());
+    const listBackups = vi.fn<() => Promise<string[]>>(() => Promise.resolve(["bak1"]));
+
+    const result = await loadGameState(
+      {
+        backupCorrupt,
+        edition: "demo",
+        listBackups,
+        load: async () => raw,
+        loadBackup: async () => serializeGameState(createDefaultGameState(1, "demo"))
+      },
+      45
+    );
+
+    expect(result.reset).toBe(true);
+    expect(result.resetReason).toBe("newer-version");
+    expect(result.state.v).toBe(SAVE_VERSION);
+    expect(result.warnings[0]).toContain("newer than this build");
+    expect(backupCorrupt).toHaveBeenCalledWith(raw, 45);
+    expect(listBackups).not.toHaveBeenCalled();
   });
 
   it("exports and imports base64 saves while adopting the current edition", () => {
@@ -101,6 +174,26 @@ describe("M4 save/load", () => {
     }
 
     expect(importGameState("not a save").ok).toBe(false);
+  });
+
+  it("repairs unsupported imported languages to English", () => {
+    const raw = JSON.parse(serializeGameState(createDefaultGameState(1_000, "demo"))) as {
+      settings: { lang: string };
+    };
+    raw.settings.lang = "fr";
+    const payload = Buffer.from(JSON.stringify(raw), "utf8").toString("base64");
+
+    const imported = importGameState(payload, {
+      edition: "demo",
+      nowMs: 5_000
+    });
+
+    expect(imported.ok).toBe(true);
+    if (imported.ok) {
+      expect(imported.reset).toBe(false);
+      expect(imported.repaired).toBe(true);
+      expect(imported.state.settings.lang).toBe("en");
+    }
   });
 
   it("migrates the v1 fixture to the desktop shell and boots headless for 60 seconds", () => {
@@ -193,7 +286,7 @@ describe("M4 save/load", () => {
     expect(result.state.owned.hardware[LEGACY_HARDWARE_ID]).toBe(3124);
   });
 
-  it("migrates v6 saves to v7 with locked Aurora and a repaired Aurora window", () => {
+  it("migrates v6 saves with locked Aurora and a repaired Aurora window", () => {
     const result = deserializeGameState(JSON.stringify(v6Fixture), {
       edition: "full",
       nowMs: 10_000
@@ -201,6 +294,7 @@ describe("M4 save/load", () => {
 
     expect(result.repaired).toBe(true);
     expect(result.state.v).toBe(SAVE_VERSION);
+    expect(result.state.meta.lastSimTickMs).toBe(1000);
     expect(result.state.aurora).toEqual({
       billingPaused: false,
       completed: false,
@@ -216,7 +310,20 @@ describe("M4 save/load", () => {
     expect(result.state.ui.windows.aurora.open).toBe(false);
   });
 
-  it("round-trips v7 Aurora progress, hosting, and dedicated servers", () => {
+  it("migrates v7 saves to v8 with a dedicated offline anchor", () => {
+    const result = deserializeGameState(JSON.stringify(v7Fixture), {
+      edition: "full",
+      nowMs: 10_000
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.state.v).toBe(SAVE_VERSION);
+    expect(result.state.meta.lastSeen).toBe(1000);
+    expect(result.state.meta.lastSimTickMs).toBe(1000);
+    expect(result.state.aurora.status).toBe("locked");
+  });
+
+  it("round-trips v8 Aurora progress, hosting, and dedicated servers", () => {
     const state = createDefaultGameState(1_000, "full");
     state.aurora = {
       billingPaused: true,

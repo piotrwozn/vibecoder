@@ -105,6 +105,28 @@ describe("M2 generator milestones", () => {
     expect(Number.isFinite(cache.locRate.m)).toBe(true);
     expect(Number.isFinite(cache.locRate.e)).toBe(true);
   });
+
+  it("keeps iteration and prestige multipliers finite in deep endless runs", () => {
+    for (const iteration of [62, 100, 342]) {
+      const state = createDefaultGameState();
+      const cache = createDerivedCache();
+      state.prestige.iteration = iteration;
+      state.res.insight = Big.from("1e1200");
+      state.res.equity = 1e200;
+      state.res.paradox = Number.MAX_SAFE_INTEGER;
+      state.owned.paradoxItems.add("x_paradox_engine");
+      state.owned.generators.g_autocomplete = 10;
+
+      expect(() => recomputeDerivedCache(state, cache)).not.toThrow();
+      expect(() => tickProduction(state, cache, 0.1)).not.toThrow();
+      expect(Number.isFinite(cache.locRate.m)).toBe(true);
+      expect(Number.isFinite(cache.locRate.e)).toBe(true);
+      expect(Number.isFinite(cache.generatorEntries.g_autocomplete?.rate.m)).toBe(true);
+      expect(Number.isFinite(cache.generatorEntries.g_autocomplete?.rate.e)).toBe(true);
+      expect(Number.isFinite(cache.generatorEntries.g_autocomplete?.cost1.m)).toBe(true);
+      expect(Number.isFinite(cache.generatorEntries.g_autocomplete?.cost1.e)).toBe(true);
+    }
+  });
 });
 
 function expectMilestone(owned: number, count: number, multiplier: number, nextAt: number): void {

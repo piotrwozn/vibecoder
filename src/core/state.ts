@@ -64,6 +64,7 @@ export interface GameState {
     createdAt: number;
     edition: Edition;
     lastSeen: number;
+    lastSimTickMs: number;
     playtimeS: number;
   };
   res: {
@@ -152,6 +153,7 @@ export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "d
       createdAt: nowMs,
       edition,
       lastSeen: nowMs,
+      lastSimTickMs: nowMs,
       playtimeS: 0
     },
     res: {

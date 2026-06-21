@@ -4,12 +4,22 @@ import { LEGACY_HARDWARE_ID, OLD_HARDWARE_TIERS } from "../data/hardware";
 
 type RawSaveObject = Record<string, unknown>;
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface MigrationResult {
   readonly raw: RawSaveObject;
   readonly repaired: boolean;
   readonly warnings: readonly string[];
+}
+
+export class FutureSaveVersionError extends Error {
+  readonly version: number;
+
+  constructor(version: number) {
+    super(`Save version ${version} is newer than supported version ${SAVE_VERSION}`);
+    this.name = "FutureSaveVersionError";
+    this.version = version;
+  }
 }
 
 type Migration = (raw: RawSaveObject) => RawSaveObject;
@@ -48,7 +58,8 @@ const migrations: readonly Migration[] = [
   }),
   migrateM16Hardware,
   migrateTutorialUi,
-  migrateAuroraState
+  migrateAuroraState,
+  migrateLastSimTickMs
 ];
 
 export function migrateRawSave(rawValue: unknown): MigrationResult {
@@ -69,10 +80,7 @@ export function migrateRawSave(rawValue: unknown): MigrationResult {
   }
 
   if (version > SAVE_VERSION) {
-    raw = { ...raw, v: SAVE_VERSION };
-    repaired = true;
-    warnings.push("future save version clamped");
-    return { raw, repaired, warnings };
+    throw new FutureSaveVersionError(version);
   }
 
   while (version < SAVE_VERSION) {
@@ -200,6 +208,22 @@ function migrateAuroraState(raw: RawSaveObject): RawSaveObject {
           unlocked: false
         },
     v: 7
+  };
+}
+
+function migrateLastSimTickMs(raw: RawSaveObject): RawSaveObject {
+  const meta = isRecord(raw.meta) ? raw.meta : {};
+
+  return {
+    ...raw,
+    meta: {
+      ...meta,
+      lastSimTickMs:
+        typeof meta.lastSimTickMs === "number" && Number.isFinite(meta.lastSimTickMs)
+          ? meta.lastSimTickMs
+          : meta.lastSeen
+    },
+    v: 8
   };
 }
 

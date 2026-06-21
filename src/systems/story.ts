@@ -26,6 +26,7 @@ export interface StoryChoiceResult {
 const STORY_CHECK_INTERVAL_S = 1;
 const READ_FLAG_PREFIX = "story.read.";
 const SNOOZE_STAT_PREFIX = "story.snoozeUntil.";
+const ACT_ENTERED_AT_PREFIX = "story.actEnteredAt.";
 
 export const STORY_EVENTS: readonly StoryEvent[] = [
   ...ACT0_EVENTS,
@@ -181,7 +182,10 @@ function isStoryEventReady(state: GameState, event: StoryEvent): boolean {
   if (event.choices !== undefined && state.story.choices[event.id] !== undefined) {
     const snoozedUntilS = getSnoozedUntilS(state, event.id);
 
-    if (snoozedUntilS === undefined || state.meta.playtimeS < snoozedUntilS) {
+    if (
+      !event.repeatChoices &&
+      (snoozedUntilS === undefined || state.meta.playtimeS < snoozedUntilS)
+    ) {
       return false;
     }
   } else if ((event.once ?? true) && state.story.seen.has(event.id)) {
@@ -246,8 +250,15 @@ function applyStoryEffect(
     case "hypeAdd":
       addHype(state, effect.amount, cache, bus);
       break;
+    case "hypeAddOnce":
+      if (!state.story.flags.has(effect.flag)) {
+        state.story.flags.add(effect.flag);
+        addHype(state, effect.amount, cache, bus);
+      }
+      break;
     case "setAct":
       state.story.act = effect.act;
+      state.stats[getActEnteredAtStatKey(effect.act)] = state.meta.playtimeS;
       break;
     case "setFlag":
       state.story.flags.add(effect.flag);
@@ -289,6 +300,10 @@ function getSnoozedUntilS(state: GameState, eventId: string): number | undefined
 
 function getSnoozeStatKey(eventId: string): string {
   return `${SNOOZE_STAT_PREFIX}${eventId}`;
+}
+
+export function getActEnteredAtStatKey(act: number): string {
+  return `${ACT_ENTERED_AT_PREFIX}${act}`;
 }
 
 function getReadFlag(entry: InboxEntry, index: number): string {

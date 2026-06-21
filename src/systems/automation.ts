@@ -207,6 +207,10 @@ function tickAutoRewrite(state: GameState, cache: DerivedCache, bus?: EventBus):
   const availableInsight = calculateAvailableInsightGain(state);
   const requiredInsight = calculateRewriteRequirement(state);
 
+  if (availableInsight <= 0) {
+    return false;
+  }
+
   for (const rule of AUTO_REWRITE_RULES) {
     if (
       ruleSlots >= rule.requiredSlots &&

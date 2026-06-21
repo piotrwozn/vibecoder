@@ -12,12 +12,12 @@ describe("M2 view invalidation", () => {
     expect(invalidation.consume()).toEqual({ cache: false, view: false });
   });
 
-  it("invalidates DerivedCache when debt changes", () => {
+  it("does not invalidate DerivedCache when debt changes", () => {
     const invalidation = createViewInvalidation(false);
 
     markResourceEvent(invalidation, "debt");
 
-    expect(invalidation.consume()).toEqual({ cache: true, view: true });
+    expect(invalidation.consume()).toEqual({ cache: false, view: true });
     expect(invalidation.consume()).toEqual({ cache: false, view: false });
   });
 

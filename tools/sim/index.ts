@@ -183,7 +183,6 @@ export function runEndlessSmokeSim(iterations: number): EndlessSmokeResult {
   recomputeDerivedCache(state, cache);
 
   while (state.prestige.iteration < iterations) {
-    seedEndlessRunResources(state, iterations);
     recomputeDerivedCache(state, cache);
 
     for (let second = 0; second < PRESTIGE.ITER_HOLD_S * PRESTIGE.PARADOX_BASE; second += DT_S) {
@@ -222,15 +221,8 @@ function seedEndlessInsight(state: GameState, iterations: number): void {
   state.res.insight = Big.max(state.res.insight, Big.fromLog10(seedExponent));
 }
 
-function seedEndlessRunResources(state: GameState, iterations: number): void {
-  const seedExponent =
-    PRESTIGE.ITER_SOFTCAP_BASE_E +
-    PRESTIGE.ITER_SOFTCAP_STEP_E * (iterations + PRESTIGE.PARADOX_BASE * 4) +
-    PRESTIGE.ITER_COST_E_PER_K * (state.prestige.iteration + PRESTIGE.PARADOX_BASE);
-  state.res.money = Big.max(state.res.money, Big.fromLog10(seedExponent));
-}
-
 function tickEndlessStrategy(state: GameState, cache: DerivedCache): void {
+  performPromptClick(state, cache);
   buyAffordableEraAndHardware(state, cache);
   buyAffordableUpgrades(state, cache);
   buyAffordableResearch(state, cache);

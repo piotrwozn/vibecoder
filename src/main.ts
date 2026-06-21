@@ -236,7 +236,14 @@ const platform = isTauriRuntime() ? createDesktopPlatform() : createWebPlatform(
 
 const loaded = await loadGameState(platform);
 let state = loaded.state;
-await loadLocale(state.settings.lang);
+let bootLocaleRepaired = false;
+try {
+  await loadLocale(state.settings.lang);
+} catch {
+  state.settings.lang = "en";
+  bootLocaleRepaired = true;
+  await loadLocale("en");
+}
 document.documentElement.lang = state.settings.lang;
 platform.setTitle(t("app.title"));
 syncSceneAfterLoad();
@@ -250,6 +257,7 @@ let autosaveTimer: number | undefined;
 let commsViewCache: CommsView | undefined;
 let commsViewDirty = true;
 let devPerfPanel: DevPerfPanel | undefined;
+let persistenceBlocked = loaded.reset;
 
 const SHIPPED_STAT = "projects.shipped";
 const BUGS_FIXED_STAT = "bugs.fixed";
@@ -457,6 +465,8 @@ const appActions: AppActions = {
       void vibexAi.downloadModel().then(() => {
         updateVisibleView();
       });
+    } else {
+      vibexAi.dispose();
     }
   },
 
@@ -498,12 +508,13 @@ const appActions: AppActions = {
   importSave(payload: string): boolean {
     const result = importGameState(payload, { edition: platform.edition, nowMs: Date.now() });
 
-    if (!result.ok) {
+    if (!result.ok || result.reset) {
       audio.play("error");
       app.showToast(t("ui.toast.importFailed"), "danger");
       return false;
     }
 
+    persistenceBlocked = false;
     installState(result.state);
     void persistNow();
     return true;
@@ -769,6 +780,7 @@ const appActions: AppActions = {
   },
 
   wipeSave(): void {
+    persistenceBlocked = false;
     installState(createDefaultGameState(Date.now(), platform.edition));
     void persistNow();
   }
@@ -791,6 +803,17 @@ async function generateVibexAiResponse(
 }
 
 app = mountApp(appRoot, createDevFloorView(cache, true), appActions);
+
+if (loaded.reset) {
+  app.showToast(
+    t(
+      loaded.resetReason === "newer-version"
+        ? "ui.toast.saveNewerVersion"
+        : "ui.toast.saveUnreadable"
+    ),
+    "danger"
+  );
+}
 
 bus.on("story:message", ({ eventId }) => {
   const appId = getStoryMessageAppId(eventId);
@@ -830,7 +853,7 @@ bus.on("unlock", ({ id, kind }) => {
   app.showToast(t("ui.toast.unlock", { name: getUnlockToastName(kind, id) }), "accent");
 });
 
-if (loaded.repaired || offlineSummary !== undefined) {
+if (((loaded.repaired || bootLocaleRepaired) && !loaded.reset) || offlineSummary !== undefined) {
   void persistNow();
 }
 
@@ -861,7 +884,7 @@ startLoop({
   tick(dtS): void {
     const wasBooting = isRewriteBooting(state);
     state.meta.playtimeS += dtS;
-    state.meta.lastSeen = Date.now();
+    state.meta.lastSimTickMs = Date.now();
     invalidation.markVisibleChanged(tickPromptFlow(state, dtS));
     tickProduction(state, cache, dtS, bus);
     invalidation.markVisibleChanged(tickProjects(state, cache, dtS, bus));
@@ -901,6 +924,10 @@ function scheduleAutosave(): void {
 }
 
 function persistNow(): Promise<boolean> {
+  if (persistenceBlocked) {
+    return Promise.resolve(false);
+  }
+
   return saveGameState(platform, state, Date.now());
 }
 
@@ -1029,7 +1056,7 @@ function getTutorialStepIndex(step: TutorialStep): number {
 }
 
 function applyOfflineOnReturn(nowMs: number): OfflineProgressResult | undefined {
-  if (nowMs - state.meta.lastSeen <= OFFLINE_CATCH_UP_MS) {
+  if (nowMs - state.meta.lastSimTickMs <= OFFLINE_CATCH_UP_MS) {
     return undefined;
   }
 
@@ -1069,7 +1096,7 @@ function isDevPerfPanelEnabled(): boolean {
 
 function runDevTimeWarp(hours: number): void {
   const nowMs = Date.now();
-  state.meta.lastSeen = nowMs - hours * MS_PER_HOUR;
+  state.meta.lastSimTickMs = nowMs - hours * MS_PER_HOUR;
   offlineSummary = applyOfflineProgress(state, cache, nowMs);
   recomputeDerivedCache(state, cache);
   invalidation.markStructuralChanged();

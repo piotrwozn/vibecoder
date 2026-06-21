@@ -176,6 +176,8 @@ describe("M3 projects and money", () => {
     const started = startProject(state, REFACTOR_PROJECT.id, cache);
     expect(started.ok).toBe(true);
     expect(state.res.loc.eq0()).toBe(true);
+    expect(state.stats["projects.started"]).toBeUndefined();
+    expect(state.stats[`project.started.${REFACTOR_PROJECT.id}`]).toBeUndefined();
 
     tickProjects(state, cache, 30);
 

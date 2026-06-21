@@ -50,7 +50,7 @@ export function getHardwareCost(hardware: HardwareDefinition, owned: number, ite
       ? hardware.baseCost.copy()
       : Big.cost(hardware.baseCost, hardware.growth, owned);
 
-  return Big.mul(baseCost, Big.fromNumber(calculateIterationCostMultiplier(iteration)));
+  return Big.mul(baseCost, calculateIterationCostMultiplier(iteration));
 }
 
 export function buyHardware(state: GameState, id: string, bus?: EventBus): BuyHardwareResult {

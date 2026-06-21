@@ -39,6 +39,13 @@ fn save_game(app: AppHandle, data: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn backup_corrupt_save(app: AppHandle, data: String, timestamp_ms: i64) -> Result<(), String> {
+    let dir = save_dir(&app)?;
+    let name = format!("{SAVE_FILE}.corrupt.{}", timestamp_ms.max(0));
+    write_synced(&dir.join(name), data.as_bytes())
+}
+
+#[tauri::command]
 fn list_backups(app: AppHandle) -> Result<Vec<String>, String> {
     let dir = save_dir(&app)?;
     let mut backups = Vec::new();
@@ -51,6 +58,21 @@ fn list_backups(app: AppHandle) -> Result<Vec<String>, String> {
     }
 
     Ok(backups)
+}
+
+#[tauri::command]
+fn load_backup(app: AppHandle, name: String) -> Result<Option<String>, String> {
+    if !is_backup_name(&name) {
+        return Err("backup name rejected".into());
+    }
+
+    let path = save_dir(&app)?.join(name);
+
+    match fs::read_to_string(path) {
+        Ok(data) => Ok(Some(data)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("backup load failed: {error}")),
+    }
 }
 
 #[tauri::command]
@@ -73,14 +95,14 @@ fn set_window_title(app: AppHandle, title: String) -> Result<(), String> {
 
 #[tauri::command]
 fn open_external(url: String) -> Result<(), String> {
-    if !url.starts_with("https://") && !url.starts_with("http://") {
+    if !is_safe_external_url(&url) {
         return Err("external URL rejected".into());
     }
 
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start", "", &url]);
+        let mut command = Command::new("explorer");
+        command.arg(&url);
         command
     };
 
@@ -104,6 +126,18 @@ fn open_external(url: String) -> Result<(), String> {
         .map_err(|error| format!("external open failed: {error}"))
 }
 
+fn is_safe_external_url(url: &str) -> bool {
+    (url.starts_with("https://") || url.starts_with("http://"))
+        && !url
+            .chars()
+            .any(|character| {
+                matches!(
+                    character,
+                    '"' | '\'' | '<' | '>' | '|' | '^' | '&' | '\r' | '\n' | '\0'
+                )
+            })
+}
+
 #[tauri::command]
 fn quit_app(app: AppHandle) {
     app.exit(0);
@@ -114,8 +148,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            backup_corrupt_save,
             export_file,
             list_backups,
+            load_backup,
             load_save,
             open_external,
             quit_app,
@@ -179,6 +215,10 @@ fn rotate_backups(dir: &Path, save_path: &Path) -> Result<(), String> {
 
 fn backup_name(index: usize) -> String {
     format!("{SAVE_FILE}.bak{index}")
+}
+
+fn is_backup_name(name: &str) -> bool {
+    (1..=BACKUP_COUNT).any(|index| name == backup_name(index))
 }
 
 fn sanitize_export_name(name: &str) -> String {

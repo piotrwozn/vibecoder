@@ -312,6 +312,8 @@
   "ui.toast.newChat": "Nowa wiadomość na czacie",
   "ui.toast.newFeed": "Nowy post w feedzie",
   "ui.toast.newMail": "Nowa poczta",
+  "ui.toast.saveNewerVersion": "Ten zapis pochodzi z nowszej wersji. Zaktualizuj grę.",
+  "ui.toast.saveUnreadable": "Nie udało się odczytać zapisu; kopia została zachowana.",
   "ui.toast.shipped": "Wysłano {name} za {payout}",
   "ui.toast.unlock": "Odblokowano {name}",
   "ui.terminal.bugFixedLog": "[NAPRAWIONO] {name}",

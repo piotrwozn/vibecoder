@@ -38,8 +38,16 @@ export function createDesktopPlatform(host: TauriHost = globalThis as TauriHost)
       await tauri.core.invoke<void>("save_game", { data });
     },
 
+    async backupCorrupt(data: string, timestampMs: number): Promise<void> {
+      await tauri.core.invoke<void>("backup_corrupt_save", { data, timestampMs });
+    },
+
     async listBackups(): Promise<string[]> {
       return tauri.core.invoke<string[]>("list_backups");
+    },
+
+    async loadBackup(name: string): Promise<string | null> {
+      return tauri.core.invoke<string | null>("load_backup", { name });
     },
 
     async exportFile(name: string, data: string): Promise<void> {

@@ -1,5 +1,5 @@
 import type { EventBus } from "../core/bus";
-import { Big } from "../core/bignum";
+import { Big, type BigInput } from "../core/bignum";
 import type { GameState } from "../core/state";
 import { C, PRESTIGE } from "../data/constants";
 import { GENERATORS, type GeneratorDefinition } from "../data/generators";
@@ -74,8 +74,8 @@ export interface DerivedCache {
   };
   generatorEntries: Record<string, GeneratorCacheEntry>;
   costs: {
-    generatorMultiplier: number;
-    projectMultiplier: number;
+    generatorMultiplier: Big;
+    projectMultiplier: Big;
   };
   hype: {
     cap: number;
@@ -204,8 +204,8 @@ export function createDerivedCache(): DerivedCache {
     },
     generatorEntries: {},
     costs: {
-      generatorMultiplier: 1,
-      projectMultiplier: 1
+      generatorMultiplier: Big.one(),
+      projectMultiplier: Big.one()
     },
     hype: {
       cap: C.HYPE_CAP,
@@ -243,19 +243,21 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
   const effects = collectEffects(state);
   const era = C.ERA_MULT ** (state.era - 1);
   const debt = calculateDebtEfficiency(state);
-  const prestige = calculatePrestigeMultiplier(state);
+  const prestige = calculatePrestigeMultiplierBig(state);
   const achievements = calculateAchievementMultiplier(state);
   const iterationCost = calculateIterationCostMultiplier(state.prestige.iteration);
   const iterationProduction = calculateIterationProductionMultiplier(state.prestige.iteration);
-  const globalMultiplier =
+  const boundedGlobalMultiplier =
     era *
     debt *
-    prestige *
     achievements *
-    iterationProduction *
     effects.prestigeNodeMultiplier *
     effects.researchMultiplier *
     effects.globalUpgradeMultiplier;
+  const globalMultiplier = Big.mul(
+    Big.mul(prestige, iterationProduction),
+    Big.fromNumber(boundedGlobalMultiplier)
+  );
   let locRate = Big.zero();
   let computeUsed = 0;
 
@@ -278,8 +280,8 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
     synergy: effects.clickSynergy
   };
   cache.costs = {
-    generatorMultiplier: effects.generatorCostMultiplier * iterationCost,
-    projectMultiplier: iterationCost
+    generatorMultiplier: Big.mul(Big.fromNumber(effects.generatorCostMultiplier), iterationCost),
+    projectMultiplier: iterationCost.copy()
   };
   cache.debt = {
     bugChanceCap: effects.bugChanceCap,
@@ -300,7 +302,7 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
     debt,
     era,
     insightNodes: effects.prestigeNodeMultiplier,
-    prestige,
+    prestige: prestige.toNumber(),
     research: effects.researchMultiplier,
     upgrades: effects.globalUpgradeMultiplier
   };
@@ -333,7 +335,7 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
     const milestoneOwned = Big.mul(Big.fromNumber(owned), milestone.multiplier);
     const rate = Big.mul(
       Big.mul(generator.baseRate, milestoneOwned),
-      Big.fromNumber(globalMultiplier * generatorMultiplier)
+      Big.mul(globalMultiplier, Big.fromNumber(generatorMultiplier))
     );
     const computeUse = getEffectiveComputeUse(generator, cache);
     computeUsed += owned * computeUse;
@@ -436,10 +438,10 @@ export function getGeneratorCost(
   generator: GeneratorDefinition,
   owned: number,
   quantity: number,
-  costMultiplier = 1
+  costMultiplier: BigInput = 1
 ): Big {
   return Big.bulkCost(
-    Big.mul(generator.baseCost, Big.fromNumber(costMultiplier)),
+    Big.mul(generator.baseCost, Big.from(costMultiplier)),
     generator.growth,
     owned,
     quantity
@@ -453,10 +455,7 @@ export function getGeneratorMaxAffordable(
   cache?: DerivedCache,
   budget = state.res.money
 ): number {
-  const baseCost = Big.mul(
-    generator.baseCost,
-    Big.fromNumber(cache?.costs.generatorMultiplier ?? 1)
-  );
+  const baseCost = Big.mul(generator.baseCost, Big.from(cache?.costs.generatorMultiplier ?? 1));
   const moneyAffordable = Big.maxAffordable(baseCost, generator.growth, owned, budget);
   const computeUse = getEffectiveComputeUse(generator, cache);
   const computeAffordable =
@@ -924,16 +923,37 @@ function getLastConfiguredMilestone(): number {
 }
 
 export function calculatePrestigeMultiplier(state: GameState): number {
+  return calculatePrestigeMultiplierBig(state).toNumber();
+}
+
+export function calculatePrestigeMultiplierBig(state: GameState): Big {
   const insight = Big.add(Big.one(), state.res.insight);
-  const insightMult = Big.pow(insight, PRESTIGE.INSIGHT_MULT_EXP).toNumber();
-  const equityMult =
-    1 + PRESTIGE.EQUITY_MULT_K * state.res.equity ** getEquityMultiplierExponent(state);
+  const insightMult = Big.pow(insight, PRESTIGE.INSIGHT_MULT_EXP);
+  const equityMult = calculateOnePlusScaledPower(
+    state.res.equity,
+    PRESTIGE.EQUITY_MULT_K,
+    getEquityMultiplierExponent(state)
+  );
   const paradoxExponent = state.owned.paradoxItems.has("x_paradox_engine")
     ? PRESTIGE.PARADOX_ENGINE_MULT_EXP
     : PRESTIGE.PARADOX_MULT_EXP;
-  const paradoxMult = (1 + state.res.paradox) ** paradoxExponent;
+  const paradoxMult = Big.powNumber(1 + state.res.paradox, paradoxExponent);
 
-  return insightMult * equityMult * paradoxMult;
+  return Big.mul(Big.mul(insightMult, equityMult), paradoxMult);
+}
+
+function calculateOnePlusScaledPower(value: number, scale: number, exponent: number): Big {
+  if (value <= 0 || scale <= 0) {
+    return Big.one();
+  }
+
+  const termLog10 = Math.log10(scale) + Math.log10(value) * exponent;
+
+  if (termLog10 < 12) {
+    return Big.fromNumber(1 + 10 ** termLog10);
+  }
+
+  return Big.fromLog10(termLog10);
 }
 
 function getEquityMultiplierExponent(state: GameState): number {

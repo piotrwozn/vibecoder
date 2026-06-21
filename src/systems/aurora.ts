@@ -102,6 +102,10 @@ export function rentAuroraHost(state: GameState, bus?: EventBus): AuroraActionRe
     return { ok: false, reason: "complete" };
   }
 
+  if (getAvailableAuroraServers(state) >= AURORA_REQUIRED_DEDICATED_SERVERS) {
+    return { ok: false, reason: "servers" };
+  }
+
   state.aurora.hostedServers += 1;
   state.story.flags.add(AURORA_HOSTING_STARTED_FLAG);
   refreshAuroraFlags(state);

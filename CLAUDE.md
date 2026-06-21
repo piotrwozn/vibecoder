@@ -7,6 +7,7 @@ This repository is ready for Claude Code review.
 Read `AGENTS.md` first. It is the authoritative agent contract for this repo.
 
 Then read:
+
 - `plan/README.md`
 - `plan/08-roadmapa.md`
 - any referenced sections from `plan/02`, `plan/03`, `plan/04`, `plan/05`, `plan/06`, `plan/07`, `plan/09`, and `plan/10`
@@ -18,6 +19,7 @@ The Polish design files in `plan/` are the source of truth. Do not invent formul
 VIBECODER is an idle/incremental game built with TypeScript and Vite.
 
 Important boundaries:
+
 - `data/` contains authored definitions, not game logic.
 - `systems/` contains game logic, never DOM work.
 - `ui/` renders and wires UI, never computes game math.
@@ -26,12 +28,14 @@ Important boundaries:
 - Large values use the in-house `Big` class.
 
 Runtime dependency policy:
+
 - No runtime dependencies except the approved Vibex local-AI island in `src/platform/ai.*`.
 - Keep `wllama` imports isolated to that platform layer.
 
 ## Review Mode
 
 When asked for an ultrareview, use a code-review stance:
+
 - Lead with findings, ordered by severity.
 - Include exact file and line references.
 - Focus on real bugs, regressions, migration risks, balance exploits, broken UI flows, performance hot paths, and missing tests.
@@ -39,6 +43,7 @@ When asked for an ultrareview, use a code-review stance:
 - Do not rewrite code unless explicitly asked.
 
 High-risk areas to inspect:
+
 - Save shape changes: `SAVE_VERSION`, migrations, fixtures, round-trip tests.
 - Prestige resets: REWRITE, EXIT, ITERATION, and Aurora persistence.
 - Project economy: payout vs recurring revenue, billing, negative `$ / s`, offline progress.

@@ -6,6 +6,7 @@ import { exportGameState, importGameState } from "../src/core/save";
 import { createDefaultGameState } from "../src/core/state";
 import { GENERATORS } from "../src/data/generators";
 import { createDesktopPlatform, isTauriRuntime } from "../src/platform/desktop";
+import { createWebPlatform, WEB_SAVE_KEY } from "../src/platform/web";
 import { buyHardware, getAvailableHardware } from "../src/systems/compute";
 import { buyNextEra, canBuyEra, getNextEra } from "../src/systems/eras";
 import { createDerivedCache, recomputeDerivedCache, buyGenerator } from "../src/systems/production";
@@ -116,6 +117,10 @@ describe("M12 desktop platform", () => {
         return Promise.resolve(["vibecoder_save.json.bak1"] as T);
       }
 
+      if (command === "load_backup") {
+        return Promise.resolve('{"v":7}' as T);
+      }
+
       return Promise.resolve(undefined as T);
     });
     const host = {
@@ -130,15 +135,49 @@ describe("M12 desktop platform", () => {
     await expect(platform.load()).resolves.toBe('{"v":1}');
     await platform.save("save");
     await expect(platform.listBackups?.()).resolves.toEqual(["vibecoder_save.json.bak1"]);
+    await expect(platform.loadBackup?.("vibecoder_save.json.bak1")).resolves.toBe('{"v":7}');
+    await platform.backupCorrupt?.("bad", 123);
     await platform.exportFile?.("demo.txt", "save");
     platform.setTitle("VIBECODER");
     platform.openExternal("https://example.com");
     platform.quit?.();
 
     expect(invoke).toHaveBeenCalledWith("save_game", { data: "save" });
+    expect(invoke).toHaveBeenCalledWith("backup_corrupt_save", {
+      data: "bad",
+      timestampMs: 123
+    });
     expect(invoke).toHaveBeenCalledWith("export_file", { data: "save", name: "demo.txt" });
     expect(invoke).toHaveBeenCalledWith("set_window_title", { title: "VIBECODER" });
     expect(invoke).toHaveBeenCalledWith("open_external", { url: "https://example.com" });
     expect(invoke).toHaveBeenCalledWith("quit_app");
+  });
+
+  it("keeps rolling web backups and corrupt sidecars separate", async () => {
+    const storage = new Map<string, string>();
+
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        }
+      },
+      open: vi.fn()
+    });
+
+    try {
+      const platform = createWebPlatform();
+      await platform.save("first");
+      await platform.save("second");
+      await platform.backupCorrupt?.("bad", 99);
+
+      expect(storage.get(WEB_SAVE_KEY)).toBe("second");
+      await expect(platform.listBackups?.()).resolves.toEqual(["vibecoder_save.bak1"]);
+      await expect(platform.loadBackup?.("vibecoder_save.bak1")).resolves.toBe("first");
+      expect(storage.get("vibecoder_save.corrupt.99")).toBe("bad");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

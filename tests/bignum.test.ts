@@ -69,6 +69,13 @@ describe("Big", () => {
     expect(Number.isFinite(Big.from("3e154").mul("3e154").toNumber())).toBe(true);
   });
 
+  it("keeps fromNumber hot paths finite for non-finite input", () => {
+    expect(Big.fromNumber(Number.POSITIVE_INFINITY).toString()).toBe("1e308");
+    expect(Big.fromNumber(Number.NEGATIVE_INFINITY).toString()).toBe("-1e308");
+    expect(Big.fromNumber(Number.NaN).toString()).toBe("1e308");
+    expect(() => Big.fromFiniteNumber(Number.POSITIVE_INFINITY)).toThrow(/finite/);
+  });
+
   it("keeps growth-one maxAffordable finite after toNumber clamps overflow", () => {
     const result = Big.maxAffordable(Big.one(), 1, 0, Big.from("9e308"));
 

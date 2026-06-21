@@ -135,6 +135,32 @@ export interface BuyParadoxItemResult {
 export const REWRITE_BOOT_S = 3;
 export const REWRITE_BOOT_UNTIL_STAT = "prestige.rewriteBootUntil";
 export const ITERATION_HOLD_STAT = "prestige.iterationHoldS";
+
+type PrestigeResetLayer = "exit" | "iteration" | "rewrite";
+
+const PROJECT_STARTED_STAT = "projects.started";
+const PROJECT_STARTED_PREFIX = "project.started.";
+const BUG_SPAWNED_AT_PREFIX = "bugs.spawnedAt.";
+const LOC_RATE_SAMPLE_PREFIX = "stats.locRate.sample.";
+const LOC_RATE_SAMPLE_COUNT_STAT = "stats.locRate.sampleCount";
+const LOC_RATE_SAMPLE_INDEX_STAT = "stats.locRate.sampleIndex";
+const LOC_RATE_SAMPLE_LAST_AT_STAT = "stats.locRate.lastSampleAt";
+const RUN_STAT_RESET_KEYS = [
+  PROJECT_STARTED_STAT,
+  LOC_RATE_SAMPLE_COUNT_STAT,
+  LOC_RATE_SAMPLE_INDEX_STAT,
+  LOC_RATE_SAMPLE_LAST_AT_STAT
+] as const;
+const RUN_STAT_RESET_PREFIXES = [
+  BUG_SPAWNED_AT_PREFIX,
+  PROJECT_STARTED_PREFIX,
+  LOC_RATE_SAMPLE_PREFIX
+] as const;
+const RESET_LAYER_STAT_KEYS: Readonly<Record<PrestigeResetLayer, readonly string[]>> = {
+  exit: [ITERATION_HOLD_STAT, REWRITE_BOOT_UNTIL_STAT],
+  iteration: [ANGEL_NETWORK_UNTIL_STAT, ITERATION_HOLD_STAT, REWRITE_BOOT_UNTIL_STAT],
+  rewrite: []
+};
 export const PARADOX_ECHO_FLAG_PREFIX = "paradox.echo.";
 
 export function getInsightTree(): readonly InsightNodeDefinition[] {
@@ -338,7 +364,7 @@ export function createRewritePreview(state: GameState): RewritePreview {
 
   return {
     availableInsight,
-    canRewrite: availableInsight >= requiredInsight,
+    canRewrite: availableInsight > 0 && availableInsight >= requiredInsight,
     currentMultiplier,
     insightAfter,
     lostAgents: getTotalOwned(state.owned.generators),
@@ -364,6 +390,10 @@ export function performRewrite(
   const preview = createRewritePreview(state);
 
   if (!preview.canRewrite) {
+    return { gain: 0, ok: false, preview, reason: "threshold" };
+  }
+
+  if (preview.availableInsight <= 0) {
     return { gain: 0, ok: false, preview, reason: "threshold" };
   }
 
@@ -403,7 +433,7 @@ export function performRewrite(
     meter: 0
   };
   state.automation = preservedAutomation;
-  clearBugSpawnStats(state);
+  applyPrestigeResetSpec(state, "rewrite");
   state.stats[REWRITE_BOOT_UNTIL_STAT] = state.meta.playtimeS + REWRITE_BOOT_S;
 
   recomputeComputeCap(state);
@@ -499,7 +529,7 @@ export function performExit(state: GameState, cache: DerivedCache, bus?: EventBu
     meter: 0
   };
   state.automation = {};
-  clearBugSpawnStats(state);
+  applyPrestigeResetSpec(state, "exit");
   applyPostExitRunModifier(state, nextRunModifier);
 
   if (hasEquityPerk(state, "q_angel_network")) {
@@ -626,10 +656,11 @@ export function performIteration(
   state.era = STARTING_ERA.index;
   state.lifetime.locSinceExit = Big.zero();
   state.lifetime.insightSinceExit = 0;
+  state.prestige.rewrites = 0;
   state.prestige.iteration += 1;
   state.story.act = state.aurora.unlocked && !state.aurora.completed ? 5 : 9;
 
-  resetOwnedGenerators(state, {});
+  resetOwnedGenerators(state, getIterationStartGenerators());
   state.owned.hardware = {};
   state.hardware.pcComplete = false;
   state.owned.upgrades = new Set();
@@ -650,12 +681,9 @@ export function performIteration(
     meter: 0
   };
   state.automation = preservedAutomation;
-  clearBugSpawnStats(state);
+  applyPrestigeResetSpec(state, "iteration");
   clearRunModifierFlags(state, ACTIVE_RUN_MODIFIER_PREFIX);
   clearRunModifierFlags(state, NEXT_RUN_MODIFIER_PREFIX);
-  delete state.stats[ANGEL_NETWORK_UNTIL_STAT];
-  delete state.stats[ITERATION_HOLD_STAT];
-  delete state.stats[REWRITE_BOOT_UNTIL_STAT];
 
   recomputeComputeCap(state);
   refreshProjectBoard(state);
@@ -773,7 +801,7 @@ export function calculateTotalInsightPotential(state: GameState): number {
 }
 
 export function calculateRewriteRequirement(state: GameState): number {
-  if (state.prestige.rewrites === 0) {
+  if (state.prestige.rewrites === 0 || state.lifetime.insightSinceExit <= 0) {
     return PRESTIGE.REWRITE_MIN_FIRST;
   }
 
@@ -832,6 +860,11 @@ function getRewriteStartGenerators(state: GameState): Record<string, number> {
   }
 
   return generators;
+}
+
+function getIterationStartGenerators(): Record<string, number> {
+  const firstGenerator = GENERATORS[0];
+  return firstGenerator === undefined ? {} : { [firstGenerator.id]: 1 };
 }
 
 function getOwnedInsightEffects(state: GameState): InsightEffect[] {
@@ -966,9 +999,17 @@ function getIterationHoldS(state: GameState): number {
   return typeof value === "number" ? value : 0;
 }
 
-function clearBugSpawnStats(state: GameState): void {
+function applyPrestigeResetSpec(state: GameState, layer: PrestigeResetLayer): void {
+  for (const key of RUN_STAT_RESET_KEYS) {
+    delete state.stats[key];
+  }
+
+  for (const key of RESET_LAYER_STAT_KEYS[layer]) {
+    delete state.stats[key];
+  }
+
   for (const key of Object.keys(state.stats)) {
-    if (key.startsWith("bugs.spawnedAt.")) {
+    if (RUN_STAT_RESET_PREFIXES.some((prefix) => key.startsWith(prefix))) {
       delete state.stats[key];
     }
   }

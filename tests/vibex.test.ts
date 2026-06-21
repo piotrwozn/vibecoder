@@ -117,6 +117,7 @@ describe("M15 Vibex", () => {
       static last: FakeWorker | undefined;
 
       private readonly listeners = new Map<string, Array<(event: { data: unknown }) => void>>();
+      terminated = false;
 
       constructor() {
         FakeWorker.last = this;
@@ -127,6 +128,10 @@ describe("M15 Vibex", () => {
       }
 
       postMessage(): void {}
+
+      terminate(): void {
+        this.terminated = true;
+      }
 
       emitMessage(data: unknown): void {
         for (const listener of this.listeners.get("message") ?? []) {
@@ -156,5 +161,98 @@ describe("M15 Vibex", () => {
       progress: undefined,
       status: "error"
     });
+  });
+
+  it("terminates the worker on dispose and worker errors", async () => {
+    class FakeWorker {
+      static instances: FakeWorker[] = [];
+
+      private readonly listeners = new Map<string, Array<(event: { data: unknown }) => void>>();
+      terminated = false;
+
+      constructor() {
+        FakeWorker.instances.push(this);
+      }
+
+      addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+      }
+
+      postMessage(): void {}
+
+      terminate(): void {
+        this.terminated = true;
+      }
+
+      emitError(): void {
+        for (const listener of this.listeners.get("error") ?? []) {
+          listener({ data: undefined });
+        }
+      }
+    }
+
+    vi.stubGlobal("Worker", FakeWorker);
+    const { createFullVibexAiClient } = await import("../src/platform/ai.full");
+
+    const disposeClient = createFullVibexAiClient(() => {});
+    const disposeDownload = disposeClient.downloadModel();
+    disposeClient.dispose();
+    await expect(disposeDownload).resolves.toBe(false);
+    expect(FakeWorker.instances[0]?.terminated).toBe(true);
+    expect(disposeClient.snapshot().status).toBe("idle");
+
+    const errorClient = createFullVibexAiClient(() => {});
+    const errorDownload = errorClient.downloadModel();
+    FakeWorker.instances[1]?.emitError();
+    await expect(errorDownload).resolves.toBe(false);
+    expect(FakeWorker.instances[1]?.terminated).toBe(true);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("clamps prompts before sending them to the local AI worker", async () => {
+    class FakeWorker {
+      static last: FakeWorker | undefined;
+
+      private readonly listeners = new Map<string, Array<(event: { data: unknown }) => void>>();
+      readonly messages: unknown[] = [];
+
+      constructor() {
+        FakeWorker.last = this;
+      }
+
+      addEventListener(type: string, listener: (event: { data: unknown }) => void): void {
+        this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+      }
+
+      postMessage(message: unknown): void {
+        this.messages.push(message);
+      }
+
+      terminate(): void {}
+
+      emitMessage(data: unknown): void {
+        for (const listener of this.listeners.get("message") ?? []) {
+          listener({ data });
+        }
+      }
+    }
+
+    vi.stubGlobal("Worker", FakeWorker);
+    const { createFullVibexAiClient } = await import("../src/platform/ai.full");
+    const client = createFullVibexAiClient(() => {});
+
+    const download = client.downloadModel();
+    FakeWorker.last?.emitMessage({ id: 1, ok: true, type: "result" });
+    FakeWorker.last?.emitMessage({ type: "ready" });
+    await expect(download).resolves.toBe(true);
+
+    const generated = client.generate("x".repeat(1200), "PARROT-1");
+    const generateMessage = FakeWorker.last?.messages.at(-1) as { prompt?: string } | undefined;
+    expect(generateMessage?.prompt).toHaveLength(1000);
+    FakeWorker.last?.emitMessage({ id: 2, ok: true, text: "ok", type: "result" });
+    await expect(generated).resolves.toBe("ok");
+
+    vi.unstubAllGlobals();
   });
 });

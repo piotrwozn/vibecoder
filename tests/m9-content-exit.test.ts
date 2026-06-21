@@ -16,6 +16,8 @@ import { hasMessage } from "../src/i18n/i18n";
 import { performPromptClick } from "../src/systems/prompt";
 import { createDerivedCache, recomputeDerivedCache } from "../src/systems/production";
 import {
+  ITERATION_HOLD_STAT,
+  REWRITE_BOOT_UNTIL_STAT,
   calculateBaseEquityGain,
   getRewriteStartMoney,
   performExit,
@@ -95,6 +97,14 @@ describe("M9 EXIT prestige", () => {
       shippedAtS: 1
     });
     state.bugs.push({ productId: "p_micro_saas.1" });
+    state.stats["projects.started"] = 3;
+    state.stats["project.started.p_micro_saas"] = 2;
+    state.stats["stats.locRate.sample.0"] = Big.fromNumber(10);
+    state.stats["stats.locRate.sampleCount"] = 1;
+    state.stats["stats.locRate.sampleIndex"] = 0;
+    state.stats["stats.locRate.lastSampleAt"] = 120;
+    state.stats[ITERATION_HOLD_STAT] = 600;
+    state.stats[REWRITE_BOOT_UNTIL_STAT] = 700;
 
     const result = performExit(state, cache);
 
@@ -118,6 +128,14 @@ describe("M9 EXIT prestige", () => {
     expect(state.owned.equityPerks.has("q_board_seat")).toBe(true);
     expect(state.projects.portfolio).toHaveLength(0);
     expect(state.bugs).toHaveLength(0);
+    expect(state.stats["projects.started"]).toBeUndefined();
+    expect(state.stats["project.started.p_micro_saas"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sample.0"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sampleCount"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sampleIndex"]).toBeUndefined();
+    expect(state.stats["stats.locRate.lastSampleAt"]).toBeUndefined();
+    expect(state.stats[ITERATION_HOLD_STAT]).toBeUndefined();
+    expect(state.stats[REWRITE_BOOT_UNTIL_STAT]).toBeUndefined();
     expect(state.story.seen.has("a3_02_takeover_offer")).toBe(true);
   });
 

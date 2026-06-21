@@ -1,6 +1,6 @@
 import type { Platform } from "../platform/platform";
 import { Big, type BigInput } from "./bignum";
-import { migrateRawSave, SAVE_VERSION } from "./migrations";
+import { FutureSaveVersionError, migrateRawSave, SAVE_VERSION } from "./migrations";
 import {
   createDefaultGameState,
   type ActiveBuild,
@@ -39,6 +39,8 @@ export interface SaveDecodeOptions {
 
 export interface SaveDecodeResult {
   readonly repaired: boolean;
+  readonly reset: boolean;
+  readonly resetReason?: "corrupt" | "load-failed" | "newer-version";
   readonly state: GameState;
   readonly warnings: readonly string[];
 }
@@ -57,23 +59,33 @@ export function deserializeGameState(
   data: string,
   options: SaveDecodeOptions = {}
 ): SaveDecodeResult {
-  const warnings: string[] = [];
   const parsed = parseJson(data);
 
   if (!parsed.ok) {
-    warnings.push("save JSON repaired");
-    return {
-      repaired: true,
-      state: createDefaultGameState(options.nowMs, options.edition),
-      warnings
-    };
+    return createResetDecodeResult(options, ["save JSON could not be read"], "corrupt");
   }
 
-  return repairGameState(parsed.value, options);
+  if (!isRecord(parsed.value)) {
+    return createResetDecodeResult(options, ["save root was not an object"], "corrupt");
+  }
+
+  try {
+    return repairGameState(parsed.value, options);
+  } catch (error) {
+    if (error instanceof FutureSaveVersionError) {
+      return createResetDecodeResult(
+        options,
+        [`save version ${error.version} is newer than this build`],
+        "newer-version"
+      );
+    }
+
+    return createResetDecodeResult(options, ["save decode failed"], "corrupt");
+  }
 }
 
 export async function loadGameState(
-  platform: Pick<Platform, "edition" | "load">,
+  platform: Pick<Platform, "backupCorrupt" | "edition" | "listBackups" | "load" | "loadBackup">,
   nowMs = Date.now()
 ): Promise<SaveDecodeResult> {
   let data: string | null;
@@ -83,6 +95,8 @@ export async function loadGameState(
   } catch {
     return {
       repaired: true,
+      reset: true,
+      resetReason: "load-failed",
       state: createDefaultGameState(nowMs, platform.edition),
       warnings: ["save load failed"]
     };
@@ -91,12 +105,31 @@ export async function loadGameState(
   if (data === null) {
     return {
       repaired: false,
+      reset: false,
       state: createDefaultGameState(nowMs, platform.edition),
       warnings: []
     };
   }
 
-  return deserializeGameState(data, { edition: platform.edition, nowMs });
+  const decoded = deserializeGameState(data, { edition: platform.edition, nowMs });
+
+  if (!decoded.reset) {
+    return decoded;
+  }
+
+  await backupUnreadableSave(platform, data, nowMs);
+
+  if (decoded.resetReason === "newer-version") {
+    return decoded;
+  }
+
+  const backup = await loadMostRecentBackup(platform, nowMs);
+
+  if (backup !== undefined) {
+    return backup;
+  }
+
+  return decoded;
 }
 
 export async function saveGameState(
@@ -128,15 +161,13 @@ export function importGameState(
     return { ok: false, warnings: ["save import was not valid base64"] };
   }
 
-  const parsed = parseJson(decoded.value);
-
-  if (!parsed.ok) {
+  if (!parseJson(decoded.value).ok) {
     return { ok: false, warnings: ["save import was not valid JSON"] };
   }
 
   return {
     ok: true,
-    ...repairGameState(parsed.value, options)
+    ...deserializeGameState(decoded.value, options)
   };
 }
 
@@ -167,6 +198,12 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     meta.lastSeen,
     defaults.meta.lastSeen,
     "meta.lastSeen",
+    mark
+  );
+  defaults.meta.lastSimTickMs = repairNumber(
+    meta.lastSimTickMs,
+    defaults.meta.lastSeen,
+    "meta.lastSimTickMs",
     mark
   );
   defaults.meta.playtimeS = repairNumber(
@@ -397,7 +434,7 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     "settings.glitch",
     mark
   );
-  defaults.settings.lang = repairString(
+  defaults.settings.lang = repairLanguage(
     settings.lang,
     defaults.settings.lang,
     "settings.lang",
@@ -450,9 +487,75 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
 
   return {
     repaired,
+    reset: false,
     state: defaults,
     warnings
   };
+}
+
+function createResetDecodeResult(
+  options: SaveDecodeOptions,
+  warnings: readonly string[],
+  resetReason: SaveDecodeResult["resetReason"]
+): SaveDecodeResult {
+  return {
+    repaired: true,
+    reset: true,
+    resetReason,
+    state: createDefaultGameState(options.nowMs, options.edition),
+    warnings
+  };
+}
+
+async function backupUnreadableSave(
+  platform: Pick<Platform, "backupCorrupt">,
+  data: string,
+  nowMs: number
+): Promise<void> {
+  try {
+    await platform.backupCorrupt?.(data, nowMs);
+  } catch {
+    // The backup is best-effort; the caller still needs a bootable state.
+  }
+}
+
+async function loadMostRecentBackup(
+  platform: Pick<Platform, "edition" | "listBackups" | "loadBackup">,
+  nowMs: number
+): Promise<SaveDecodeResult | undefined> {
+  let names: readonly string[];
+
+  try {
+    names = (await platform.listBackups?.()) ?? [];
+  } catch {
+    return undefined;
+  }
+
+  for (const name of names) {
+    let data: string | null;
+
+    try {
+      data = (await platform.loadBackup?.(name)) ?? null;
+    } catch {
+      continue;
+    }
+
+    if (data === null) {
+      continue;
+    }
+
+    const decoded = deserializeGameState(data, { edition: platform.edition, nowMs });
+
+    if (!decoded.reset) {
+      return {
+        ...decoded,
+        repaired: true,
+        warnings: ["save restored from backup", ...decoded.warnings]
+      };
+    }
+  }
+
+  return undefined;
 }
 
 function parseJson(
@@ -504,13 +607,13 @@ function repairNumber(
   return fallback;
 }
 
-function repairString(
+function repairLanguage(
   value: unknown,
   fallback: string,
   path: string,
   mark: (path: string) => void
 ): string {
-  if (typeof value === "string") {
+  if (value === "en" || value === "pl") {
     return value;
   }
 

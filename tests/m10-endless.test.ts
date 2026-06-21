@@ -44,8 +44,8 @@ describe("M10 endless ITERATION", () => {
     expect(softened.log10()).toBeCloseTo(39.5);
     expect(applyIterationSoftcap(rate, 1).toString()).toBe(rate.toString());
     expect(getIterationSoftcapThreshold(2).toString()).toBe("1e65");
-    expect(calculateIterationCostMultiplier(3)).toBe(10 ** 15);
-    expect(calculateIterationProductionMultiplier(2)).toBe(2 ** 6);
+    expect(calculateIterationCostMultiplier(3).toNumber()).toBeCloseTo(10 ** 2.7);
+    expect(calculateIterationProductionMultiplier(2).toNumber()).toBeCloseTo(2 ** 6);
   });
 
   it("performs the third reset layer and grants 2^k Paradox", () => {
@@ -62,9 +62,17 @@ describe("M10 endless ITERATION", () => {
     state.res.money = Big.fromNumber(456);
     state.owned.equityPerks.add("q_board_seat");
     state.owned.paradoxItems.add("x_theme_glitch");
+    state.owned.paradoxItems.add("x_rule_slot_1");
     state.owned.paradoxItems.add("x_start_insight");
     state.automation.autoRewrite = { enabled: true };
+    state.prestige.rewrites = 4;
     state.stats[ITERATION_HOLD_STAT] = PRESTIGE.ITER_HOLD_S;
+    state.stats["projects.started"] = 3;
+    state.stats["project.started.p_landing"] = 2;
+    state.stats["stats.locRate.sample.0"] = Big.fromNumber(10);
+    state.stats["stats.locRate.sampleCount"] = 1;
+    state.stats["stats.locRate.sampleIndex"] = 0;
+    state.stats["stats.locRate.lastSampleAt"] = 120;
     cache.locRate = getIterationSoftcapThreshold(2);
 
     const preview = createIterationPreview(state, cache);
@@ -79,11 +87,21 @@ describe("M10 endless ITERATION", () => {
     expect(state.res.insight.toNumber()).toBe(10);
     expect(state.res.loc.eq0()).toBe(true);
     expect(state.res.money.eq0()).toBe(true);
+    expect(state.prestige.rewrites).toBe(0);
+    expect(state.stats["projects.started"]).toBeUndefined();
+    expect(state.stats["project.started.p_landing"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sample.0"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sampleCount"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sampleIndex"]).toBeUndefined();
+    expect(state.stats["stats.locRate.lastSampleAt"]).toBeUndefined();
     expect(state.owned.equityPerks.size).toBe(0);
+    expect(state.owned.generators.g_autocomplete).toBe(1);
     expect(state.owned.paradoxItems.has("x_theme_glitch")).toBe(true);
     expect(state.automation.autoRewrite?.enabled).toBe(true);
     expect(state.story.flags.has("prestige.runModifier.active.no_click")).toBe(false);
     expect(state.story.act).toBe(9);
+    expect(tickAutomation(state, cache, 1)).toBe(false);
+    expect(state.prestige.rewrites).toBe(0);
   });
 
   it("applies iteration cost to agent and project build costs only", () => {

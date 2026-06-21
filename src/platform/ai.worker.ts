@@ -22,6 +22,7 @@ const BUNDLED_MODEL_URL = import.meta.env.DEV
   : new URL(`../models/${MODEL_FILE}`, self.location.href).href;
 const SYSTEM_PROMPT =
   "You are Vibex: a dry, funny senior AI pair-programmer. Answer in 1-3 short sentences, under 60 tokens.";
+const MAX_PROMPT_CHARS = 1000;
 
 type LoadModelOptions = NonNullable<Parameters<Wllama["loadModel"]>[1]>;
 type LocalModelFile = Blob & { readonly name: string };
@@ -50,7 +51,7 @@ async function handleRequest(message: WorkerRequest): Promise<void> {
           role: "system",
           content: `${SYSTEM_PROMPT} Current in-game model era: ${message.eraModel}.`
         },
-        { role: "user", content: message.prompt }
+        { role: "user", content: clampPrompt(message.prompt) }
       ]
     });
     post({
@@ -74,7 +75,10 @@ async function ensureModel(): Promise<void> {
     return;
   }
 
-  loading ??= loadModel();
+  loading ??= loadModel().catch((error: unknown) => {
+    loading = undefined;
+    throw error;
+  });
   await loading;
 }
 
@@ -162,4 +166,8 @@ function getWllama(): Wllama {
 
 function post(message: WorkerResponse): void {
   self.postMessage(message);
+}
+
+function clampPrompt(prompt: string): string {
+  return prompt.length <= MAX_PROMPT_CHARS ? prompt : prompt.slice(0, MAX_PROMPT_CHARS);
 }

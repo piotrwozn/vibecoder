@@ -20,6 +20,11 @@ export type StoryEffect =
       readonly kind: "hypeAdd";
     }
   | {
+      readonly amount: number;
+      readonly flag: string;
+      readonly kind: "hypeAddOnce";
+    }
+  | {
       readonly act: StoryAct;
       readonly kind: "setAct";
     }
@@ -54,6 +59,7 @@ export interface StoryEvent {
   readonly effects?: readonly StoryEffect[];
   readonly id: string;
   readonly once?: boolean;
+  readonly repeatChoices?: boolean;
   readonly speaker: string;
   readonly textKey: string;
   readonly trigger: Condition;

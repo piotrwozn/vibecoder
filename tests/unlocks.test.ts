@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Big } from "../src/core/bignum";
 import { createDefaultGameState } from "../src/core/state";
 import { calculateDebtD0 } from "../src/systems/debt";
+import { getActEnteredAtStatKey } from "../src/systems/story";
 import { checkCondition, getUnlockVisibility } from "../src/systems/unlocks";
 
 describe("M5 unlock conditions", () => {
@@ -48,5 +49,17 @@ describe("M5 unlock conditions", () => {
 
     expect(getUnlockVisibility(state, { moneyGte: "1e3" })).toBe("unlocked");
     expect(getUnlockVisibility(state, { any: [{ era: 9 }, { moneyGte: "1e3" }] })).toBe("unlocked");
+  });
+
+  it("measures timeInActMinGte from the current act entry", () => {
+    const state = createDefaultGameState();
+    state.story.act = 3;
+    state.meta.playtimeS = 10 * 60 * 60;
+    state.stats[getActEnteredAtStatKey(3)] = state.meta.playtimeS;
+
+    expect(checkCondition(state, { timeInActMinGte: 1 })).toBe(false);
+
+    state.meta.playtimeS += 60;
+    expect(checkCondition(state, { timeInActMinGte: 1 })).toBe(true);
   });
 });

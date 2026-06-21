@@ -3,6 +3,7 @@ import type { GameState } from "../core/state";
 import { REFACTOR_COMPLETED_STAT, type Condition } from "../data/conditions";
 import { calculateDebtRatio } from "./debt";
 import { calculateAvailableInsightGain } from "./prestige";
+import { getActEnteredAtStatKey } from "./story";
 
 export type UnlockVisibility = "hidden" | "unlocked";
 export type { Condition };
@@ -132,7 +133,7 @@ export function checkCondition(state: GameState, condition: Condition): boolean 
 
   if (
     condition.timeInActMinGte !== undefined &&
-    state.meta.playtimeS < condition.timeInActMinGte * SECONDS_PER_MINUTE
+    state.meta.playtimeS - getActEnteredAtS(state) < condition.timeInActMinGte * SECONDS_PER_MINUTE
   ) {
     return false;
   }
@@ -151,6 +152,10 @@ export function getUnlockVisibility(state: GameState, condition?: Condition): Un
 function getNumericStat(state: GameState, key: string): number {
   const value = state.stats[key];
   return typeof value === "number" ? value : 0;
+}
+
+function getActEnteredAtS(state: GameState): number {
+  return getNumericStat(state, getActEnteredAtStatKey(state.story.act));
 }
 
 function getTotalGeneratorCount(state: GameState): number {

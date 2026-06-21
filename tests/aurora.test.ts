@@ -5,6 +5,7 @@ import { createDefaultGameState, type GameState } from "../src/core/state";
 import {
   AURORA_HOSTING_PER_SERVER_S,
   AURORA_PHASES,
+  AURORA_REQUIRED_DEDICATED_SERVERS,
   AURORA_SEED_AVAILABLE_FLAG,
   AURORA_SERVER_COMPONENT_IDS
 } from "../src/data/aurora";
@@ -135,6 +136,18 @@ describe("M17 Aurora Project", () => {
     expect(state.aurora.billingPaused).toBe(true);
     expect(tickAurora(state, 1)).toBe(false);
     expect(state.aurora.phaseElapsedS).toBe(beforeElapsed);
+  });
+
+  it("caps rented Aurora hosts at the required quorum", () => {
+    const { state } = createFullState();
+    unlockForAurora(state);
+
+    for (let index = 0; index < AURORA_REQUIRED_DEDICATED_SERVERS; index += 1) {
+      expect(rentAuroraHost(state).ok).toBe(true);
+    }
+
+    expect(rentAuroraHost(state)).toMatchObject({ ok: false, reason: "servers" });
+    expect(state.aurora.hostedServers).toBe(AURORA_REQUIRED_DEDICATED_SERVERS);
   });
 
   it("runs Aurora progress once a phase is funded and enough servers are available", () => {

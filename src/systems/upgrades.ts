@@ -17,10 +17,7 @@ export interface BuyUpgradeResult {
 export type UpgradeState = "available" | "bought" | "locked" | "unaffordable";
 
 export function getUpgradeCost(state: GameState, upgrade: UpgradeDefinition): Big {
-  return Big.mul(
-    upgrade.cost,
-    Big.fromNumber(calculateIterationCostMultiplier(state.prestige.iteration))
-  );
+  return Big.mul(upgrade.cost, calculateIterationCostMultiplier(state.prestige.iteration));
 }
 
 export function buyUpgrade(

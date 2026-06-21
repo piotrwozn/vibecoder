@@ -77,9 +77,11 @@ export function startProject(
   const activeBuild = createActiveBuild(state, project, cache, cost);
   Big.subIn(state.res.loc, cost);
   state.projects.active.push(activeBuild);
-  state.stats[PROJECT_STARTED_STAT] = getNumericStat(state, PROJECT_STARTED_STAT) + 1;
-  state.stats[getProjectStartedStatKey(project.id)] =
-    getNumericStat(state, getProjectStartedStatKey(project.id)) + 1;
+  if (project.kind === "standard" || project.kind === "unlock") {
+    state.stats[PROJECT_STARTED_STAT] = getNumericStat(state, PROJECT_STARTED_STAT) + 1;
+    state.stats[getProjectStartedStatKey(project.id)] =
+      getNumericStat(state, getProjectStartedStatKey(project.id)) + 1;
+  }
 
   bus?.emit("res:changed", "loc");
   return { cost, id: projectId, ok: true };
@@ -128,7 +130,7 @@ export function getProjectCost(
   cache: DerivedCache,
   state?: GameState
 ): Big {
-  const iterationCost = Big.fromNumber(cache.costs.projectMultiplier);
+  const iterationCost = cache.costs.projectMultiplier;
 
   switch (project.kind) {
     case "open_source":

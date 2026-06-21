@@ -156,6 +156,25 @@ describe("M7 story engine", () => {
     expectEndingChoice("fork", "achievement.ending_fork");
   });
 
+  it("can re-arm the finale choice to earn every ending achievement in one save", () => {
+    const state = createDefaultGameState();
+    state.meta.edition = "full";
+    state.story.act = 5;
+    state.era = 10;
+    state.lifetime.loc = Big.from("1e35");
+
+    advanceStory(state);
+    expect(chooseStoryOption(state, "a5_12_final_choice", "merge").ok).toBe(true);
+    advanceStory(state);
+    expect(chooseStoryOption(state, "a5_12_final_choice", "unplug").ok).toBe(true);
+    advanceStory(state);
+    expect(chooseStoryOption(state, "a5_12_final_choice", "fork").ok).toBe(true);
+
+    expect(state.story.flags.has("achievement.ending_merge")).toBe(true);
+    expect(state.story.flags.has("achievement.ending_unplug")).toBe(true);
+    expect(state.story.flags.has("achievement.ending_fork")).toBe(true);
+  });
+
   it("holds the Act 2 agent-bank beat until the larger agent and shipping milestone", () => {
     const state = createDefaultGameState();
     state.meta.edition = "full";
@@ -182,6 +201,23 @@ describe("M7 story engine", () => {
     expect(getUnreadStoryCount(state)).toBe(1);
     expect(markStoryInboxRead(state, "archive")).toBe(true);
     expect(getUnreadStoryCount(state)).toBe(0);
+  });
+
+  it("grants the a3_02 reject hype reward only once across re-offers", () => {
+    const state = createDefaultGameState();
+    state.meta.edition = "full";
+    state.story.act = 3;
+    state.lifetime.insightSinceExit = PRESTIGE.EXIT_MIN_INSIGHT;
+    advanceStory(state);
+
+    expect(chooseStoryOption(state, "a3_02_takeover_offer", "reject").ok).toBe(true);
+    const hypeAfterFirstReject = state.res.hype;
+
+    advanceStory(state, 30 * 60);
+    expect(getInboxIds(state).filter((id) => id === "a3_02_takeover_offer")).toHaveLength(2);
+    expect(chooseStoryOption(state, "a3_02_takeover_offer", "reject").ok).toBe(true);
+
+    expect(state.res.hype).toBe(hypeAfterFirstReject);
   });
 
   it("counts and clears M14 unread channels independently", () => {

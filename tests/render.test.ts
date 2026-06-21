@@ -187,6 +187,67 @@ describe("M13 desktop window interactions", () => {
     expect(movedFrame).toEqual({ x: 0, y: 0 });
     expect(windowNode?.classList.contains("desktop-window--dragging")).toBe(false);
   });
+
+  it("does not snap an active drag back during a render update", () => {
+    installDom();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 900 });
+
+    const root = document.createElement("div");
+    const app = mountApp(root, createDevFloorView(false), createActions());
+    const windowNode = root.querySelector<HTMLElement>('.desktop-window[data-app-id="agents"]');
+    const titlebar = windowNode?.querySelector<HTMLElement>(".desktop-window__titlebar");
+
+    dispatchPointer(titlebar!, "pointerdown", { clientX: 140, clientY: 180 });
+    dispatchPointer(window, "pointermove", { clientX: 240, clientY: 280 });
+    const liveTransform = windowNode?.style.transform;
+
+    app.updateDevFloor(createDevFloorView(false));
+
+    expect(windowNode?.style.transform).toBe(liveTransform);
+    dispatchPointer(window, "pointerup", { clientX: 240, clientY: 280 });
+  });
+
+  it("hides stale generator, upgrade, and product rows after prestige views empty out", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.upgrades.open = true;
+    view.ui.windows.upgrades.z = 3;
+    view.ui.windows.projects.open = true;
+    view.ui.windows.projects.z = 4;
+    const populated = {
+      ...view,
+      generators: [createGeneratorRowView("g_autocomplete")],
+      projects: {
+        ...view.projects,
+        portfolio: [createProductView("p_landing.1")]
+      },
+      upgrades: [createUpgradeRowView("u_better_prompts")]
+    };
+    const app = mountApp(root, populated, createActions());
+
+    expect(root.querySelector('.agent-row[data-generator-id="g_autocomplete"]')).not.toBeNull();
+    expect(root.querySelector('.upgrade-row[data-upgrade-id="u_better_prompts"]')).not.toBeNull();
+    expect(root.querySelector('.product-row[data-product-id="p_landing.1"]')).not.toBeNull();
+
+    app.updateDevFloor({
+      ...populated,
+      generators: [],
+      projects: { ...populated.projects, portfolio: [] },
+      upgrades: []
+    });
+
+    expect(
+      root.querySelector<HTMLElement>('.agent-row[data-generator-id="g_autocomplete"]')?.hidden
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLElement>('.upgrade-row[data-upgrade-id="u_better_prompts"]')?.hidden
+    ).toBe(true);
+    expect(
+      root.querySelector<HTMLElement>('.product-row[data-product-id="p_landing.1"]')?.hidden
+    ).toBe(true);
+  });
 });
 
 describe("M4 Settings rendering", () => {
@@ -1205,6 +1266,48 @@ function createActions(): AppActions {
     tutorialNext(): void {},
     tutorialSkip(): void {},
     wipeSave(): void {}
+  };
+}
+
+function createGeneratorRowView(id: string): DevFloorView["generators"][number] {
+  return {
+    buy1Title: "",
+    buy10Title: "",
+    buyMaxTitle: "",
+    canBuy1: false,
+    canBuy10: false,
+    canBuyMax: false,
+    cost1: "$1",
+    cost10: "$10",
+    id,
+    locked: false,
+    milestoneLabel: "0/10",
+    milestoneProgress: 0,
+    name: id,
+    owned: "1",
+    rate: "1/s"
+  };
+}
+
+function createUpgradeRowView(id: string): DevFloorView["upgrades"][number] {
+  return {
+    canBuy: false,
+    cost: "$1",
+    effect: "Effect",
+    id,
+    name: id,
+    state: "available",
+    stateLabel: "Available"
+  };
+}
+
+function createProductView(id: string): DevFloorView["projects"]["portfolio"][number] {
+  return {
+    canFix: false,
+    id,
+    name: id,
+    revenue: "$1/s",
+    status: "OK"
   };
 }
 

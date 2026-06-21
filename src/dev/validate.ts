@@ -56,13 +56,58 @@ function validatePackage(): void {
 }
 
 function validateI18n(): void {
-  const messages = JSON.parse(readText("src/i18n/en.json")) as Record<string, unknown>;
+  const en = JSON.parse(readText("src/i18n/en.json")) as Record<string, unknown>;
+  const pl = JSON.parse(readText("src/i18n/pl.json")) as Record<string, unknown>;
 
-  for (const [key, value] of Object.entries(messages)) {
-    if (typeof value !== "string") {
-      fail(`i18n key ${key} must be a string`);
+  for (const [locale, messages] of [
+    ["en", en],
+    ["pl", pl]
+  ] as const) {
+    for (const [key, value] of Object.entries(messages)) {
+      if (typeof value !== "string") {
+        fail(`i18n ${locale} key ${key} must be a string`);
+      }
     }
   }
+
+  for (const [key, value] of Object.entries(en)) {
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    const translated = pl[key];
+    if (translated === undefined) {
+      continue;
+    }
+
+    if (typeof translated !== "string") {
+      continue;
+    }
+
+    const enPlaceholders = getPlaceholders(value);
+    const plPlaceholders = getPlaceholders(translated);
+    if (!sameSet(enPlaceholders, plPlaceholders)) {
+      fail(`i18n pl key ${key} placeholders differ from en`);
+    }
+  }
+}
+
+function getPlaceholders(value: string): Set<string> {
+  return new Set(Array.from(value.matchAll(/\{([a-zA-Z0-9_]+)\}/g), (match) => match[1] ?? ""));
+}
+
+function sameSet(left: ReadonlySet<string>, right: ReadonlySet<string>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function validateLayering(tsFiles: readonly string[]): void {

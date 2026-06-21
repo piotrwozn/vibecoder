@@ -116,6 +116,7 @@ export const ACT5_EVENTS: readonly StoryEvent[] = [
     channel: "system",
     speaker: "omega",
     textKey: "story.a5_12_final_choice",
+    repeatChoices: true,
     choices: [
       {
         id: "merge",

@@ -35,7 +35,7 @@ export const ACT3_EVENTS: readonly StoryEvent[] = [
         textKey: "story.a3_02_takeover_offer.choice.reject",
         effects: [
           { kind: "setFlag", flag: "exit_unlocked" },
-          { kind: "hypeAdd", amount: 2 },
+          { kind: "hypeAddOnce", amount: 2, flag: "a3_02_reject_hype_claimed" },
           { kind: "snoozeEvent", seconds: 30 * 60 },
           { kind: "unlock", id: "exit" }
         ]

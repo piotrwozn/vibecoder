@@ -27,12 +27,15 @@ interface PendingRequest {
   readonly resolve: (value: string | undefined) => void;
 }
 
+const MAX_PROMPT_CHARS = 1000;
+
 export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAiClient {
   let nextId = 1;
   let worker: Worker | undefined;
   let status: VibexAiStatus = "idle";
   let errorMessage: string | undefined;
   let progress: VibexAiProgress | undefined;
+  let disposed = false;
   const pending = new Map<number, PendingRequest>();
 
   const ensureWorker = (): Worker => {
@@ -85,6 +88,8 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
       errorMessage = "Vibex AI worker failed";
       progress = undefined;
       rejectPending(new Error("Vibex AI worker failed"));
+      worker?.terminate();
+      worker = undefined;
       onChange();
     });
 
@@ -98,11 +103,23 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
     });
 
   return {
+    dispose(): void {
+      disposed = true;
+      rejectPending(new Error("Vibex AI disposed"));
+      worker?.terminate();
+      worker = undefined;
+      status = "idle";
+      errorMessage = undefined;
+      progress = undefined;
+      onChange();
+    },
+
     async downloadModel(): Promise<boolean> {
       if (status === "busy" || status === "downloading") {
         return false;
       }
 
+      disposed = false;
       const id = nextId;
       nextId += 1;
       status = "downloading";
@@ -116,6 +133,10 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
         onChange();
         return true;
       } catch (error) {
+        if (disposed) {
+          return false;
+        }
+
         status = "error";
         errorMessage = error instanceof Error ? error.message : "Vibex AI download failed";
         progress = undefined;
@@ -129,13 +150,14 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
         return undefined;
       }
 
+      disposed = false;
       const id = nextId;
       nextId += 1;
       status = "busy";
       onChange();
 
       try {
-        return await send({ eraModel, id, prompt, type: "generate" });
+        return await send({ eraModel, id, prompt: clampPrompt(prompt), type: "generate" });
       } catch {
         return undefined;
       } finally {
@@ -163,5 +185,9 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
     }
 
     pending.clear();
+  }
+
+  function clampPrompt(prompt: string): string {
+    return prompt.length <= MAX_PROMPT_CHARS ? prompt : prompt.slice(0, MAX_PROMPT_CHARS);
   }
 }

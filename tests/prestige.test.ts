@@ -72,6 +72,12 @@ describe("M8 prestige REWRITE", () => {
       shippedAtS: 10
     });
     state.stats[getBugSpawnedAtStatKey("p_llama_todo.1")] = 123;
+    state.stats["projects.started"] = 3;
+    state.stats["project.started.p_landing"] = 2;
+    state.stats["stats.locRate.sample.0"] = Big.fromNumber(10);
+    state.stats["stats.locRate.sampleCount"] = 1;
+    state.stats["stats.locRate.sampleIndex"] = 0;
+    state.stats["stats.locRate.lastSampleAt"] = 120;
     state.story.seen.add("a1_08_rewrite_intro");
 
     recomputeDerivedCache(state, cache);
@@ -102,6 +108,12 @@ describe("M8 prestige REWRITE", () => {
     expect(state.projects.active).toHaveLength(0);
     expect(state.projects.portfolio).toHaveLength(0);
     expect(state.stats[getBugSpawnedAtStatKey("p_llama_todo.1")]).toBeUndefined();
+    expect(state.stats["projects.started"]).toBeUndefined();
+    expect(state.stats["project.started.p_landing"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sample.0"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sampleCount"]).toBeUndefined();
+    expect(state.stats["stats.locRate.sampleIndex"]).toBeUndefined();
+    expect(state.stats["stats.locRate.lastSampleAt"]).toBeUndefined();
     expect(state.projects.board.length).toBeGreaterThan(0);
     expect(state.owned.upgrades.size).toBe(0);
     expect(state.owned.research.has("r_t1")).toBe(true);
@@ -132,7 +144,7 @@ describe("M8 prestige REWRITE", () => {
 
     expect(state.res.insight.eq0()).toBe(true);
     expect(cache.multipliers.insightNodes).toBeCloseTo(1.25);
-    expect(cache.costs.generatorMultiplier).toBeCloseTo(0.85);
+    expect(cache.costs.generatorMultiplier.toNumber()).toBeCloseTo(0.85);
     expect(cache.locRate.toNumber()).toBeCloseTo(12.5);
     expect(cache.generatorEntries.g_autocomplete?.cost1.toNumber()).toBeCloseTo(
       getGeneratorCost(autocomplete, 10, 1, 0.85).toNumber()
@@ -146,6 +158,10 @@ describe("M8 prestige REWRITE", () => {
     state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST - 1);
     expect(performRewrite(state, cache)).toMatchObject({ ok: false, reason: "threshold" });
     expect(state.prestige.rewrites).toBe(0);
+
+    state.prestige.rewrites = 1;
+    state.lifetime.insightSinceExit = 0;
+    expect(calculateRewriteRequirement(state)).toBe(PRESTIGE.REWRITE_MIN_FIRST);
 
     state.prestige.rewrites = 1;
     state.lifetime.insightSinceExit = 20;

@@ -3,555 +3,117 @@ import {
   APP_IDS,
   type AppId,
   type SceneId,
-  type TutorialStep,
   type WindowFrame,
   type WindowState
 } from "../core/ui-state";
 import { el, setText, text } from "./dom";
+import { createAppIcon, getShortcutApp, screenLinks } from "./render/app-icons";
+import { createToasts } from "./render/toasts";
 import { clampWindow, isWindowVisible, type WindowBounds } from "./wm/window-manager";
+import type {
+  ActiveBuildView,
+  AchievementCardView,
+  AchievementsView,
+  AppActions,
+  AppShell,
+  AppearanceView,
+  AuroraNodeView,
+  AuroraView,
+  AutomationToggleView,
+  CommsChannel,
+  CommsChoiceView,
+  CommsMessageView,
+  CommsView,
+  ComputeBreakdownView,
+  ComputeRowView,
+  DevFloorView,
+  EndingModalView,
+  EquityPerkView,
+  ExitView,
+  FullGameView,
+  GeneratorRowView,
+  HardwareRowView,
+  InsightNodeView,
+  ModelView,
+  OfflineView,
+  ParadoxItemView,
+  ParadoxView,
+  ProductView,
+  ProjectOfferView,
+  ProjectsView,
+  RefactorView,
+  ResearchNodeView,
+  ResearchView,
+  ResourceView,
+  RewriteView,
+  RunModifierView,
+  SettingsNotation,
+  SettingsView,
+  StatsRowView,
+  StatsView,
+  ToastOptions,
+  ToastTone,
+  TutorialView,
+  UpgradeRowView,
+  VibexCodeLineView,
+  VibexView
+} from "./render/view-types";
 
-export type GeneratorBuyQuantity = 1 | 10 | "max";
-export interface PromptClickView {
-  readonly loc: string;
-}
-
-export interface VibexSendView {
-  readonly committed: boolean;
-  readonly loc: string;
-  readonly pendingResponse?: Promise<string>;
-  readonly prompt: string;
-  readonly response: string;
-}
-
-export type VibexPromptSource = "auto" | "manual";
-
-export interface VibexFileView {
-  readonly active: boolean;
-  readonly id: string;
-  readonly label: string;
-}
-
-export interface VibexCodeLineView {
-  readonly id: string;
-  readonly text: string;
-}
-
-export interface VibexView {
-  readonly aiCanDownload: boolean;
-  readonly aiEnabled: boolean;
-  readonly aiModelSize: string;
-  readonly aiProgress: string;
-  readonly aiStatus: string;
-  readonly cannedPrompt: string;
-  readonly cannedResponse: string;
-  readonly codeLines: readonly VibexCodeLineView[];
-  readonly codeSequence: number;
-  readonly files: readonly VibexFileView[];
-}
-
-interface ScreenLink {
-  readonly appId: AppId;
-  readonly iconPath: string;
-  readonly key: string;
-  readonly shortcut?: string;
-}
-
-type CommsChannel = "chat" | "mail" | "feed";
-type SettingsNotation = "sci" | "suffix";
-
-export interface ResourceView {
-  readonly compute: string;
-  readonly hype: string;
-  readonly loc: string;
-  readonly locRate: string;
-  readonly locRateTooltip: string;
-  readonly money: string;
-  readonly moneyRate: string;
-  readonly moneyRateTooltip: string;
-  readonly rp: string;
-}
-
-export interface ModelView {
-  readonly canBuy: boolean;
-  readonly current: string;
-  readonly maxed: boolean;
-  readonly nextCost: string;
-  readonly nextModel: string;
-  readonly status: string;
-}
-
-export interface GeneratorRowView {
-  readonly buy1Title: string;
-  readonly buy10Title: string;
-  readonly buyMaxTitle: string;
-  readonly canBuy1: boolean;
-  readonly canBuy10: boolean;
-  readonly canBuyMax: boolean;
-  readonly cost1: string;
-  readonly cost10: string;
-  readonly id: string;
-  readonly locked: boolean;
-  readonly milestoneLabel: string;
-  readonly milestoneProgress: number;
-  readonly name: string;
-  readonly owned: string;
-  readonly rate: string;
-}
-
-export interface ComputeRowView {
-  readonly id: string;
-  readonly name: string;
-  readonly used: string;
-}
-
-export interface ComputeBreakdownView {
-  readonly cap: string;
-  readonly remaining: string;
-  readonly rows: readonly ComputeRowView[];
-  readonly used: string;
-}
-
-export interface HardwareRowView {
-  readonly active: boolean;
-  readonly canBuy: boolean;
-  readonly capAdd: string;
-  readonly cost: string;
-  readonly id: string;
-  readonly isEnclosure: boolean;
-  readonly levelLabel: string;
-  readonly name: string;
-  readonly phase: "pc" | "server";
-  readonly powerCost: string;
-  readonly psuRequirement: string;
-  readonly slot: string;
-  readonly slotLabel: string;
-}
-
-export interface UpgradeRowView {
-  readonly canBuy: boolean;
-  readonly cost: string;
-  readonly effect: string;
-  readonly id: string;
-  readonly name: string;
-  readonly state: "available" | "bought" | "locked" | "unaffordable";
-  readonly stateLabel: string;
-}
-
-export interface AutomationToggleView {
-  readonly detail: string;
-  readonly disabled: boolean;
-  readonly enabled: boolean;
-  readonly id: string;
-  readonly label: string;
-}
-
-export interface ProjectOfferView {
-  readonly buildTime: string;
-  readonly canStart: boolean;
-  readonly cost: string;
-  readonly id: string;
-  readonly name: string;
-  readonly payout: string;
-  readonly revenue: string;
-  readonly tag: string;
-}
-
-export interface ActiveBuildView {
-  readonly id: string;
-  readonly name: string;
-  readonly progress: number;
-  readonly remaining: string;
-}
-
-export interface ProductView {
-  readonly canFix: boolean;
-  readonly id: string;
-  readonly name: string;
-  readonly revenue: string;
-  readonly status: string;
-}
-
-export interface RefactorView {
-  readonly buildTime: string;
-  readonly canStart: boolean;
-  readonly cost: string;
-  readonly debt: string;
-  readonly effect: string;
-}
-
-export interface ProjectsView {
-  readonly activeBuilds: readonly ActiveBuildView[];
-  readonly incomeRate: string;
-  readonly offers: readonly ProjectOfferView[];
-  readonly portfolio: readonly ProductView[];
-  readonly refactor: RefactorView;
-}
-
-export interface AuroraNodeView {
-  readonly id: string;
-  readonly name: string;
-  readonly state: "active" | "complete" | "locked";
-}
-
-export interface AuroraView {
-  readonly availableServers: string;
-  readonly canDedicate: boolean;
-  readonly canFund: boolean;
-  readonly canHost: boolean;
-  readonly completed: boolean;
-  readonly costLoc: string;
-  readonly costMoney: string;
-  readonly dedicatedServers: string;
-  readonly hostedServers: string;
-  readonly hostingRate: string;
-  readonly nodes: readonly AuroraNodeView[];
-  readonly phaseName: string;
-  readonly progress: number;
-  readonly progressLabel: string;
-  readonly readyServers: string;
-  readonly readyServerCount: number;
-  readonly requiredServers: string;
-  readonly statusLabel: string;
-  readonly timeRemaining: string;
-  readonly unlocked: boolean;
-}
-
-export interface ResearchNodeView {
-  readonly branch: string;
-  readonly canBuy: boolean;
-  readonly cost: string;
-  readonly effect: string;
-  readonly id: string;
-  readonly name: string;
-  readonly state: "available" | "bought" | "locked" | "unaffordable";
-  readonly stateLabel: string;
-  readonly tier: number;
-}
-
-export interface ResearchView {
-  readonly nodes: readonly ResearchNodeView[];
-  readonly rp: string;
-}
-
-export interface InsightNodeView {
-  readonly branch: string;
-  readonly canBuy: boolean;
-  readonly cost: string;
-  readonly effect: string;
-  readonly id: string;
-  readonly name: string;
-  readonly state: "available" | "bought" | "locked" | "unaffordable";
-  readonly stateLabel: string;
-  readonly tier: number;
-}
-
-export interface RewritePreviewView {
-  readonly afterInsight: string;
-  readonly booting: boolean;
-  readonly canRewrite: boolean;
-  readonly currentMultiplier: string;
-  readonly gain: string;
-  readonly lostAgents: string;
-  readonly lostHardware: string;
-  readonly lostLoc: string;
-  readonly lostMoney: string;
-  readonly lostProducts: string;
-  readonly lostUpgrades: string;
-  readonly requiredInsight: string;
-  readonly speedup: string;
-  readonly startEra: string;
-  readonly startGenerators: string;
-  readonly startMoney: string;
-  readonly targetMultiplier: string;
-}
-
-export interface EquityPerkView {
-  readonly canBuy: boolean;
-  readonly cost: string;
-  readonly effect: string;
-  readonly id: string;
-  readonly name: string;
-  readonly state: "available" | "bought" | "locked" | "unaffordable";
-  readonly stateLabel: string;
-}
-
-export interface RunModifierView {
-  readonly active: boolean;
-  readonly description: string;
-  readonly id: string;
-  readonly name: string;
-  readonly selected: boolean;
-  readonly unlocked: boolean;
-}
-
-export interface ParadoxItemView {
-  readonly canBuy: boolean;
-  readonly cost: string;
-  readonly effect: string;
-  readonly id: string;
-  readonly name: string;
-  readonly state: "available" | "bought" | "locked" | "unaffordable";
-  readonly stateLabel: string;
-}
-
-export interface IterationPreviewView {
-  readonly canIterate: boolean;
-  readonly currentIteration: string;
-  readonly currentMultiplier: string;
-  readonly currentParadox: string;
-  readonly hold: string;
-  readonly locRate: string;
-  readonly nextIteration: string;
-  readonly paradoxAfter: string;
-  readonly paradoxGain: string;
-  readonly softcapThreshold: string;
-  readonly targetMultiplier: string;
-}
-
-export interface ParadoxView {
-  readonly items: readonly ParadoxItemView[];
-  readonly preview: IterationPreviewView;
-  readonly ruleSlots: string;
-  readonly theme: string;
-  readonly unlocked: boolean;
-}
-
-export interface ExitPreviewView {
-  readonly canExit: boolean;
-  readonly currentEquity: string;
-  readonly currentMultiplier: string;
-  readonly equityAfter: string;
-  readonly gain: string;
-  readonly requiredInsight: string;
-  readonly rewardMultiplier: string;
-  readonly targetMultiplier: string;
-  readonly totalInsightEarned: string;
-}
-
-export interface ExitView {
-  readonly perks: readonly EquityPerkView[];
-  readonly preview: ExitPreviewView;
-  readonly runModifiers: readonly RunModifierView[];
-}
-
-export interface RewriteView {
-  readonly exit: ExitView;
-  readonly insight: string;
-  readonly nodes: readonly InsightNodeView[];
-  readonly paradox: ParadoxView;
-  readonly preview: RewritePreviewView;
-}
-
-export interface StatsRowView {
-  readonly id: string;
-  readonly label: string;
-  readonly value: string;
-}
-
-export interface StatsView {
-  readonly lifetimeRows: readonly StatsRowView[];
-  readonly recordsRows: readonly StatsRowView[];
-  readonly runRows: readonly StatsRowView[];
-  readonly sparklineEmpty: boolean;
-  readonly sparklineLabel: string;
-  readonly sparklinePath: string;
-}
-
-export interface AchievementCardView {
-  readonly category: string;
-  readonly description: string;
-  readonly id: string;
-  readonly name: string;
-  readonly status: string;
-  readonly unlocked: boolean;
-}
-
-export interface AchievementsView {
-  readonly bonus: string;
-  readonly cards: readonly AchievementCardView[];
-  readonly unlocked: string;
-}
-
-export interface AppearanceView {
-  readonly ending?: "fork" | "merge" | "unplug";
-  readonly glitch: boolean;
-  readonly reducedFx: boolean;
-  readonly theme?: "crt" | "glitch" | "void";
-}
-
-export interface SettingsView {
-  readonly autosaveS: string;
-  readonly doNotDisturb: boolean;
-  readonly glitch: boolean;
-  readonly localAiCanDownload: boolean;
-  readonly localAiModelSize: string;
-  readonly localAiProgress: string;
-  readonly localAiStatus: string;
-  readonly lang: string;
-  readonly notation: SettingsNotation;
-  readonly reducedFx: boolean;
-  readonly skipIntro: boolean;
-  readonly sound: boolean;
-  readonly vibexLocalAi: boolean;
-  readonly volume: string;
-}
-
-export interface OfflineView {
-  readonly duration: string;
-  readonly hype: string;
-  readonly loc: string;
-  readonly money: string;
-  readonly visible: boolean;
-}
-
-export interface TutorialView {
-  readonly active: boolean;
-  readonly completed: boolean;
-  readonly index: number;
-  readonly step: TutorialStep;
-  readonly total: number;
-}
-
-export interface FullGameView {
-  readonly visible: boolean;
-}
-
-export interface CommsChoiceView {
-  readonly id: string;
-  readonly label: string;
-  readonly selected: boolean;
-}
-
-export interface CommsMessageView {
-  readonly channel: CommsChannel;
-  readonly choices: readonly CommsChoiceView[];
-  readonly entryId: string;
-  readonly eventId: string;
-  readonly lines: readonly string[];
-  readonly pendingChoice: boolean;
-  readonly speaker: string;
-  readonly unread: boolean;
-}
-
-export interface CommsView {
-  readonly messages: readonly CommsMessageView[];
-  readonly quiet: boolean;
-  readonly unreadByChannel: Readonly<Record<CommsChannel, number>>;
-  readonly unreadCount: number;
-}
-
-export interface EndingModalView {
-  readonly choices: readonly CommsChoiceView[];
-  readonly eventId: string;
-  readonly lines: readonly string[];
-  readonly visible: boolean;
-}
-
-export interface DevFloorView {
-  readonly appearance: AppearanceView;
-  readonly achievements: AchievementsView;
-  readonly automation: readonly AutomationToggleView[];
-  readonly aurora: AuroraView;
-  readonly comms: CommsView;
-  readonly compute: ComputeBreakdownView;
-  readonly ending: EndingModalView;
-  readonly flowActive: boolean;
-  readonly flowMeter: string;
-  readonly flowProgress: number;
-  readonly fullGame: FullGameView;
-  readonly generators: readonly GeneratorRowView[];
-  readonly hardware: readonly HardwareRowView[];
-  readonly model: ModelView;
-  readonly offline: OfflineView;
-  readonly projects: ProjectsView;
-  readonly research: ResearchView;
-  readonly rewrite: RewriteView;
-  readonly resources: ResourceView;
-  readonly settings: SettingsView;
-  readonly stats: StatsView;
-  readonly tutorial: TutorialView;
-  readonly ui: ShellUiView;
-  readonly upgrades: readonly UpgradeRowView[];
-  readonly vibex: VibexView;
-}
-
-export interface ShellUiView {
-  readonly bootSeen: boolean;
-  readonly scene: SceneId;
-  readonly windows: Record<AppId, WindowState>;
-}
-
-export interface AppActions {
-  changeGlitch(enabled: boolean): void;
-  changeLang(lang: string): void;
-  buyEra(): void;
-  buyEquityPerk(id: string): void;
-  buyInsightNode(id: string): void;
-  buyParadoxItem(id: string): void;
-  buyResearch(id: string): void;
-  buyGenerator(id: string, quantity: GeneratorBuyQuantity): void;
-  buyHardware(id: string): void;
-  buyUpgrade(id: string): void;
-  changeAutosaveS(seconds: number): void;
-  changeDoNotDisturb(enabled: boolean): void;
-  changeNotation(notation: SettingsNotation): void;
-  changeReducedFx(enabled: boolean): void;
-  changeSkipIntro(enabled: boolean): void;
-  changeSound(enabled: boolean): void;
-  changeVibexLocalAi(enabled: boolean): void;
-  changeVolume(volume: number): void;
-  closeApp(appId: AppId): void;
-  dedicateAuroraServer(): void;
-  dismissOffline(): void;
-  exportSave(): string;
-  focusApp(appId: AppId): void;
-  importSave(payload: string): boolean;
-  maximizeApp(appId: AppId, bounds: WindowBounds): void;
-  minimizeApp(appId: AppId): void;
-  moveApp(appId: AppId, frame: Pick<WindowFrame, "x" | "y">, bounds: WindowBounds): void;
-  openApp(appId: AppId, bounds: WindowBounds): void;
-  fixBug(productId: string): void;
-  playBootSound(): void;
-  playUiClick(): void;
-  prompt(): PromptClickView;
-  sendVibexPrompt(prompt: string, source?: VibexPromptSource): VibexSendView;
-  chooseStoryChoice(eventId: string, choiceId: string): void;
-  exit(): void;
-  iterate(): void;
-  rewrite(): void;
-  resetWindowLayout(): void;
-  replayTutorial(): void;
-  resizeApp(appId: AppId, frame: WindowFrame, bounds: WindowBounds): void;
-  selectRunModifier(id: string | undefined): void;
-  startDesktop(): void;
-  fundAuroraPhase(): void;
-  rentAuroraHost(): void;
-  startProject(id: string): void;
-  startRefactor(): void;
-  toggleAutomation(id: string, enabled: boolean): void;
-  tutorialBack(): void;
-  tutorialNext(): void;
-  tutorialSkip(): void;
-  downloadVibexModel(): void;
-  quitToTitle(): void;
-  resetSettings(): void;
-  wipeSave(): void;
-}
-
-export interface AppShell {
-  addTerminalLog(message: string): void;
-  destroy(): void;
-  showToast(message: string, tone?: ToastTone, options?: ToastOptions): void;
-  updateDevFloor(view: DevFloorView): void;
-  updateFrameAlpha(alpha: number): void;
-}
-
-export type ToastTone = "accent" | "danger" | "gold";
-
-export interface ToastOptions {
-  readonly iconPath?: string;
-  readonly onClick?: () => void;
-}
+export { getAppIconPath } from "./render/app-icons";
+export type {
+  ActiveBuildView,
+  AchievementCardView,
+  AchievementsView,
+  AppActions,
+  AppShell,
+  AppearanceView,
+  AuroraNodeView,
+  AuroraView,
+  AutomationToggleView,
+  CommsChoiceView,
+  CommsMessageView,
+  CommsView,
+  ComputeBreakdownView,
+  ComputeRowView,
+  DevFloorView,
+  EndingModalView,
+  EquityPerkView,
+  ExitPreviewView,
+  ExitView,
+  FullGameView,
+  GeneratorBuyQuantity,
+  GeneratorRowView,
+  HardwareRowView,
+  InsightNodeView,
+  IterationPreviewView,
+  ModelView,
+  OfflineView,
+  ParadoxItemView,
+  ParadoxView,
+  ProductView,
+  ProjectOfferView,
+  ProjectsView,
+  PromptClickView,
+  RefactorView,
+  ResearchNodeView,
+  ResearchView,
+  ResourceView,
+  RewritePreviewView,
+  RewriteView,
+  RunModifierView,
+  SettingsView,
+  ShellUiView,
+  StatsRowView,
+  StatsView,
+  ToastOptions,
+  ToastTone,
+  TutorialView,
+  UpgradeRowView,
+  VibexFileView,
+  VibexPromptSource,
+  VibexSendView,
+  VibexView
+} from "./render/view-types";
 
 interface ResourceCounterNodes {
   readonly root: HTMLElement;
@@ -963,125 +525,9 @@ interface TerminalParticle {
   readonly text: Text;
 }
 
-interface ToastPool {
-  readonly root: HTMLElement;
-  readonly show: (message: string, tone: ToastTone, options?: ToastOptions) => void;
-}
-
-interface ToastNode {
-  onClick: (() => void) | undefined;
-  readonly icon: HTMLElement;
-  readonly root: HTMLButtonElement;
-  readonly text: Text;
-}
-
 const TERMINAL_LOG_CAPACITY = 200;
 const TERMINAL_LOG_RATE_LIMIT = 10;
 const CLICK_PARTICLE_POOL_SIZE = 10;
-const TOAST_POOL_SIZE = 3;
-
-const appIconSources: Partial<Record<AppId, string>> = {
-  achievements: new URL("../../images/app-icons/achievements.png", import.meta.url).href,
-  agents: new URL("../../images/app-icons/agents.png", import.meta.url).href,
-  chat: new URL("../../images/app-icons/chat.png", import.meta.url).href,
-  feed: new URL("../../images/app-icons/feed.png", import.meta.url).href,
-  hardware: new URL("../../images/app-icons/hardware.png", import.meta.url).href,
-  mail: new URL("../../images/app-icons/mail.png", import.meta.url).href,
-  projects: new URL("../../images/app-icons/projects.png", import.meta.url).href,
-  research: new URL("../../images/app-icons/research.png", import.meta.url).href,
-  rewrite: new URL("../../images/app-icons/rewrite.png", import.meta.url).href,
-  settings: new URL("../../images/app-icons/settings.png", import.meta.url).href,
-  stats: new URL("../../images/app-icons/stats.png", import.meta.url).href,
-  upgrades: new URL("../../images/app-icons/upgrades.png", import.meta.url).href,
-  vibex: new URL("../../images/app-icons/vibex.png", import.meta.url).href
-};
-
-const screenLinks: readonly ScreenLink[] = [
-  {
-    appId: "vibex",
-    key: "ui.app.vibex",
-    shortcut: "1",
-    iconPath: "M5 5h14v10H5z M8 19h8 M10 15v4 M8 9l2 2-2 2 M12 13h4"
-  },
-  {
-    appId: "agents",
-    key: "ui.app.agents",
-    shortcut: "2",
-    iconPath: "M4 6h16v3H4z M4 11h10v3H4z M4 16h16v2H4z"
-  },
-  {
-    appId: "hardware",
-    key: "ui.app.hardware",
-    shortcut: "3",
-    iconPath:
-      "M5 17h14 M7 7h10v8H7z M9 3v4 M15 3v4 M9 15v4 M15 15v4 M3 9h4 M17 9h4 M3 13h4 M17 13h4"
-  },
-  {
-    appId: "upgrades",
-    key: "ui.app.upgrades",
-    shortcut: "4",
-    iconPath: "M12 4v16 M5 11l7-7 7 7 M6 20h12"
-  },
-  {
-    appId: "projects",
-    key: "ui.app.projects",
-    shortcut: "5",
-    iconPath: "M4 5h7l2 2h7v12H4z"
-  },
-  {
-    appId: "aurora",
-    key: "ui.app.aurora",
-    iconPath:
-      "M12 3l2.4 5.1 5.6.7-4.1 3.9 1 5.5L12 15.5 7.1 18.2l1-5.5L4 8.8l5.6-.7z M12 8v4 M12 15h.01"
-  },
-  {
-    appId: "research",
-    key: "ui.app.research",
-    shortcut: "6",
-    iconPath: "M12 3a4 4 0 0 0-2 7.46V13h4v-2.54A4 4 0 0 0 12 3z M9 16h6 M10 20h4"
-  },
-  {
-    appId: "rewrite",
-    key: "ui.app.rewrite",
-    iconPath: "M6 7h10l-3-3 M16 17H6l3 3 M17 8a6 6 0 0 1-6 10 M7 16A6 6 0 0 1 13 6"
-  },
-  {
-    appId: "stats",
-    key: "ui.app.stats",
-    iconPath: "M5 19V9 M12 19V5 M19 19v-7"
-  },
-  {
-    appId: "achievements",
-    key: "ui.app.achievements",
-    iconPath: "M7 4h10v3a5 5 0 0 1-4 4.9V16h3v4H8v-4h3v-4.1A5 5 0 0 1 7 7z"
-  },
-  {
-    appId: "chat",
-    key: "ui.app.chat",
-    iconPath: "M4 5h16v11H8l-4 4z M8 9h8 M8 12h6"
-  },
-  {
-    appId: "mail",
-    key: "ui.app.mail",
-    iconPath: "M4 6h16v12H4z M4 7l8 6 8-6"
-  },
-  {
-    appId: "feed",
-    key: "ui.app.feed",
-    iconPath: "M6 5h12 M6 9h12 M6 13h8 M6 17h10"
-  },
-  {
-    appId: "settings",
-    key: "ui.app.settings",
-    shortcut: "7",
-    iconPath:
-      "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M12 2v3 M12 19v3 M4.93 4.93l2.12 2.12 M16.95 16.95l2.12 2.12 M2 12h3 M19 12h3 M4.93 19.07l2.12-2.12 M16.95 7.05l2.12-2.12"
-  }
-];
-
-export function getAppIconPath(appId: AppId): string | undefined {
-  return screenLinks.find((link) => link.appId === appId)?.iconPath;
-}
 
 const BOOT_ZOOM_MS = 1800;
 const BOOT_FADE_MS = 180;
@@ -2429,7 +1875,7 @@ function updateDesktopWindows(nodes: DesktopNodes, view: DevFloorView): void {
     node.root.classList.toggle("desktop-window--maximized", windowState.maximized);
     node.root.classList.toggle("desktop-window--active", visible && windowState.z === activeZ);
 
-    if (visible) {
+    if (visible && !isWindowPointerActive(node.root)) {
       applyWindowFrame(node.root, getRenderedWindowFrame(windowState, bounds), windowState.z);
     }
 
@@ -2642,6 +2088,7 @@ function beginWindowResize(
   let active = true;
   const captureTarget = getPointerCaptureTarget(event);
 
+  root.classList.add("desktop-window--resizing");
   capturePointer(captureTarget, event.pointerId);
 
   const move = (moveEvent: PointerEvent): void => {
@@ -2668,6 +2115,7 @@ function beginWindowResize(
     window.removeEventListener("blur", end);
     captureTarget?.removeEventListener("lostpointercapture", end);
     releasePointer(captureTarget, event.pointerId);
+    root.classList.remove("desktop-window--resizing");
     actions.resizeApp(appId, nextFrame, bounds);
   };
 
@@ -2711,6 +2159,13 @@ function applyWindowFrame(root: HTMLElement, frame: WindowFrame, z: number): voi
   root.style.width = `${frame.w.toFixed(0)}px`;
   root.style.height = `${frame.h.toFixed(0)}px`;
   root.style.zIndex = String(z);
+}
+
+function isWindowPointerActive(root: HTMLElement): boolean {
+  return (
+    root.classList.contains("desktop-window--dragging") ||
+    root.classList.contains("desktop-window--resizing")
+  );
 }
 
 function getRenderedWindowFrame(windowState: WindowState, bounds: WindowBounds): WindowFrame {
@@ -4079,10 +3534,6 @@ function handleShortcut(
   }
 }
 
-function getShortcutApp(key: string): AppId | undefined {
-  return screenLinks.find((link) => link.shortcut === key)?.appId;
-}
-
 function cycleWindowFocus(desktop: DesktopNodes, actions: AppActions): void {
   const visibleApps = APP_IDS.filter((appId) => isAppVisible(desktop.currentWindows, appId)).sort(
     (left, right) => desktop.currentWindows[left].z - desktop.currentWindows[right].z
@@ -4311,72 +3762,6 @@ function createPromptParticles(): {
       void particle.root.offsetWidth;
       particle.root.classList.add("terminal-particle--active");
       nextIndex = (nextIndex + 1) % CLICK_PARTICLE_POOL_SIZE;
-    }
-  };
-}
-
-function createToasts(): ToastPool {
-  const root = el("section", {
-    ariaLabel: t("ui.toast.ariaLabel"),
-    className: "toast-stack"
-  });
-  root.setAttribute("aria-live", "polite");
-  const toasts: ToastNode[] = [];
-  let nextIndex = 0;
-
-  for (let i = 0; i < TOAST_POOL_SIZE; i += 1) {
-    const toast = el("button", { className: "toast" });
-    const icon = el("span", { className: "toast__icon" });
-    const textWrap = el("span", { className: "toast__text" });
-    const toastText = text("");
-    const node: ToastNode = { icon, onClick: undefined, root: toast, text: toastText };
-    toast.type = "button";
-    toast.tabIndex = -1;
-    toast.hidden = true;
-    icon.hidden = true;
-    textWrap.append(toastText);
-    toast.append(icon, textWrap);
-    toast.addEventListener("animationend", () => {
-      toast.hidden = true;
-      toast.classList.remove("toast--active");
-    });
-    toast.addEventListener("click", () => {
-      node.onClick?.();
-      toast.hidden = true;
-      toast.classList.remove("toast--active", "toast--action");
-    });
-    root.append(toast);
-    toasts.push(node);
-  }
-
-  return {
-    root,
-
-    show(message: string, tone: ToastTone, options?: ToastOptions): void {
-      const toast = toasts[nextIndex];
-
-      if (toast === undefined) {
-        return;
-      }
-
-      toast.onClick = options?.onClick;
-      toast.root.tabIndex = toast.onClick === undefined ? -1 : 0;
-      toast.root.classList.toggle("toast--action", toast.onClick !== undefined);
-      toast.root.setAttribute("aria-label", message);
-      toast.icon.replaceChildren();
-      if (options?.iconPath === undefined) {
-        toast.icon.hidden = true;
-      } else {
-        toast.icon.hidden = false;
-        toast.icon.append(createIcon(options.iconPath));
-      }
-      setText(toast.text, message);
-      toast.root.dataset.tone = tone;
-      toast.root.hidden = false;
-      toast.root.classList.remove("toast--active");
-      void toast.root.offsetWidth;
-      toast.root.classList.add("toast--active");
-      nextIndex = (nextIndex + 1) % TOAST_POOL_SIZE;
     }
   };
 }
@@ -4711,6 +4096,7 @@ function createHardwareRow(view: HardwareRowView, actions: AppActions): HTMLElem
 
 function createUpgradeRow(view: UpgradeRowView, actions: AppActions): HTMLElement {
   const root = el("div", { className: "upgrade-row" });
+  root.dataset.upgradeId = view.id;
   const name = el("strong", { className: "upgrade-row__name" });
   name.append(text(view.name));
   const effect = text(view.effect);
@@ -4795,6 +4181,7 @@ function createActiveBuild(view: ActiveBuildView): HTMLElement {
 
 function createProduct(view: ProductView, actions: AppActions): HTMLElement {
   const root = el("div", { className: "product-row" });
+  root.dataset.productId = view.id;
   const name = el("strong", { className: "product-row__name" });
   name.append(text(view.name));
   const revenue = text(view.revenue);
@@ -4941,6 +4328,7 @@ function syncGeneratorRows(
   actions: AppActions
 ): void {
   const list = screen.querySelector<HTMLElement>(".agent-list");
+  const visibleIds = new Set(views.map((view) => view.id));
 
   if (list !== null) {
     for (const view of views) {
@@ -4952,6 +4340,10 @@ function syncGeneratorRows(
 
   for (const view of views) {
     updateGeneratorRow(view);
+  }
+
+  for (const [id, row] of generatorRows) {
+    row.root.hidden = !visibleIds.has(id);
   }
 }
 
@@ -5087,6 +4479,8 @@ function syncUpgradeRows(
     return;
   }
 
+  const visibleIds = new Set(views.map((view) => view.id));
+
   for (const view of views) {
     const row = upgradeRows.get(view.id);
     if (row === undefined) {
@@ -5094,6 +4488,10 @@ function syncUpgradeRows(
     } else {
       updateUpgradeRow(view);
     }
+  }
+
+  for (const [id, row] of upgradeRows) {
+    row.root.hidden = !visibleIds.has(id);
   }
 }
 
@@ -5663,6 +5061,8 @@ function syncProducts(
     return;
   }
 
+  const visibleIds = new Set(views.map((view) => view.id));
+
   for (const view of views) {
     const nodes = products.get(view.id);
     if (nodes === undefined) {
@@ -5670,6 +5070,10 @@ function syncProducts(
     } else {
       updateProduct(view);
     }
+  }
+
+  for (const [id, nodes] of products) {
+    nodes.root.hidden = !visibleIds.has(id);
   }
 }
 
@@ -5845,38 +5249,4 @@ function createResearchConnections(): SVGSVGElement {
 function updateButton(button: HTMLButtonElement, enabled: boolean, title: string): void {
   button.disabled = !enabled;
   button.title = title;
-}
-
-function createAppIcon(link: ScreenLink): Element {
-  const src = appIconSources[link.appId];
-  if (src === undefined) {
-    return createIcon(link.iconPath);
-  }
-
-  const icon = el("img", { className: "dock__icon dock__icon--image" });
-  icon.setAttribute("alt", "");
-  icon.setAttribute("aria-hidden", "true");
-  icon.setAttribute("decoding", "async");
-  icon.setAttribute("draggable", "false");
-  icon.src = src;
-  return icon;
-}
-
-function createIcon(pathData: string): SVGSVGElement {
-  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  icon.setAttribute("class", "dock__icon");
-  icon.setAttribute("viewBox", "0 0 24 24");
-  icon.setAttribute("aria-hidden", "true");
-  icon.setAttribute("focusable", "false");
-
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", pathData);
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-linecap", "round");
-  path.setAttribute("stroke-linejoin", "round");
-  path.setAttribute("stroke-width", "1.8");
-
-  icon.append(path);
-  return icon;
 }

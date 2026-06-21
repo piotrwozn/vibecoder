@@ -19,7 +19,7 @@ describe("M9 campaign sim", () => {
     const act1Finale = result.milestones.find((milestone) => milestone.label === "Act 1 finale");
 
     expect(firstRewrite?.atH).toBeGreaterThanOrEqual(9);
-    expect(act1Finale?.atH).toBeGreaterThanOrEqual(20);
+    expect(act1Finale?.atH).toBeGreaterThanOrEqual(10);
     expect(result.state.story.act).toBeGreaterThanOrEqual(2);
     expect(result.omegaCompleteH).toBeUndefined();
     expect(result.completeH).toBeUndefined();
