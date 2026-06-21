@@ -67,6 +67,14 @@ describe("M2 production and generator purchases", () => {
     expect(state.res.money.toNumber()).toBeCloseTo(0, 8);
   });
 
+  it("rejects NaN economy multipliers instead of turning them into max Big", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.era = Number.NaN;
+
+    expect(() => recomputeDerivedCache(state, cache)).toThrow(/NaN/);
+  });
+
   it("keeps a 1000-agent production tick below the M2 budget", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();

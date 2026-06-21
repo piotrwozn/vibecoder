@@ -45,8 +45,12 @@ export class Big implements BigParts {
   }
 
   static fromNumber(value: number): Big {
+    if (Number.isNaN(value)) {
+      throw new Error("value must not be NaN");
+    }
+
     if (!Number.isFinite(value)) {
-      return Big.fromNonFiniteNumber(value);
+      return Big.fromInfiniteNumber(value);
     }
 
     return Big.fromFiniteNumber(value);
@@ -63,7 +67,7 @@ export class Big implements BigParts {
     return new Big(value / 10 ** e, e);
   }
 
-  private static fromNonFiniteNumber(value: number): Big {
+  private static fromInfiniteNumber(value: number): Big {
     const sign = value < 0 ? -1 : 1;
     return new Big(sign, MAX_NUMBER_EXPONENT);
   }

@@ -69,10 +69,10 @@ describe("Big", () => {
     expect(Number.isFinite(Big.from("3e154").mul("3e154").toNumber())).toBe(true);
   });
 
-  it("keeps fromNumber hot paths finite for non-finite input", () => {
+  it("clamps infinities but rejects NaN in fromNumber", () => {
     expect(Big.fromNumber(Number.POSITIVE_INFINITY).toString()).toBe("1e308");
     expect(Big.fromNumber(Number.NEGATIVE_INFINITY).toString()).toBe("-1e308");
-    expect(Big.fromNumber(Number.NaN).toString()).toBe("1e308");
+    expect(() => Big.fromNumber(Number.NaN)).toThrow(/NaN/);
     expect(() => Big.fromFiniteNumber(Number.POSITIVE_INFINITY)).toThrow(/finite/);
   });
 

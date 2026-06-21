@@ -14,7 +14,9 @@ import {
   exportGameState,
   importGameState,
   loadGameState,
-  serializeGameState
+  saveGameState,
+  serializeGameState,
+  shouldBlockPersistenceAfterLoad
 } from "../src/core/save";
 import { createDefaultGameState } from "../src/core/state";
 import { C } from "../src/data/constants";
@@ -25,6 +27,7 @@ import {
   recomputeDerivedCache,
   tickProduction
 } from "../src/systems/production";
+import { createWebPlatform, WEB_SAVE_KEY } from "../src/platform/web";
 
 describe("M4 save/load", () => {
   it("round-trips Big values, Sets, arrays, and settings", () => {
@@ -132,6 +135,43 @@ describe("M4 save/load", () => {
     expect(result.warnings).toContain("save restored from backup");
     expect(result.state.res.loc.toNumber()).toBe(77);
     expect(backupCorrupt).toHaveBeenCalledWith("{broken", 44);
+  });
+
+  it("allows a fresh boot to overwrite a corrupt primary after keeping one sidecar", async () => {
+    const storage = new Map<string, string>([[WEB_SAVE_KEY, "{broken"]]);
+
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        }
+      },
+      open: vi.fn()
+    });
+
+    try {
+      const platform = createWebPlatform();
+      const loaded = await loadGameState(platform, 100);
+      const persistenceBlocked = shouldBlockPersistenceAfterLoad(loaded);
+
+      expect(loaded.reset).toBe(true);
+      expect(loaded.resetReason).toBe("corrupt");
+      expect(persistenceBlocked).toBe(false);
+      await expect(saveGameState(platform, loaded.state, 101)).resolves.toBe(true);
+
+      const reloaded = await loadGameState(platform, 102);
+      const corruptKeys = Array.from(storage.keys()).filter((key) =>
+        key.startsWith(`${WEB_SAVE_KEY}.corrupt.`)
+      );
+
+      expect(reloaded.reset).toBe(false);
+      expect(reloaded.state.meta.lastSeen).toBe(101);
+      expect(storage.get(WEB_SAVE_KEY)).not.toBe("{broken");
+      expect(corruptKeys).toEqual([`${WEB_SAVE_KEY}.corrupt.100`]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("refuses newer saves without loading backups or downgrading the payload", async () => {

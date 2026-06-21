@@ -65,7 +65,7 @@ const DT_S = 1;
 const IDLE_LOGIN_INTERVAL_S = 8 * 60 * 60;
 const PROJECT_DECISION_INTERVAL_S = 30;
 const SIM_REFACTOR_COOLDOWN_S = 15 * 60;
-const FIRST_EXIT_MIN_EQUITY_GAIN = 5;
+export const SIM_FIRST_EXIT_MIN_EQUITY_GAIN = 3;
 const SIM_LAST_REFACTOR_AT_STAT = "sim.lastRefactorAt";
 const SHIPPED_STAT = "projects.shipped";
 const CAMPAIGN_EVENT_COUNT = STORY_EVENTS.filter((event) => event.act !== 9).length;
@@ -581,7 +581,11 @@ function maybeExit(state: GameState, cache: DerivedCache): void {
 
   const preview = createExitPreview(state);
 
-  if (state.prestige.exits === 0 && preview.canExit && preview.gain >= FIRST_EXIT_MIN_EQUITY_GAIN) {
+  if (
+    state.prestige.exits === 0 &&
+    preview.canExit &&
+    preview.gain >= SIM_FIRST_EXIT_MIN_EQUITY_GAIN
+  ) {
     performExit(state, cache);
   }
 }

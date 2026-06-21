@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { createEventBus } from "../src/core/bus";
 import { Big } from "../src/core/bignum";
 import { createDefaultGameState, type GameState } from "../src/core/state";
+import { createViewInvalidation, markResourceEvent } from "../src/core/view-invalidation";
 import { C } from "../src/data/constants";
 import { calculateDebtD0, calculateDebtEfficiency, fixBug, tickDebt } from "../src/systems/debt";
 import { createDerivedCache, recomputeDerivedCache } from "../src/systems/production";
@@ -31,6 +33,37 @@ describe("M5 tech debt", () => {
     tickDebt(state, cache, 1);
 
     expect(state.res.debt.toNumber()).toBeCloseTo(100 * C.DEBT_FACTOR);
+  });
+
+  it("refreshes debt efficiency during idle debt accrual without duplicate recomputes", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    const bus = createEventBus();
+    const invalidation = createViewInvalidation(false);
+    let recomputeCount = 0;
+    state.owned.generators.g_autocomplete = 10;
+    recomputeDerivedCache(state, cache);
+    const initialRate = cache.locRate.toNumber();
+
+    bus.on("res:changed", (resource) => {
+      markResourceEvent(invalidation, resource);
+    });
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      tickDebt(state, cache, 10_000, bus);
+      tickDebt(state, cache, 10_000, bus);
+      const dirty = invalidation.consume();
+
+      if (dirty.cache) {
+        recomputeDerivedCache(state, cache);
+        recomputeCount += 1;
+      }
+    }
+
+    expect(recomputeCount).toBe(3);
+    expect(state.res.debt.toNumber()).toBeGreaterThan(0);
+    expect(cache.multipliers.debt).toBeCloseTo(calculateDebtEfficiency(state));
+    expect(cache.locRate.toNumber()).toBeLessThan(initialRate);
   });
 
   it("applies QA and refactor daemon passive debt reduction", () => {

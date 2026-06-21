@@ -48,6 +48,10 @@ export function markResourceEvent(
   invalidation: ViewInvalidation,
   resource: keyof GameState["res"]
 ): void {
-  void resource;
+  if (resource === "debt") {
+    invalidation.markStructuralChanged();
+    return;
+  }
+
   invalidation.markResourceChanged();
 }

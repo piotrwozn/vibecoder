@@ -25,6 +25,7 @@ import {
   ITERATION_HOLD_STAT,
   buyParadoxItem,
   calculateParadoxMultiplier,
+  calculateRewriteRequirement,
   createIterationPreview,
   performIteration
 } from "../src/systems/prestige";
@@ -87,7 +88,8 @@ describe("M10 endless ITERATION", () => {
     expect(state.res.insight.toNumber()).toBe(10);
     expect(state.res.loc.eq0()).toBe(true);
     expect(state.res.money.eq0()).toBe(true);
-    expect(state.prestige.rewrites).toBe(0);
+    expect(state.prestige.rewrites).toBe(4);
+    expect(calculateRewriteRequirement(state)).toBe(PRESTIGE.REWRITE_MIN_FIRST);
     expect(state.stats["projects.started"]).toBeUndefined();
     expect(state.stats["project.started.p_landing"]).toBeUndefined();
     expect(state.stats["stats.locRate.sample.0"]).toBeUndefined();
@@ -101,7 +103,7 @@ describe("M10 endless ITERATION", () => {
     expect(state.story.flags.has("prestige.runModifier.active.no_click")).toBe(false);
     expect(state.story.act).toBe(9);
     expect(tickAutomation(state, cache, 1)).toBe(false);
-    expect(state.prestige.rewrites).toBe(0);
+    expect(state.prestige.rewrites).toBe(4);
   });
 
   it("applies iteration cost to agent and project build costs only", () => {

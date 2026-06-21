@@ -656,7 +656,6 @@ export function performIteration(
   state.era = STARTING_ERA.index;
   state.lifetime.locSinceExit = Big.zero();
   state.lifetime.insightSinceExit = 0;
-  state.prestige.rewrites = 0;
   state.prestige.iteration += 1;
   state.story.act = state.aurora.unlocked && !state.aurora.completed ? 5 : 9;
 

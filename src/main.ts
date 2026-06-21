@@ -2,7 +2,13 @@ import { createEventBus } from "./core/bus";
 import { Big } from "./core/bignum";
 import { formatBig, formatTime, type NumberNotation } from "./core/format";
 import { OFFLINE_CATCH_UP_MS, startLoop } from "./core/loop";
-import { exportGameState, importGameState, loadGameState, saveGameState } from "./core/save";
+import {
+  exportGameState,
+  importGameState,
+  loadGameState,
+  saveGameState,
+  shouldBlockPersistenceAfterLoad
+} from "./core/save";
 import { createDefaultGameState } from "./core/state";
 import { TUTORIAL_STEPS, type AppId, type TutorialStep, type WindowFrame } from "./core/ui-state";
 import { createViewInvalidation, markResourceEvent } from "./core/view-invalidation";
@@ -257,7 +263,7 @@ let autosaveTimer: number | undefined;
 let commsViewCache: CommsView | undefined;
 let commsViewDirty = true;
 let devPerfPanel: DevPerfPanel | undefined;
-let persistenceBlocked = loaded.reset;
+let persistenceBlocked = shouldBlockPersistenceAfterLoad(loaded);
 
 const SHIPPED_STAT = "projects.shipped";
 const BUGS_FIXED_STAT = "bugs.fixed";

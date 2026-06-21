@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { runCampaignSim, runEndlessSmokeSim } from "../tools/sim/index.ts";
+import {
+  runCampaignSim,
+  runEndlessSmokeSim,
+  SIM_FIRST_EXIT_MIN_EQUITY_GAIN
+} from "../tools/sim/index.ts";
 
 describe("M9 campaign sim", () => {
+  it("uses the plan floor for first EXIT equity in strategy decisions", () => {
+    expect(SIM_FIRST_EXIT_MIN_EQUITY_GAIN).toBe(3);
+  });
+
   it("runs real strategy-specific ticks instead of a scripted completion", () => {
     const sane = runCampaignSim({ strategy: "sane", hours: 5 });
     const idle = runCampaignSim({ strategy: "idle_only", hours: 5 });

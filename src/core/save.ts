@@ -147,6 +147,12 @@ export async function saveGameState(
   }
 }
 
+export function shouldBlockPersistenceAfterLoad(
+  result: Pick<SaveDecodeResult, "reset" | "resetReason">
+): boolean {
+  return result.reset && result.resetReason !== "corrupt";
+}
+
 export function exportGameState(state: GameState): string {
   return encodeBase64(serializeGameState(state));
 }
