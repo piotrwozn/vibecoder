@@ -23,7 +23,7 @@ const nodeGlobals = {
 
 export default tseslint.config(
   {
-    ignores: ["coverage/**", "dist/**", "node_modules/**"]
+    ignores: ["coverage/**", "dist/**", "node_modules/**", "src-tauri/target/**"]
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -18,10 +18,12 @@ export interface PromptClickView {
 export interface VibexSendView {
   readonly committed: boolean;
   readonly loc: string;
-  readonly pendingResponse?: Promise<string | undefined>;
+  readonly pendingResponse?: Promise<string>;
   readonly prompt: string;
   readonly response: string;
 }
+
+export type VibexPromptSource = "auto" | "manual";
 
 export interface VibexFileView {
   readonly active: boolean;
@@ -119,6 +121,8 @@ export interface HardwareRowView {
   readonly levelLabel: string;
   readonly name: string;
   readonly phase: "pc" | "server";
+  readonly powerCost: string;
+  readonly psuRequirement: string;
   readonly slot: string;
   readonly slotLabel: string;
 }
@@ -181,6 +185,35 @@ export interface ProjectsView {
   readonly offers: readonly ProjectOfferView[];
   readonly portfolio: readonly ProductView[];
   readonly refactor: RefactorView;
+}
+
+export interface AuroraNodeView {
+  readonly id: string;
+  readonly name: string;
+  readonly state: "active" | "complete" | "locked";
+}
+
+export interface AuroraView {
+  readonly availableServers: string;
+  readonly canDedicate: boolean;
+  readonly canFund: boolean;
+  readonly canHost: boolean;
+  readonly completed: boolean;
+  readonly costLoc: string;
+  readonly costMoney: string;
+  readonly dedicatedServers: string;
+  readonly hostedServers: string;
+  readonly hostingRate: string;
+  readonly nodes: readonly AuroraNodeView[];
+  readonly phaseName: string;
+  readonly progress: number;
+  readonly progressLabel: string;
+  readonly readyServers: string;
+  readonly readyServerCount: number;
+  readonly requiredServers: string;
+  readonly statusLabel: string;
+  readonly timeRemaining: string;
+  readonly unlocked: boolean;
 }
 
 export interface ResearchNodeView {
@@ -341,6 +374,7 @@ export interface AchievementsView {
 
 export interface AppearanceView {
   readonly ending?: "fork" | "merge" | "unplug";
+  readonly glitch: boolean;
   readonly reducedFx: boolean;
   readonly theme?: "crt" | "glitch" | "void";
 }
@@ -417,6 +451,7 @@ export interface DevFloorView {
   readonly appearance: AppearanceView;
   readonly achievements: AchievementsView;
   readonly automation: readonly AutomationToggleView[];
+  readonly aurora: AuroraView;
   readonly comms: CommsView;
   readonly compute: ComputeBreakdownView;
   readonly ending: EndingModalView;
@@ -466,6 +501,7 @@ export interface AppActions {
   changeVibexLocalAi(enabled: boolean): void;
   changeVolume(volume: number): void;
   closeApp(appId: AppId): void;
+  dedicateAuroraServer(): void;
   dismissOffline(): void;
   exportSave(): string;
   focusApp(appId: AppId): void;
@@ -475,8 +511,10 @@ export interface AppActions {
   moveApp(appId: AppId, frame: Pick<WindowFrame, "x" | "y">, bounds: WindowBounds): void;
   openApp(appId: AppId, bounds: WindowBounds): void;
   fixBug(productId: string): void;
+  playBootSound(): void;
+  playUiClick(): void;
   prompt(): PromptClickView;
-  sendVibexPrompt(prompt: string): VibexSendView;
+  sendVibexPrompt(prompt: string, source?: VibexPromptSource): VibexSendView;
   chooseStoryChoice(eventId: string, choiceId: string): void;
   exit(): void;
   iterate(): void;
@@ -486,6 +524,8 @@ export interface AppActions {
   resizeApp(appId: AppId, frame: WindowFrame, bounds: WindowBounds): void;
   selectRunModifier(id: string | undefined): void;
   startDesktop(): void;
+  fundAuroraPhase(): void;
+  rentAuroraHost(): void;
   startProject(id: string): void;
   startRefactor(): void;
   toggleAutomation(id: string, enabled: boolean): void;
@@ -567,8 +607,15 @@ interface HardwareRowNodes {
   readonly cap: Text;
   readonly cost: Text;
   readonly level: Text;
+  readonly power: Text;
+  readonly requirement: Text;
   readonly root: HTMLElement;
   readonly slot: Text;
+}
+
+interface HardwareAuroraCounterNodes {
+  readonly root: HTMLElement;
+  readonly value: Text;
 }
 
 interface UpgradeRowNodes {
@@ -606,6 +653,30 @@ interface ProductNodes {
   readonly revenue: Text;
   readonly root: HTMLElement;
   readonly status: Text;
+}
+
+interface AuroraNodes {
+  readonly availableServers: Text;
+  readonly costLoc: Text;
+  readonly costMoney: Text;
+  readonly dedicate: HTMLButtonElement;
+  readonly dedicatedServers: Text;
+  readonly fund: HTMLButtonElement;
+  readonly host: HTMLButtonElement;
+  readonly hostedServers: Text;
+  readonly hostingRate: Text;
+  readonly phaseName: Text;
+  readonly progressBar: HTMLElement;
+  readonly progressLabel: Text;
+  readonly readyServers: Text;
+  readonly requiredServers: Text;
+  readonly status: Text;
+  readonly timeRemaining: Text;
+}
+
+interface AuroraNodeNodes {
+  readonly root: HTMLElement;
+  readonly state: Text;
 }
 
 interface RefactorNodes {
@@ -799,8 +870,10 @@ interface TaskbarItemNodes {
 
 interface WindowNodes {
   readonly content: HTMLElement;
+  hideTimer: number | undefined;
   readonly root: HTMLElement;
   readonly title: Text;
+  wasVisible: boolean;
 }
 
 interface TutorialNodes {
@@ -851,7 +924,7 @@ interface CommsMessageNodes {
 }
 
 interface TerminalViewNodes {
-  readonly addLog: (message: string) => Text;
+  readonly addLog: (message: string, options?: TerminalLogOptions) => Text;
   readonly cannedPrompt: Text;
   readonly cannedResponse: Text;
   readonly flowBar: HTMLElement;
@@ -866,9 +939,11 @@ interface TerminalViewNodes {
 interface VibexNodes {
   readonly cannedPrompt: Text;
   readonly cannedResponse: Text;
-  readonly codeRows: readonly HTMLElement[];
-  readonly codeTexts: readonly Text[];
+  readonly codeRows: HTMLElement[];
+  readonly codeStream: HTMLElement;
+  readonly codeTexts: Text[];
   readonly fileRows: Map<string, HTMLElement>;
+  readonly fileTexts: Map<string, Text>;
   lastCodeSequence: number;
   readonly root: HTMLElement;
   readonly terminal: TerminalViewNodes;
@@ -877,6 +952,10 @@ interface VibexNodes {
 interface TerminalLogRow {
   readonly root: HTMLElement;
   readonly text: Text;
+}
+
+interface TerminalLogOptions {
+  readonly priority?: boolean;
 }
 
 interface TerminalParticle {
@@ -901,7 +980,7 @@ const TERMINAL_LOG_RATE_LIMIT = 10;
 const CLICK_PARTICLE_POOL_SIZE = 10;
 const TOAST_POOL_SIZE = 3;
 
-const appIconSources: Record<AppId, string> = {
+const appIconSources: Partial<Record<AppId, string>> = {
   achievements: new URL("../../images/app-icons/achievements.png", import.meta.url).href,
   agents: new URL("../../images/app-icons/agents.png", import.meta.url).href,
   chat: new URL("../../images/app-icons/chat.png", import.meta.url).href,
@@ -948,6 +1027,12 @@ const screenLinks: readonly ScreenLink[] = [
     key: "ui.app.projects",
     shortcut: "5",
     iconPath: "M4 5h7l2 2h7v12H4z"
+  },
+  {
+    appId: "aurora",
+    key: "ui.app.aurora",
+    iconPath:
+      "M12 3l2.4 5.1 5.6.7-4.1 3.9 1 5.5L12 15.5 7.1 18.2l1-5.5L4 8.8l5.6-.7z M12 8v4 M12 15h.01"
   },
   {
     appId: "research",
@@ -1012,41 +1097,15 @@ const terminalThemeClasses = [
   "terminal--theme-void"
 ] as const;
 
-interface HardwareSlotLayout {
-  readonly h: number;
-  readonly slot: string;
-  readonly w: number;
-  readonly x: number;
-  readonly y: number;
-}
-
-const PC_HARDWARE_SLOTS: readonly HardwareSlotLayout[] = [
-  { slot: "cpu", x: 64, y: 60, w: 54, h: 42 },
-  { slot: "ram", x: 138, y: 42, w: 34, h: 122 },
-  { slot: "gpu", x: 50, y: 142, w: 160, h: 30 },
-  { slot: "storage", x: 224, y: 130, w: 58, h: 30 },
-  { slot: "cooling", x: 220, y: 52, w: 60, h: 54 },
-  { slot: "psu", x: 236, y: 168, w: 58, h: 36 }
-] as const;
-
-const SERVER_HARDWARE_SLOTS: readonly HardwareSlotLayout[] = [
-  { slot: "enclosure", x: 56, y: 20, w: 208, h: 188 },
-  { slot: "board", x: 88, y: 50, w: 144, h: 28 },
-  { slot: "psu", x: 88, y: 86, w: 144, h: 24 },
-  { slot: "cooling", x: 88, y: 118, w: 144, h: 24 },
-  { slot: "network", x: 88, y: 150, w: 144, h: 20 },
-  { slot: "compute", x: 88, y: 176, w: 144, h: 24 }
-] as const;
-
 const generatorRows = new Map<string, GeneratorRowNodes>();
 const computeRows = new Map<string, ComputeRowNodes>();
 const hardwareRows = new Map<string, HardwareRowNodes>();
-const hardwareSlots = new Map<string, SVGElement>();
 const upgradeRows = new Map<string, UpgradeRowNodes>();
 const automationToggles = new Map<string, AutomationToggleNodes>();
 const projectOffers = new Map<string, ProjectOfferNodes>();
 const activeBuilds = new Map<string, ActiveBuildNodes>();
 const products = new Map<string, ProductNodes>();
+const auroraNodeRows = new Map<string, AuroraNodeNodes>();
 const researchNodes = new Map<string, ResearchNodeNodes>();
 const insightNodes = new Map<string, InsightNodeNodes>();
 const equityPerks = new Map<string, EquityPerkNodes>();
@@ -1063,6 +1122,8 @@ let computeBreakdownNodes: ComputeBreakdownNodes | undefined;
 let settingsNodes: SettingsNodes | undefined;
 let fullGameNodes: FullGameNodes | undefined;
 let offlineNodes: OfflineNodes | undefined;
+let auroraNodes: AuroraNodes | undefined;
+let hardwareAuroraCounterNodes: HardwareAuroraCounterNodes | undefined;
 
 export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActions): AppShell {
   resetRenderCaches();
@@ -1115,6 +1176,7 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
 
       if (isAppVisible(nextView.ui.windows, "hardware")) {
         syncHardwareRows(nextView.hardware, screens.hardware, actions);
+        updateHardwareAuroraCounter(nextView.aurora);
       }
 
       if (isAppVisible(nextView.ui.windows, "upgrades")) {
@@ -1123,6 +1185,10 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
 
       if (isAppVisible(nextView.ui.windows, "projects")) {
         updateProjects(nextView.projects, screens, actions);
+      }
+
+      if (isAppVisible(nextView.ui.windows, "aurora")) {
+        updateAurora(nextView.aurora);
       }
 
       if (isAppVisible(nextView.ui.windows, "research")) {
@@ -1169,12 +1235,12 @@ function resetRenderCaches(): void {
   generatorRows.clear();
   computeRows.clear();
   hardwareRows.clear();
-  hardwareSlots.clear();
   upgradeRows.clear();
   automationToggles.clear();
   projectOffers.clear();
   activeBuilds.clear();
   products.clear();
+  auroraNodeRows.clear();
   researchNodes.clear();
   insightNodes.clear();
   equityPerks.clear();
@@ -1191,6 +1257,8 @@ function resetRenderCaches(): void {
   settingsNodes = undefined;
   fullGameNodes = undefined;
   offlineNodes = undefined;
+  auroraNodes = undefined;
+  hardwareAuroraCounterNodes = undefined;
 }
 
 function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
@@ -1257,6 +1325,15 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
   monitor.append(screen);
   room.append(mugSteam, monitor);
   root.append(room);
+  root.addEventListener(
+    "click",
+    (event) => {
+      if (shouldPlayBootMenuClick(event)) {
+        actions.playUiClick();
+      }
+    },
+    { capture: true }
+  );
 
   let transitionTimer: number | undefined;
   const finish = (): void => {
@@ -1275,6 +1352,7 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
       return;
     }
 
+    actions.playBootSound();
     const reduced = root.classList.contains("boot-scene--reduced-motion") || prefersReducedMotion();
     root.classList.add(reduced ? "boot-scene--fade" : "boot-scene--entering");
     transitionTimer = window.setTimeout(finish, reduced ? BOOT_FADE_MS : BOOT_ZOOM_MS);
@@ -1305,6 +1383,26 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
   };
   updateBootScene(nodes, view);
   return nodes;
+}
+
+function shouldPlayBootMenuClick(event: Event): boolean {
+  const target = event.target;
+
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const control = target.closest<HTMLElement>("button, input, select, textarea, [role='button']");
+
+  if (control === null || control.closest(".boot-scene") === null) {
+    return false;
+  }
+
+  if ("disabled" in control && typeof control.disabled === "boolean") {
+    return !control.disabled;
+  }
+
+  return true;
 }
 
 function createBootMugSteam(): HTMLElement {
@@ -2168,6 +2266,8 @@ function getWindowContent(
       return screens.upgrades;
     case "projects":
       return screens.projects;
+    case "aurora":
+      return screens.aurora;
     case "research":
       return screens.research;
     case "rewrite":
@@ -2266,7 +2366,7 @@ function createWindow(
   });
 
   root.append(titlebar, body, resize);
-  return { content: body, root, title };
+  return { content: body, hideTimer: undefined, root, title, wasVisible: false };
 }
 
 function createWindowControl(
@@ -2322,31 +2422,78 @@ function updateDesktopWindows(nodes: DesktopNodes, view: DevFloorView): void {
   for (const appId of APP_IDS) {
     const windowState = view.ui.windows[appId];
     const node = nodes.windowNodes[appId];
+    const visible = isWindowVisible(windowState) && isAppAvailable(view, appId);
+    const minimizing = node.wasVisible && windowState.open && windowState.minimized && !visible;
     setText(node.title, getWindowTitle(appId, view));
-    node.root.hidden = !isWindowVisible(windowState);
+    updateWindowVisibility(node, visible, minimizing, view.appearance.reducedFx);
     node.root.classList.toggle("desktop-window--maximized", windowState.maximized);
-    node.root.classList.toggle(
-      "desktop-window--active",
-      isWindowVisible(windowState) && windowState.z === activeZ
-    );
+    node.root.classList.toggle("desktop-window--active", visible && windowState.z === activeZ);
 
-    if (isWindowVisible(windowState)) {
+    if (visible) {
       applyWindowFrame(node.root, getRenderedWindowFrame(windowState, bounds), windowState.z);
     }
+
+    node.wasVisible = visible;
   }
+}
+
+function updateWindowVisibility(
+  node: WindowNodes,
+  visible: boolean,
+  minimizing: boolean,
+  reducedFx: boolean
+): void {
+  if (visible) {
+    if (node.hideTimer !== undefined) {
+      window.clearTimeout(node.hideTimer);
+      node.hideTimer = undefined;
+    }
+    node.root.hidden = false;
+    node.root.classList.remove("desktop-window--minimizing");
+    return;
+  }
+
+  if (minimizing && !reducedFx) {
+    if (node.hideTimer !== undefined) {
+      window.clearTimeout(node.hideTimer);
+    }
+    node.root.hidden = false;
+    node.root.classList.add("desktop-window--minimizing");
+    node.hideTimer = window.setTimeout(() => {
+      if (node.root.classList.contains("desktop-window--minimizing")) {
+        node.root.hidden = true;
+        node.root.classList.remove("desktop-window--minimizing");
+      }
+      node.hideTimer = undefined;
+    }, 170);
+    return;
+  }
+
+  if (node.hideTimer !== undefined) {
+    window.clearTimeout(node.hideTimer);
+    node.hideTimer = undefined;
+  }
+  node.root.hidden = true;
+  node.root.classList.remove("desktop-window--minimizing");
 }
 
 function updateDesktopIcons(nodes: DesktopNodes, view: DevFloorView): void {
   for (const appId of APP_IDS) {
     const icon = nodes.iconNodes[appId];
+    const available = isAppAvailable(view, appId);
     const channel = getCommsChannelForApp(appId);
     const unread = channel === undefined ? 0 : view.comms.unreadByChannel[channel];
 
+    icon.button.hidden = !available;
     icon.badge.hidden = unread === 0;
     setTextContent(icon.badge, unread === 0 ? "" : String(unread));
     icon.button.classList.toggle(
       "desktop-icon--pulse",
       unread > 0 && !view.settings.doNotDisturb && !view.appearance.reducedFx
+    );
+    icon.button.classList.toggle(
+      "desktop-icon--glitch",
+      view.appearance.glitch && !view.appearance.reducedFx
     );
     icon.button.setAttribute(
       "aria-label",
@@ -2361,12 +2508,17 @@ function updateTaskbar(nodes: DesktopNodes, view: DevFloorView): void {
   for (const appId of APP_IDS) {
     const item = nodes.taskbarNodes.items[appId];
     const windowState = view.ui.windows[appId];
+    const available = isAppAvailable(view, appId);
     const open = windowState.open;
-    const visible = isWindowVisible(windowState);
+    const visible = isWindowVisible(windowState) && available;
 
-    item.button.hidden = !open;
+    item.button.hidden = !open || !available;
     item.button.classList.toggle("taskbar-item--active", visible && windowState.z === activeZ);
     item.button.classList.toggle("taskbar-item--minimized", open && windowState.minimized);
+    item.button.classList.toggle(
+      "taskbar-item--glitch",
+      open && view.appearance.glitch && !view.appearance.reducedFx
+    );
     item.button.setAttribute(
       "aria-label",
       open && windowState.minimized
@@ -2374,6 +2526,10 @@ function updateTaskbar(nodes: DesktopNodes, view: DevFloorView): void {
         : item.label
     );
   }
+}
+
+function isAppAvailable(view: DevFloorView, appId: AppId): boolean {
+  return appId !== "aurora" || view.aurora.unlocked;
 }
 
 function getWindowTitle(appId: AppId, view: DevFloorView): string {
@@ -2412,26 +2568,55 @@ function beginWindowDrag(
   }
 
   event.preventDefault();
+  event.stopPropagation();
+  actions.focusApp(appId);
+
+  const activeWindowState = desktop.currentWindows[appId];
   const bounds = getDesktopBounds(desktop.windowsLayer);
-  const startFrame = getRenderedWindowFrame(windowState, bounds);
+  const startFrame = getRenderedWindowFrame(activeWindowState, bounds);
   const startX = event.clientX;
   const startY = event.clientY;
-  let nextX = startFrame.x;
-  let nextY = startFrame.y;
+  let nextFrame: WindowFrame = startFrame;
+  let active = true;
+  const captureTarget = getPointerCaptureTarget(event);
+
+  root.classList.add("desktop-window--dragging");
+  capturePointer(captureTarget, event.pointerId);
 
   const move = (moveEvent: PointerEvent): void => {
-    nextX = startFrame.x + moveEvent.clientX - startX;
-    nextY = startFrame.y + moveEvent.clientY - startY;
-    applyWindowFrame(root, { ...startFrame, x: nextX, y: nextY }, windowState.z);
+    nextFrame = getRenderedWindowFrame(
+      {
+        ...activeWindowState,
+        ...startFrame,
+        maximized: false,
+        x: startFrame.x + moveEvent.clientX - startX,
+        y: startFrame.y + moveEvent.clientY - startY
+      },
+      bounds
+    );
+    applyWindowFrame(root, nextFrame, activeWindowState.z);
   };
-  const up = (): void => {
+  const end = (): void => {
+    if (!active) {
+      return;
+    }
+
+    active = false;
     window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", up);
-    actions.moveApp(appId, { x: nextX, y: nextY }, bounds);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    window.removeEventListener("blur", end);
+    captureTarget?.removeEventListener("lostpointercapture", end);
+    releasePointer(captureTarget, event.pointerId);
+    root.classList.remove("desktop-window--dragging");
+    actions.moveApp(appId, { x: nextFrame.x, y: nextFrame.y }, bounds);
   };
 
   window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+  window.addEventListener("blur", end);
+  captureTarget?.addEventListener("lostpointercapture", end);
 }
 
 function beginWindowResize(
@@ -2447,12 +2632,17 @@ function beginWindowResize(
 
   event.preventDefault();
   event.stopPropagation();
+  actions.focusApp(appId);
   const bounds = getDesktopBounds(desktop.windowsLayer);
   const windowState = desktop.currentWindows[appId];
   const startFrame = getRenderedWindowFrame(windowState, bounds);
   const startX = event.clientX;
   const startY = event.clientY;
   let nextFrame: WindowFrame = startFrame;
+  let active = true;
+  const captureTarget = getPointerCaptureTarget(event);
+
+  capturePointer(captureTarget, event.pointerId);
 
   const move = (moveEvent: PointerEvent): void => {
     nextFrame = {
@@ -2466,14 +2656,54 @@ function beginWindowResize(
       windowState.z
     );
   };
-  const up = (): void => {
+  const end = (): void => {
+    if (!active) {
+      return;
+    }
+
+    active = false;
     window.removeEventListener("pointermove", move);
-    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointerup", end);
+    window.removeEventListener("pointercancel", end);
+    window.removeEventListener("blur", end);
+    captureTarget?.removeEventListener("lostpointercapture", end);
+    releasePointer(captureTarget, event.pointerId);
     actions.resizeApp(appId, nextFrame, bounds);
   };
 
   window.addEventListener("pointermove", move);
-  window.addEventListener("pointerup", up);
+  window.addEventListener("pointerup", end);
+  window.addEventListener("pointercancel", end);
+  window.addEventListener("blur", end);
+  captureTarget?.addEventListener("lostpointercapture", end);
+}
+
+function getPointerCaptureTarget(event: PointerEvent): HTMLElement | undefined {
+  return event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+}
+
+function capturePointer(target: HTMLElement | undefined, pointerId: number): void {
+  if (target === undefined) {
+    return;
+  }
+
+  try {
+    target.setPointerCapture(pointerId);
+  } catch {
+    // Some test/browser surfaces expose pointer events without capture support.
+  }
+}
+
+function releasePointer(target: HTMLElement | undefined, pointerId: number): void {
+  if (target === undefined) {
+    return;
+  }
+
+  try {
+    target.releasePointerCapture(pointerId);
+  } catch {
+    // Pointer capture can already be released by the browser.
+  }
 }
 
 function applyWindowFrame(root: HTMLElement, frame: WindowFrame, z: number): void {
@@ -2592,9 +2822,10 @@ function createModelPanel(view: ModelView, actions: AppActions): HTMLElement {
 
 function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
   const agents = createAgentsScreen(view, actions);
-  const hardwareScreen = createHardwareScreen(view.hardware, actions);
+  const hardwareScreen = createHardwareScreen(view.hardware, view.aurora, actions);
   const upgradesScreen = createUpgradesScreen(view.upgrades, actions);
   const projectsScreen = createProjectsScreen(view.projects, actions);
+  const auroraScreen = createAuroraScreen(view.aurora, actions);
   const researchScreen = createResearchScreen(view.research, actions);
   const rewriteScreen = createRewriteScreen(view.rewrite, actions);
   const statsScreen = createStatsScreen(view.stats);
@@ -2603,6 +2834,7 @@ function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
   return {
     achievements: achievementsScreen,
     agents,
+    aurora: auroraScreen,
     hardware: hardwareScreen,
     projects: projectsScreen,
     research: researchScreen,
@@ -2616,6 +2848,7 @@ function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
 interface ScreenNodes {
   readonly achievements: HTMLElement;
   readonly agents: HTMLElement;
+  readonly aurora: HTMLElement;
   readonly hardware: HTMLElement;
   readonly projects: HTMLElement;
   readonly research: HTMLElement;
@@ -2638,10 +2871,15 @@ function updateAppearance(shell: HTMLElement, terminal: HTMLElement, view: Appea
     shell.classList.add(`app-shell--ending-${view.ending}`);
   }
 
+  shell.classList.toggle("app-shell--glitch", view.glitch);
   shell.classList.toggle("app-shell--reduced-motion", view.reducedFx);
 
   if (view.theme !== undefined) {
     terminal.classList.add(`terminal--theme-${view.theme}`);
+  }
+
+  if (view.glitch) {
+    terminal.classList.add("terminal--theme-glitch");
   }
 }
 
@@ -2681,135 +2919,56 @@ function createAgentsScreen(view: DevFloorView, actions: AppActions): HTMLElemen
   return screen;
 }
 
-function createHardwareScreen(view: readonly HardwareRowView[], actions: AppActions): HTMLElement {
+function createHardwareScreen(
+  view: readonly HardwareRowView[],
+  aurora: AuroraView,
+  actions: AppActions
+): HTMLElement {
   const screen = el("section", { className: "main-screen hardware-screen" });
   const title = el("h1", { className: "main-view__title" });
   title.append(text(t("ui.app.hardware")));
-  const visual = createHardwareVisual(view);
-  const hardwareList = el("section", { className: "hardware-list" });
+  const auroraCounter = createHardwareAuroraCounter(aurora);
+  const pcRows = view.filter((hardware) => hardware.phase === "pc");
+  const serverRows = view.filter((hardware) => hardware.phase === "server");
+  const pcSection = createHardwareSection("pc", pcRows, actions);
+  const serverSection = createHardwareSection("server", serverRows, actions);
+  serverSection.hidden = serverRows.length === 0;
 
-  for (const hardware of view) {
-    hardwareList.append(createHardwareRow(hardware, actions));
-  }
-
-  screen.append(title, visual, hardwareList);
+  screen.append(title, auroraCounter, pcSection, serverSection);
   return screen;
 }
 
-function createHardwareVisual(view: readonly HardwareRowView[]): HTMLElement {
-  const visual = el("section", {
-    ariaLabel: t("ui.hardware.visualLabel"),
-    className: "hardware-visual"
-  });
-  visual.append(
-    createHardwareVisualPanel("pc", view, PC_HARDWARE_SLOTS),
-    createHardwareVisualPanel("server", view, SERVER_HARDWARE_SLOTS)
-  );
-  updateHardwareVisual(view);
-  return visual;
+function createHardwareAuroraCounter(view: AuroraView): HTMLElement {
+  const root = el("div", { className: "hardware-aurora-counter" });
+  const label = el("span", { className: "project-meta__label" });
+  label.append(text(t("ui.hardware.auroraReady")));
+  const value = text(view.readyServers);
+  const output = el("strong", { className: "project-meta__value" });
+  output.append(value);
+  root.append(label, output);
+  hardwareAuroraCounterNodes = { root, value };
+  updateHardwareAuroraCounter(view);
+  return root;
 }
 
-function createHardwareVisualPanel(
+function createHardwareSection(
   phase: HardwareRowView["phase"],
-  view: readonly HardwareRowView[],
-  slots: readonly HardwareSlotLayout[]
+  rows: readonly HardwareRowView[],
+  actions: AppActions
 ): HTMLElement {
-  const panel = el("section", {
-    className: `hardware-visual__panel hardware-visual__panel--${phase}`
-  });
-  const title = el("h2", { className: "hardware-visual__title" });
+  const section = el("section", { className: "hardware-section" });
+  section.dataset.phase = phase;
+  const title = el("h2", { className: "section-title hardware-section__title" });
   title.append(text(t(phase === "pc" ? "ui.hardware.pcTitle" : "ui.hardware.serverTitle")));
-  const svg = createHardwareSvg(phase, view, slots);
+  const list = el("section", { className: "hardware-list" });
+  list.dataset.phase = phase;
 
-  panel.append(title, svg);
-  return panel;
-}
-
-function createHardwareSvg(
-  phase: HardwareRowView["phase"],
-  view: readonly HardwareRowView[],
-  slots: readonly HardwareSlotLayout[]
-): SVGSVGElement {
-  const svg = svgEl("svg");
-  svg.setAttribute("class", `hardware-svg hardware-svg--${phase}`);
-  svg.setAttribute("viewBox", "0 0 320 230");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", t(phase === "pc" ? "ui.hardware.pcSvg" : "ui.hardware.serverSvg"));
-
-  const shell = svgEl("rect");
-  shell.setAttribute("class", "hardware-svg__shell");
-  shell.setAttribute("x", phase === "pc" ? "26" : "48");
-  shell.setAttribute("y", phase === "pc" ? "28" : "14");
-  shell.setAttribute("width", phase === "pc" ? "268" : "224");
-  shell.setAttribute("height", phase === "pc" ? "174" : "202");
-  shell.setAttribute("rx", phase === "pc" ? "10" : "4");
-  svg.append(shell);
-
-  for (const slot of slots) {
-    svg.append(createHardwareSlotSvg(phase, view, slot));
+  for (const row of rows) {
+    list.append(createHardwareRow(row, actions));
   }
 
-  return svg;
-}
-
-function createHardwareSlotSvg(
-  phase: HardwareRowView["phase"],
-  view: readonly HardwareRowView[],
-  slot: HardwareSlotLayout
-): SVGGElement {
-  const group = svgEl("g");
-  const key = getHardwareSlotKey(phase, slot.slot);
-  const active = isHardwareSlotActive(view, phase, slot.slot);
-  group.setAttribute("class", active ? "hardware-slot hardware-slot--active" : "hardware-slot");
-  group.dataset.slotKey = key;
-
-  const rect = svgEl("rect");
-  rect.setAttribute("class", "hardware-slot__rect");
-  rect.setAttribute("x", String(slot.x));
-  rect.setAttribute("y", String(slot.y));
-  rect.setAttribute("width", String(slot.w));
-  rect.setAttribute("height", String(slot.h));
-  rect.setAttribute("rx", "5");
-
-  const label = svgEl("text");
-  label.setAttribute("class", "hardware-slot__label");
-  label.setAttribute("x", String(slot.x + slot.w / 2));
-  label.setAttribute("y", String(slot.y + slot.h / 2 + 4));
-  label.setAttribute("text-anchor", "middle");
-  label.append(text(t(`hardware.slot.${slot.slot}`)));
-
-  group.append(rect, label);
-  hardwareSlots.set(key, group);
-  return group;
-}
-
-function updateHardwareVisual(view: readonly HardwareRowView[]): void {
-  for (const [key, slot] of hardwareSlots) {
-    const [phase, slotName] = key.split(":");
-    const active =
-      (phase === "pc" || phase === "server") && slotName !== undefined
-        ? isHardwareSlotActive(view, phase, slotName)
-        : false;
-    slot.classList.toggle("hardware-slot--active", active);
-  }
-}
-
-function isHardwareSlotActive(
-  view: readonly HardwareRowView[],
-  phase: HardwareRowView["phase"],
-  slot: string
-): boolean {
-  return view.some(
-    (hardware) => hardware.phase === phase && hardware.slot === slot && hardware.active
-  );
-}
-
-function getHardwareSlotKey(phase: HardwareRowView["phase"], slot: string): string {
-  return `${phase}:${slot}`;
-}
-
-function svgEl<K extends keyof SVGElementTagNameMap>(tagName: K): SVGElementTagNameMap[K] {
-  return document.createElementNS("http://www.w3.org/2000/svg", tagName);
+  section.append(title, list);
+  return section;
 }
 
 function createUpgradesScreen(view: readonly UpgradeRowView[], actions: AppActions): HTMLElement {
@@ -2934,6 +3093,83 @@ function createProjectsScreen(view: ProjectsView, actions: AppActions): HTMLElem
     portfolioTitle,
     portfolioList
   );
+  return screen;
+}
+
+function createAuroraScreen(view: AuroraView, actions: AppActions): HTMLElement {
+  const screen = el("section", { className: "main-screen aurora-screen" });
+  const title = el("h1", { className: "main-view__title" });
+  title.append(text(t("ui.app.aurora")));
+
+  const progressLabel = text(view.progressLabel);
+  const progressBar = el("div", { className: "aurora-progress__bar" });
+  const progressFill = el("div", { className: "aurora-progress__fill" });
+  progressFill.style.transform = `scaleX(${view.progress.toFixed(3)})`;
+  progressBar.append(progressFill);
+  const progress = el("section", { className: "aurora-progress" });
+  progress.append(progressLabel, progressBar);
+
+  const phaseName = text(view.phaseName);
+  const status = text(view.statusLabel);
+  const costLoc = text(view.costLoc);
+  const costMoney = text(view.costMoney);
+  const timeRemaining = text(view.timeRemaining);
+  const requiredServers = text(view.requiredServers);
+  const availableServers = text(view.availableServers);
+  const readyServers = text(view.readyServers);
+  const dedicatedServers = text(view.dedicatedServers);
+  const hostedServers = text(view.hostedServers);
+  const hostingRate = text(view.hostingRate);
+
+  const summary = el("section", { className: "aurora-summary" });
+  summary.append(
+    createProjectMeta("ui.aurora.phase", phaseName),
+    createProjectMeta("ui.aurora.status", status),
+    createProjectMeta("ui.aurora.costLoc", costLoc),
+    createProjectMeta("ui.aurora.costMoney", costMoney),
+    createProjectMeta("ui.aurora.time", timeRemaining),
+    createProjectMeta("ui.aurora.requiredServers", requiredServers),
+    createProjectMeta("ui.aurora.availableServers", availableServers),
+    createProjectMeta("ui.aurora.readyServers", readyServers),
+    createProjectMeta("ui.aurora.dedicatedServers", dedicatedServers),
+    createProjectMeta("ui.aurora.hostedServers", hostedServers),
+    createProjectMeta("ui.aurora.hostingRate", hostingRate)
+  );
+
+  const actionsRow = el("div", { className: "aurora-actions" });
+  const fund = createProjectButton("ui.aurora.fund", actions.fundAuroraPhase);
+  const dedicate = createProjectButton("ui.aurora.dedicateServer", actions.dedicateAuroraServer);
+  const host = createProjectButton("ui.aurora.rentHost", actions.rentAuroraHost);
+  actionsRow.append(fund, dedicate, host);
+
+  const graphTitle = el("h2", { className: "section-title" });
+  graphTitle.append(text(t("ui.aurora.graph")));
+  const graph = el("section", { className: "aurora-graph" });
+  for (const node of view.nodes) {
+    graph.append(createAuroraNode(node));
+  }
+
+  auroraNodes = {
+    availableServers,
+    costLoc,
+    costMoney,
+    dedicate,
+    dedicatedServers,
+    fund,
+    host,
+    hostedServers,
+    hostingRate,
+    phaseName,
+    progressBar: progressFill,
+    progressLabel,
+    readyServers,
+    requiredServers,
+    status,
+    timeRemaining
+  };
+  updateAurora(view);
+
+  screen.append(title, progress, summary, actionsRow, graphTitle, graph);
   return screen;
 }
 
@@ -3460,24 +3696,12 @@ function createSettingsScreen(view: SettingsView, actions: AppActions): HTMLElem
   const licenseNote = el("p", { className: "settings-note" });
   licenseNote.append(text(t("ui.settings.vibexLicense")));
 
-  const exportArea = el("textarea", { className: "settings-save__textarea" });
-  exportArea.placeholder = t("ui.settings.savePlaceholder");
-
-  const exportButton = createSettingsButton("ui.settings.export", () => {
-    exportArea.value = actions.exportSave();
-  });
-  const importButton = createSettingsButton("ui.settings.import", () => {
-    if (!actions.importSave(exportArea.value)) {
-      exportArea.select();
-    }
-  });
   const wipeCheck = el("input", { className: "settings-control__checkbox" });
   wipeCheck.type = "checkbox";
   const wipeButton = createSettingsButton("ui.settings.wipe", () => {
     if (wipeCheck.checked) {
       actions.wipeSave();
       wipeCheck.checked = false;
-      exportArea.value = "";
     }
   });
   const resetWindowsButton = createSettingsButton("ui.settings.resetWindows", () => {
@@ -3508,19 +3732,12 @@ function createSettingsScreen(view: SettingsView, actions: AppActions): HTMLElem
     createSettingsControl("ui.settings.wipeConfirm", wipeCheck)
   );
 
-  const savePanel = el("section", { className: "settings-save" });
-  const saveTitle = el("h2", { className: "section-title" });
-  saveTitle.append(text(t("ui.settings.saveTools")));
-  const actionsRow = el("div", { className: "settings-save__actions" });
-  actionsRow.append(
-    exportButton,
-    importButton,
-    resetWindowsButton,
-    replayTutorialButton,
-    quitButton,
-    wipeButton
-  );
-  savePanel.append(saveTitle, exportArea, actionsRow);
+  const actionsPanel = el("section", { className: "settings-actions" });
+  const actionsTitle = el("h2", { className: "section-title" });
+  actionsTitle.append(text(t("ui.settings.gameControls")));
+  const actionsRow = el("div", { className: "settings-actions__buttons" });
+  actionsRow.append(resetWindowsButton, replayTutorialButton, quitButton, wipeButton);
+  actionsPanel.append(actionsTitle, actionsRow);
 
   settingsNodes = {
     autosaveS,
@@ -3536,7 +3753,7 @@ function createSettingsScreen(view: SettingsView, actions: AppActions): HTMLElem
     vibexLocalAi,
     volume
   };
-  screen.append(title, controls, licenseNote, savePanel);
+  screen.append(title, controls, licenseNote, actionsPanel);
   return screen;
 }
 
@@ -3574,13 +3791,16 @@ function createVibexWorkspace(view: VibexView, terminal: TerminalViewNodes): Vib
   fileTitle.append(text(t("vibex.files.title")));
   const fileList = el("div", { className: "vibex-files__list" });
   const fileRows = new Map<string, HTMLElement>();
+  const fileTexts = new Map<string, Text>();
 
   for (const file of view.files) {
     const row = el("div", { className: "vibex-file" });
+    const label = text(file.label);
     row.dataset.fileId = file.id;
-    row.append(text(file.label));
+    row.append(label);
     row.classList.toggle("vibex-file--active", file.active);
     fileRows.set(file.id, row);
+    fileTexts.set(file.id, label);
     fileList.append(row);
   }
 
@@ -3594,14 +3814,7 @@ function createVibexWorkspace(view: VibexView, terminal: TerminalViewNodes): Vib
   const codeTexts: Text[] = [];
 
   view.codeLines.forEach((line, index) => {
-    const row = el("div", { className: "vibex-code-line vibex-code-line--active" });
-    const lineText = text(line.text);
-    row.dataset.lineId = line.id;
-    row.style.setProperty("--vibex-line-index", String(index));
-    row.append(lineText);
-    codeRows.push(row);
-    codeTexts.push(lineText);
-    stream.append(row);
+    appendVibexCodeLine(stream, codeRows, codeTexts, line, index);
   });
 
   codePane.append(codeTitle, stream);
@@ -3617,8 +3830,10 @@ function createVibexWorkspace(view: VibexView, terminal: TerminalViewNodes): Vib
     cannedPrompt: terminal.cannedPrompt,
     cannedResponse: terminal.cannedResponse,
     codeRows,
+    codeStream: stream,
     codeTexts,
     fileRows,
+    fileTexts,
     lastCodeSequence: view.codeSequence,
     root,
     terminal
@@ -3631,6 +3846,10 @@ function updateVibex(nodes: VibexNodes, view: VibexView): void {
 
   for (const file of view.files) {
     nodes.fileRows.get(file.id)?.classList.toggle("vibex-file--active", file.active);
+    const label = nodes.fileTexts.get(file.id);
+    if (label !== undefined) {
+      setText(label, file.label);
+    }
   }
 
   if (nodes.lastCodeSequence === view.codeSequence) {
@@ -3639,21 +3858,47 @@ function updateVibex(nodes: VibexNodes, view: VibexView): void {
 
   nodes.lastCodeSequence = view.codeSequence;
 
-  nodes.codeRows.forEach((row, index) => {
-    const line = view.codeLines[index];
-
-    row.hidden = line === undefined;
-    if (line === undefined) {
+  view.codeLines.forEach((line, index) => {
+    if (nodes.codeRows[index] === undefined) {
+      appendVibexCodeLine(nodes.codeStream, nodes.codeRows, nodes.codeTexts, line, index);
       return;
     }
 
+    const row = nodes.codeRows[index]!;
+    row.hidden = false;
     row.dataset.lineId = line.id;
     setText(nodes.codeTexts[index]!, line.text);
-    row.style.setProperty("--vibex-line-index", String(index));
-    row.classList.remove("vibex-code-line--active");
-    void row.offsetWidth;
-    row.classList.add("vibex-code-line--active");
+    animateVibexCodeLine(row, index);
   });
+
+  nodes.codeRows.slice(view.codeLines.length).forEach((row) => {
+    row.hidden = true;
+  });
+}
+
+function appendVibexCodeLine(
+  stream: HTMLElement,
+  rows: HTMLElement[],
+  texts: Text[],
+  line: VibexCodeLineView,
+  index: number
+): void {
+  const row = el("div", { className: "vibex-code-line vibex-code-line--active" });
+  const lineText = text(line.text);
+
+  row.dataset.lineId = line.id;
+  row.append(lineText);
+  animateVibexCodeLine(row, index);
+  rows.push(row);
+  texts.push(lineText);
+  stream.append(row);
+}
+
+function animateVibexCodeLine(row: HTMLElement, index: number): void {
+  row.style.setProperty("--vibex-line-index", String(index));
+  row.classList.remove("vibex-code-line--active");
+  void row.offsetWidth;
+  row.classList.add("vibex-code-line--active");
 }
 
 function createTerminal(view: VibexView, actions: AppActions): TerminalViewNodes {
@@ -3696,7 +3941,13 @@ function createTerminal(view: VibexView, actions: AppActions): TerminalViewNodes
   const particles = createPromptParticles();
 
   prompt.addEventListener("click", () => {
-    runVibexSend(actions, { addLog: log.addLog, input, showParticle: particles.show });
+    runVibexSend(actions, {
+      addLog: log.addLog,
+      assistantPrompt: cannedPromptText,
+      assistantResponse: cannedResponseText,
+      input,
+      showParticle: particles.show
+    });
   });
 
   terminal.append(header, canned, input, flowRow, frameTrack, prompt, particles.root);
@@ -3718,30 +3969,46 @@ function createTerminal(view: VibexView, actions: AppActions): TerminalViewNodes
 function runVibexSend(
   actions: AppActions,
   nodes: {
-    readonly addLog: (message: string) => Text;
+    readonly addLog: (message: string, options?: TerminalLogOptions) => Text;
+    readonly assistantPrompt: Text;
+    readonly assistantResponse: Text;
     readonly input: HTMLTextAreaElement;
     readonly showParticle: (value: string) => void;
   }
 ): void {
-  const result = actions.sendVibexPrompt(nodes.input.value);
+  const result = actions.sendVibexPrompt(nodes.input.value, "manual");
   nodes.input.value = "";
-  nodes.addLog(t("vibex.log.prompt", { prompt: result.prompt }));
-  const responseText = nodes.addLog(t("vibex.log.response", { response: result.response }));
+  setText(nodes.assistantPrompt, result.prompt);
+  setText(nodes.assistantResponse, result.response);
 
   if (result.pendingResponse !== undefined) {
     void result.pendingResponse.then((response) => {
-      setText(
-        responseText,
-        t("vibex.log.response", { response: response ?? t("vibex.ai.fallbackResponse") })
-      );
+      setText(nodes.assistantResponse, response);
     });
   }
 
+  nodes.addLog(t("ui.terminal.promptLog", { loc: result.loc }));
   if (result.committed) {
-    nodes.addLog(t("vibex.log.committed"));
+    nodes.addLog(t("vibex.log.committed"), { priority: true });
   }
+  nodes.showParticle(result.loc);
+}
+
+function runVibexAutoPrompt(
+  actions: AppActions,
+  nodes: {
+    readonly addLog: (message: string, options?: TerminalLogOptions) => Text;
+    readonly showParticle: (value: string) => void;
+  }
+): void {
+  const result = actions.sendVibexPrompt("", "auto");
 
   nodes.addLog(t("ui.terminal.promptLog", { loc: result.loc }));
+
+  if (result.committed) {
+    nodes.addLog(t("vibex.log.committed"), { priority: true });
+  }
+
   nodes.showParticle(result.loc);
 }
 
@@ -3784,9 +4051,8 @@ function handleShortcut(
 
   if (event.key === " " && !isButtonShortcutTarget(event.target)) {
     event.preventDefault();
-    runVibexSend(actions, {
+    runVibexAutoPrompt(actions, {
       addLog: terminal.addLog,
-      input: terminal.input,
       showParticle: terminal.showParticle
     });
     return;
@@ -3946,7 +4212,7 @@ function activateWindowControl(control: HTMLElement): void {
 }
 
 function createTerminalLog(): {
-  readonly addLog: (message: string) => Text;
+  readonly addLog: (message: string, options?: TerminalLogOptions) => Text;
   readonly root: HTMLElement;
 } {
   const root = el("section", { className: "terminal-log" });
@@ -3969,9 +4235,15 @@ function createTerminalLog(): {
   return {
     root,
 
-    addLog(message: string): Text {
+    addLog(message: string, options?: TerminalLogOptions): Text {
       const nowMs = performance.now();
       if (nowMs - windowStartedAtMs >= 1000) {
+        windowStartedAtMs = nowMs;
+        windowCount = 0;
+        throttledCount = 0;
+      }
+
+      if (options?.priority === true && windowCount >= TERMINAL_LOG_RATE_LIMIT) {
         windowStartedAtMs = nowMs;
         windowCount = 0;
         throttledCount = 0;
@@ -4403,12 +4675,36 @@ function createHardwareRow(view: HardwareRowView, actions: AppActions): HTMLElem
   const level = text(view.levelLabel);
   const cost = text(view.cost);
   const capText = text(view.capAdd);
+  const powerText = text(view.powerCost);
+  const requirementText = text(view.psuRequirement);
+  const detail = el("span", { className: "hardware-row__detail" });
   const cap = el("span", { className: "hardware-row__cap" });
+  const power = el("span", { className: "hardware-row__power" });
+  const requirement = el("span", { className: "hardware-row__requirement" });
   cap.append(capText);
+  power.append(powerText);
+  requirement.append(requirementText);
+  detail.append(cap, power, requirement);
   const buy = createBuyButton("ui.devfloor.buy1", () => actions.buyHardware(view.id));
 
-  root.append(name, createValueCell(slot), createValueCell(level), createValueCell(cost), cap, buy);
-  hardwareRows.set(view.id, { buy, cap: capText, cost, level, root, slot });
+  root.append(
+    name,
+    createValueCell(slot),
+    createValueCell(level),
+    createValueCell(cost),
+    detail,
+    buy
+  );
+  hardwareRows.set(view.id, {
+    buy,
+    cap: capText,
+    cost,
+    level,
+    power: powerText,
+    requirement: requirementText,
+    root,
+    slot
+  });
   updateHardwareRow(view);
   return root;
 }
@@ -4531,6 +4827,19 @@ function createRefactorPanel(view: RefactorView, actions: AppActions): HTMLEleme
 
   refactorNodes = { button, cost, debt, effect };
   updateRefactor(view);
+  return root;
+}
+
+function createAuroraNode(view: AuroraNodeView): HTMLElement {
+  const root = el("article", { className: "aurora-node" });
+  root.dataset.state = view.state;
+  const name = el("strong", { className: "aurora-node__name" });
+  name.append(text(view.name));
+  const stateText = text(t(`ui.aurora.nodeState.${view.state}`));
+  const state = el("span", { className: "aurora-node__state" });
+  state.append(stateText);
+  root.append(name, state);
+  auroraNodeRows.set(view.id, { root, state: stateText });
   return root;
 }
 
@@ -4702,11 +5011,23 @@ function syncHardwareRows(
   screen: HTMLElement,
   actions: AppActions
 ): void {
-  const list = screen.querySelector<HTMLElement>(".hardware-list");
   const visibleIds = new Set(views.map((view) => view.id));
+  const phases: readonly HardwareRowView["phase"][] = ["pc", "server"];
 
-  if (list !== null) {
-    for (const view of views) {
+  for (const phase of phases) {
+    const phaseRows = views.filter((view) => view.phase === phase);
+    const section = screen.querySelector<HTMLElement>(`.hardware-section[data-phase="${phase}"]`);
+    const list = screen.querySelector<HTMLElement>(`.hardware-list[data-phase="${phase}"]`);
+
+    if (section !== null) {
+      section.hidden = phase === "server" && phaseRows.length === 0;
+    }
+
+    if (list === null) {
+      continue;
+    }
+
+    for (const view of phaseRows) {
       if (!hardwareRows.has(view.id)) {
         list.append(createHardwareRow(view, actions));
       }
@@ -4720,8 +5041,6 @@ function syncHardwareRows(
   for (const [id, nodes] of hardwareRows) {
     nodes.root.hidden = !visibleIds.has(id);
   }
-
-  updateHardwareVisual(views);
 }
 
 function updateHardwareRow(view: HardwareRowView): void {
@@ -4739,7 +5058,22 @@ function updateHardwareRow(view: HardwareRowView): void {
   setText(row.level, view.levelLabel);
   setText(row.cost, view.cost);
   setText(row.cap, view.capAdd);
+  setText(row.power, view.powerCost);
+  setText(row.requirement, view.psuRequirement);
+  if (row.requirement.parentElement !== null) {
+    row.requirement.parentElement.hidden = view.psuRequirement === "";
+  }
+  row.root.classList.toggle("hardware-row--blocked", view.psuRequirement !== "");
   row.buy.disabled = !view.canBuy;
+}
+
+function updateHardwareAuroraCounter(view: AuroraView): void {
+  if (hardwareAuroraCounterNodes === undefined) {
+    return;
+  }
+
+  hardwareAuroraCounterNodes.root.hidden = !view.unlocked || view.readyServerCount <= 0;
+  setText(hardwareAuroraCounterNodes.value, view.readyServers);
 }
 
 function syncUpgradeRows(
@@ -4833,6 +5167,39 @@ function updateProjects(
   updateProjectOffers(view.offers);
   syncActiveBuilds(view.activeBuilds, screens.projects);
   syncProducts(view.portfolio, screens.projects, actions);
+}
+
+function updateAurora(view: AuroraView): void {
+  if (auroraNodes === undefined) {
+    return;
+  }
+
+  setText(auroraNodes.progressLabel, view.progressLabel);
+  auroraNodes.progressBar.style.transform = `scaleX(${view.progress.toFixed(3)})`;
+  setText(auroraNodes.phaseName, view.phaseName);
+  setText(auroraNodes.status, view.statusLabel);
+  setText(auroraNodes.costLoc, view.costLoc);
+  setText(auroraNodes.costMoney, view.costMoney);
+  setText(auroraNodes.timeRemaining, view.timeRemaining);
+  setText(auroraNodes.requiredServers, view.requiredServers);
+  setText(auroraNodes.availableServers, view.availableServers);
+  setText(auroraNodes.readyServers, view.readyServers);
+  setText(auroraNodes.dedicatedServers, view.dedicatedServers);
+  setText(auroraNodes.hostedServers, view.hostedServers);
+  setText(auroraNodes.hostingRate, view.hostingRate);
+  auroraNodes.fund.disabled = !view.canFund;
+  auroraNodes.dedicate.disabled = !view.canDedicate;
+  auroraNodes.host.disabled = !view.canHost;
+
+  for (const node of view.nodes) {
+    const row = auroraNodeRows.get(node.id);
+    if (row === undefined) {
+      continue;
+    }
+
+    row.root.dataset.state = node.state;
+    setText(row.state, t(`ui.aurora.nodeState.${node.state}`));
+  }
 }
 
 function updateSettings(view: SettingsView): void {

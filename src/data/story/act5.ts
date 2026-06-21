@@ -1,4 +1,10 @@
 import type { StoryEvent } from "./types";
+import {
+  AURORA_DEDICATED_STARTED_FLAG,
+  AURORA_HOSTING_STARTED_FLAG,
+  AURORA_PHASE_STARTED_FLAG,
+  AURORA_SEED_AVAILABLE_FLAG
+} from "../aurora";
 
 export const ACT5_EVENTS: readonly StoryEvent[] = [
   {
@@ -134,6 +140,86 @@ export const ACT5_EVENTS: readonly StoryEvent[] = [
           { kind: "setEnding", choice: "fork" },
           { kind: "setFlag", flag: "achievement.ending_fork" }
         ]
+      }
+    ]
+  },
+  {
+    id: "a5_13_aurora_seed",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: "iteration_unlocked" },
+    channel: "system",
+    speaker: "omega",
+    textKey: "story.a5_13_aurora_seed",
+    effects: [{ kind: "setFlag", flag: AURORA_SEED_AVAILABLE_FLAG }]
+  },
+  {
+    id: "a5_14_aurora_unlocked",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: "aurora_unlocked" },
+    channel: "system",
+    speaker: "aurora",
+    textKey: "story.a5_14_aurora_unlocked"
+  },
+  {
+    id: "a5_15_aurora_billing",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: "aurora_billing_started" },
+    channel: "mail",
+    speaker: "vera",
+    textKey: "story.a5_15_aurora_billing"
+  },
+  {
+    id: "a5_15_aurora_phase_started",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: AURORA_PHASE_STARTED_FLAG },
+    channel: "system",
+    speaker: "aurora",
+    textKey: "story.a5_15_aurora_phase_started"
+  },
+  {
+    id: "a5_15b_aurora_dedicated",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: AURORA_DEDICATED_STARTED_FLAG },
+    channel: "system",
+    speaker: "aurora",
+    textKey: "story.a5_15b_aurora_dedicated"
+  },
+  {
+    id: "a5_15c_aurora_hosting",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: AURORA_HOSTING_STARTED_FLAG },
+    channel: "mail",
+    speaker: "vera",
+    textKey: "story.a5_15c_aurora_hosting"
+  },
+  {
+    id: "a5_16_aurora_servers",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: "aurora_server_quorum" },
+    channel: "system",
+    speaker: "aurora",
+    textKey: "story.a5_16_aurora_servers"
+  },
+  {
+    id: "a5_17_aurora_complete",
+    act: 5,
+    demoLocked: true,
+    trigger: { flag: "aurora_completed" },
+    channel: "system",
+    speaker: "aurora",
+    textKey: "story.a5_17_aurora_complete",
+    choices: [
+      {
+        id: "continue",
+        textKey: "story.a5_17_aurora_complete.choice.continue",
+        effects: [{ kind: "setFlag", flag: "aurora_victory_seen" }]
       }
     ]
   }

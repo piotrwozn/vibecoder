@@ -75,11 +75,11 @@
 
 ## M13 — Powłoka desktop: boot + pulpit + okna + karteczki (2–3 dni)
 - [ ] Scena **BOOT** (`06 §11`): ciemny pokój + migający monitor (CSS/SVG, reduced-motion safe); przyciski START / CONTINUE / SETTINGS / język / credits; Settings współdzielone z apką Settings.
-- [ ] Animacja wejścia: zoom „w ekran" (tylko `transform`/`opacity`, skippable, reduced-motion = fade) → scena **DESKTOP**.
+- [ ] Animacja wejścia: napisy znikają, efekt odpalenia działa tylko w monitorze (`opacity`/pseudo-warstwa CRT, skippable, reduced-motion = fade) → scena **DESKTOP**.
 - [ ] Pulpit + ikony apek (`06 §12`); menedżer okien `ui/wm/`: przesuwanie/resize/min/max/close, z-order, jedno okno na apkę, min-size per apka; persist `GameState.ui.windows` (+ bump `SAVE_VERSION` + migracja).
 - [ ] Karteczki statystyk (`06 §13`): 3 post-ity (Money + Money/s; LoC + LoC/s + dopisek „LoC = Lines of Code"; RP + Compute used/cap + Hype); `--font-hand` vendorowany (zweryfikować licencję), tabular-nums, ResourceCounter, tooltip mnożników; warstwa nad oknami.
 - [ ] Nowe tokeny (`06 §2/§10`); skróty klawiszowe pod nowy zestaw apek (`06 §8/§12`).
-- **AC:** boot→zoom→desktop działa i jest skippable; `prefers-reduced-motion` = bez zoomu; okno otwiera się w granicach min-size…pulpit; układ okien przeżywa reload (test save/migracja); karteczki bez layout-shiftu przy tickach (tabular-nums); budżet perf `07 §9` trzyma się (okno zamknięte/min nic nie liczy).
+- **AC:** boot→monitor power-on→desktop działa i jest skippable; `prefers-reduced-motion` = fade; okno otwiera się w granicach min-size…pulpit; układ okien przeżywa reload (test save/migracja); karteczki bez layout-shiftu przy tickach (tabular-nums); budżet perf `07 §9` trzyma się (okno zamknięte/min nic nie liczy).
 
 ## M14 — Apki: podział ekranów + Chat/Mail/Feed + powiadomienia (2 dni)
 - [ ] Opakować istniejące ekrany (`06 §4`) w okna; rozdzielić dawny Dev Floor → **Agents** (lista agentów + rozbicie Compute) / **Hardware** / **Upgrades** (`06 §17`).
@@ -97,12 +97,23 @@
 - **AC:** idle pokazuje pary canned **bez kosztu CPU** (P3); wpisany prompt → odpowiedź modelu **w workerze bez zacięcia ticka** (budżet `07 §9`); brak/wyłączony model → fallback na pulę; **liczby niezmienione** (test: Send daje identyczny burst LoC jak przed przebudową UI).
 
 ## M16 — Hardware: komponenty PC → serwer od zera (2–3 dni)
-- [x] **Dane zdefiniowane:** tabele komponentów (PC + serwer) i migracja w `09 §4.1–4.3`; wzory/stałe (`totalCap`, `HW_BASE_CAP=6`, `HW_PC_MAX_CAP=3486`, `pcComplete`) w `03 §3.4`. (Liczby wstępne — tuning po simie.)
-- [ ] Przepisać `data/hardware.ts` 1:1 z `09 §4` (schemat: `id, phase pc|server, slot, maxLevel, baseCost, growth, capPerLevel, unlock, isEnclosure`).
+- [x] **Dane zdefiniowane:** tabele komponentów (PC + serwer) i migracja w `09 §4.1–4.3`; wzory/stałe (`totalCap`, `HW_BASE_CAP=6`, `HW_PC_MAX_CAP=182`, `pcComplete`) w `03 §3.4`. (Liczby wstępne — tuning po simie.)
+- [ ] Przepisać `data/hardware.ts` 1:1 z `09 §4` (schemat: `id, phase pc|server, slot, maxLevel, baseCost, growth, firstLevelCap?, capPerLevel, unlock, isEnclosure`).
 - [ ] `systems/compute.ts`: cap liczony z komponentów/faz/slotów; **faza 2 (serwer) odblokowana po zmaksowaniu PC**; szafa sama = 0 cap; blokada zakupu gdy nie stać.
 - [ ] Apka Hardware: SVG płyty głównej + szafy rack, sloty, „wskakiwanie" komponentu, liczniki `+cap` (`transform`/`opacity`).
 - [ ] Migracja save: stare tiery hardware → ekwiwalent cap/komponentów; bump `SAVE_VERSION` + fixture test.
 - **AC:** faza 1 daje cap i odblokowuje fazę 2 po maxie PC; szafa bez modułów = 0 cap; sim balansu (`10 §3`) przechodzi z nowym hardware bez regresji rytmu „wall & release"; stary save migruje się zachowując dostępny cap.
+
+## M17 — AURORA PROJECT true ending (3–5 dni)
+- [ ] Plan-first: dopisać liczby Aurory/billingu do `03 §7/§9` i `09 §4.4/§12`.
+- [ ] `GameState.aurora` + `SAVE_VERSION` bump + migracja; Aurora przeżywa REWRITE/EXIT/ITERATION.
+- [ ] `p_aurora_seed` po OMEGA: unlock-only projekt, ship → `aurora_unlocked`, osobna ikona Aurora.
+- [ ] `systems/aurora.ts`: fazy 0→100, opłata kroku, progress, dedykacja serwera, hosting, complete.
+- [ ] `systems/billing.ts`: prąd hardware + hosting Aurory, net Money/s i tooltip rozbicia.
+- [ ] UI: apka Aurora, Aurora UI nody, licznik Aurora-ready servers w Hardware.
+- [ ] Story: eventy `a5_13–a5_17`, victory true ending.
+- [ ] Sim: `completeH = auroraCompleteH`, osobno `omegaCompleteH`; `sane 100h` kończy Aurorę ≥20h po OMEGA.
+- **AC:** OMEGA choice nie kończy technicznie gry; `p_aurora_seed` odblokowuje Aurorę; 8 własnych serwerów daje tańszą ścieżkę niż hosting; billing nie robi ujemnych pieniędzy; Aurora complete odpala true ending i przechodzi `npm run check` + sim 100h.
 
 **Suma M0–M12: ~25–30 dni roboczych.** **M13–M16 (aktualizacja UI „desktop OS"): ~9–12 dni** (z Codexem realnie szybciej przy dyscyplinie milestone'ów).
 

@@ -13,9 +13,9 @@ describe("M4 offline progress", () => {
     state.res.hype = 4;
     const cache = createDerivedCache();
     state.projects.portfolio.push({
-      id: "p_llama_todo.1",
+      id: "p_landing.1",
       bugged: false,
-      projectId: "p_llama_todo",
+      projectId: "p_landing",
       revenue: Big.fromNumber(5),
       shippedAtS: 0
     });

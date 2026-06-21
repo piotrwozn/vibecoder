@@ -1,4 +1,11 @@
-export type BleepKind = "click" | "error" | "message" | "ship" | "unlock";
+import clickUrl from "../assets/audio/ui-click.ogg";
+import errorUrl from "../assets/audio/ui-error.ogg";
+import messageUrl from "../assets/audio/ui-message.ogg";
+import musicUrl from "../assets/audio/music-out-there.ogg";
+import shipUrl from "../assets/audio/ui-ship.ogg";
+import unlockUrl from "../assets/audio/ui-unlock.ogg";
+
+export type BleepKind = "boot" | "click" | "error" | "message" | "ship" | "unlock";
 
 export interface AudioSettings {
   readonly sound: boolean;
@@ -11,6 +18,7 @@ export interface AudioController {
 }
 
 const oscillatorTypes = {
+  boot: "triangle",
   click: "sine",
   error: "square",
   message: "sawtooth",
@@ -18,8 +26,19 @@ const oscillatorTypes = {
   unlock: "square"
 } satisfies Record<BleepKind, OscillatorType>;
 
+const sampleUrls = {
+  boot: unlockUrl,
+  click: clickUrl,
+  error: errorUrl,
+  message: messageUrl,
+  ship: shipUrl,
+  unlock: unlockUrl
+} satisfies Record<BleepKind, string>;
+
 type AudioContextConstructor = new () => AudioContext;
+type HtmlAudioConstructor = new (url?: string) => HTMLAudioElement;
 type AudioWindow = Window & {
+  readonly Audio?: HtmlAudioConstructor;
   readonly AudioContext?: AudioContextConstructor;
   readonly webkitAudioContext?: AudioContextConstructor;
 };
@@ -27,8 +46,11 @@ type AudioWindow = Window & {
 export function createAudioController(initialSettings: AudioSettings): AudioController {
   let enabled = initialSettings.sound;
   let volume = clampVolume(initialSettings.volume);
+  const activeSamples = new Set<HTMLAudioElement>();
   let context: AudioContext | undefined;
   let master: GainNode | undefined;
+  let music: HTMLAudioElement | undefined;
+  let musicFallback: MusicFallback | undefined;
 
   function ensureContext(): AudioContext | undefined {
     if (context !== undefined) {
@@ -61,34 +83,20 @@ export function createAudioController(initialSettings: AudioSettings): AudioCont
       }
 
       const audio = ensureContext();
+      if (audio !== undefined) {
+        void audio.resume();
+      }
 
-      if (audio === undefined || master === undefined) {
+      startMusic();
+      if (
+        playSample(kind, () => {
+          playOscillator(kind);
+        })
+      ) {
         return;
       }
 
-      void audio.resume();
-
-      const oscillator = audio.createOscillator();
-      const gain = audio.createGain();
-      oscillator.type = oscillatorTypes[kind];
-      gain.gain.value = 1;
-      oscillator.connect(gain);
-      gain.connect(master);
-      oscillator.start();
-
-      const audioWindow = getAudioWindow();
-      const requestFrame =
-        audioWindow?.requestAnimationFrame?.bind(audioWindow) ??
-        ((callback: FrameRequestCallback): number => {
-          callback(0);
-          return 0;
-        });
-
-      requestFrame(() => {
-        oscillator.stop();
-        oscillator.disconnect();
-        gain.disconnect();
-      });
+      playOscillator(kind);
     },
 
     setSettings(settings): void {
@@ -98,8 +106,221 @@ export function createAudioController(initialSettings: AudioSettings): AudioCont
       if (master !== undefined) {
         master.gain.value = volume;
       }
+
+      if (music !== undefined) {
+        music.volume = getMusicVolume(volume);
+        if (!enabled || volume <= 0) {
+          music.pause();
+        }
+      }
+
+      for (const sample of activeSamples) {
+        sample.volume = volume;
+        if (!enabled || volume <= 0) {
+          sample.pause();
+        }
+      }
+
+      if (!enabled || volume <= 0) {
+        stopMusicFallback();
+      } else {
+        updateMusicFallbackVolume();
+      }
     }
   };
+
+  function playOscillator(kind: BleepKind): void {
+    if (!enabled || volume <= 0) {
+      return;
+    }
+
+    const audio = ensureContext();
+
+    if (audio === undefined || master === undefined) {
+      return;
+    }
+
+    void audio.resume();
+
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+    oscillator.type = oscillatorTypes[kind];
+    gain.gain.value = 1;
+    oscillator.connect(gain);
+    gain.connect(master);
+    oscillator.start();
+
+    const audioWindow = getAudioWindow();
+    const requestFrame =
+      audioWindow?.requestAnimationFrame?.bind(audioWindow) ??
+      ((callback: FrameRequestCallback): number => {
+        callback(0);
+        return 0;
+      });
+
+    requestFrame(() => {
+      oscillator.stop();
+      oscillator.disconnect();
+      gain.disconnect();
+    });
+  }
+
+  function playSample(kind: BleepKind, onFail: () => void): boolean {
+    const AudioCtor = getAudioWindow()?.Audio;
+
+    if (AudioCtor === undefined) {
+      return false;
+    }
+
+    try {
+      const sample = new AudioCtor(sampleUrls[kind]);
+      sample.preload = "auto";
+      sample.volume = volume;
+
+      if (!canPlayOgg(sample)) {
+        onFail();
+        return true;
+      }
+
+      activeSamples.add(sample);
+      addAudioListener(sample, "ended", () => {
+        activeSamples.delete(sample);
+      });
+      addAudioListener(sample, "error", () => {
+        activeSamples.delete(sample);
+        onFail();
+      });
+
+      const started = sample.play();
+      void started.catch(() => {
+        activeSamples.delete(sample);
+        onFail();
+      });
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function startMusic(): void {
+    const AudioCtor = getAudioWindow()?.Audio;
+
+    if (AudioCtor === undefined) {
+      startMusicFallback();
+      return;
+    }
+
+    try {
+      music ??= new AudioCtor(musicUrl);
+      music.loop = true;
+      music.preload = "auto";
+      music.volume = getMusicVolume(volume);
+
+      if (!canPlayOgg(music)) {
+        startMusicFallback();
+        return;
+      }
+
+      if (music.paused) {
+        void music
+          .play()
+          .then(() => {
+            stopMusicFallback();
+          })
+          .catch(() => {
+            startMusicFallback();
+          });
+      }
+    } catch {
+      music = undefined;
+      startMusicFallback();
+    }
+  }
+
+  function startMusicFallback(): void {
+    if (!enabled || volume <= 0 || musicFallback !== undefined) {
+      return;
+    }
+
+    const audio = ensureContext();
+
+    if (audio === undefined || master === undefined) {
+      return;
+    }
+
+    const low = audio.createOscillator();
+    const high = audio.createOscillator();
+    const gain = audio.createGain();
+    low.type = "sine";
+    high.type = "triangle";
+    low.frequency.value = 110;
+    high.frequency.value = 164.81;
+    gain.gain.value = getFallbackMusicGain(volume);
+    low.connect(gain);
+    high.connect(gain);
+    gain.connect(master);
+    low.start();
+    high.start();
+    musicFallback = { gain, oscillators: [low, high] };
+  }
+
+  function stopMusicFallback(): void {
+    if (musicFallback === undefined) {
+      return;
+    }
+
+    for (const oscillator of musicFallback.oscillators) {
+      oscillator.stop();
+      oscillator.disconnect();
+    }
+
+    musicFallback.gain.disconnect();
+    musicFallback = undefined;
+  }
+
+  function updateMusicFallbackVolume(): void {
+    if (musicFallback !== undefined) {
+      musicFallback.gain.gain.value = getFallbackMusicGain(volume);
+    }
+  }
+}
+
+interface MusicFallback {
+  readonly gain: GainNode;
+  readonly oscillators: readonly OscillatorNode[];
+}
+
+function addAudioListener(
+  audio: HTMLAudioElement,
+  event: "ended" | "error",
+  listener: () => void
+): void {
+  const addEventListener = (
+    audio as HTMLAudioElement & {
+      readonly addEventListener?: (
+        event: "ended" | "error",
+        listener: () => void,
+        options?: AddEventListenerOptions
+      ) => void;
+    }
+  ).addEventListener;
+
+  addEventListener?.call(audio, event, listener, { once: true });
+}
+
+function canPlayOgg(audio: HTMLAudioElement): boolean {
+  const canPlayType = (
+    audio as HTMLAudioElement & {
+      readonly canPlayType?: (type: string) => CanPlayTypeResult;
+    }
+  ).canPlayType;
+
+  if (canPlayType === undefined) {
+    return true;
+  }
+
+  return canPlayType.call(audio, "audio/ogg; codecs=vorbis") !== "";
 }
 
 function getAudioWindow(): AudioWindow | undefined {
@@ -112,4 +333,12 @@ function clampVolume(value: number): number {
   }
 
   return Math.min(1, Math.max(0, value));
+}
+
+function getMusicVolume(volume: number): number {
+  return Math.min(0.22, volume * 0.45);
+}
+
+function getFallbackMusicGain(volume: number): number {
+  return Math.min(0.08, volume * 0.18);
 }

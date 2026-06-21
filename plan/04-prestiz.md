@@ -6,9 +6,9 @@
 
 | Warstwa | Nazwa diegetyczna | Co resetuje | Co zostaje | Waluta | Pierwszy raz |
 |---------|-------------------|-------------|------------|--------|--------------|
-| 1 | **REWRITE** ("przepisujemy od zera, tym razem dobrze") | LoC, $, agenci, hardware, projekty, debt, hype, era→E1 | RP + research, Insight, Equity, achievementy, fabuła | **Insight** | ~2,5–3h |
-| 2 | **EXIT** (sprzedaż firmy / acquihire) | wszystko z W1 + Insight i jego drzewko + research/RP | Equity + perki Equity, fabuła, achievementy | **Equity** | ~14–18h |
-| 3 | **ITERATION** (pętla osobliwości, po finale fabuły) | wszystko z W2 + Equity | Paradox, meta-modyfikatory, kosmetyka | **Paradox** | po finale (~50h+) |
+| 1 | **REWRITE** ("przepisujemy od zera, tym razem dobrze") | LoC, $, agenci, hardware, projekty, debt, hype, era→E1 | RP + research, Insight, Equity, achievementy, fabuła | **Insight** | ~2–3h |
+| 2 | **EXIT** (sprzedaż firmy / acquihire) | wszystko z W1 + Insight i jego drzewko + research/RP | Equity + perki Equity, fabuła, achievementy | **Equity** | ~18–22h |
+| 3 | **ITERATION** (pętla osobliwości, po finale fabuły) | wszystko z W2 + Equity | Paradox, meta-modyfikatory, kosmetyka | **Paradox** | po finale (~60h+) |
 
 ## 2. Warstwa 1 — REWRITE
 
@@ -18,11 +18,11 @@ Klasyk dev-kultury: "ten kod się nie da utrzymać, przepisujemy". Fabularnie: n
 ### 2.2 Wzory
 ```
 insightGain = floor( (lifetimeLoC / 1e7) ^ 0.42 )        // lifetimeLoC od ostatniego REWRITE? NIE — od ostatniego EXIT, patrz niżej
-insightMult (globalny, LoC i $) = (1 + insight) ^ 0.85
+insightMult (globalny, LoC i $) = (1 + insight) ^ 0.75
 ```
-> Dzielnik 1e7 skalibrowany wstępną symulacją (sane play ≈ 1e8–1e9 lifetime LoC po ~3h): próg 5 Insight = 4,6e8 LoC. Finalna kalibracja simem w M2+ (`10 §3`).
+> Dzielnik 1e7 skalibrowany symulacją; próg 18 Insight = 9,5e9 LoC. Finalna kalibracja simem w M2+ (`10 §3`).
 - Licznik `lifetimeLoC` liczy się od ostatniego **EXIT** (kumulacja między rewrite'ami) → każdy kolejny REWRITE w ramach jednego "życia firmy" daje przyrost, ale malejący → naturalna zachęta do pchania dalej zamiast farmienia tego samego progu.
-- Próg sensowności: UI pokazuje "REWRITE now: +N Insight". Przycisk aktywny od `insightGain ≥ 5` pierwszego razu (potem ≥ +25% obecnego stanu — anty-klikanie prestiżu co 5 min).
+- Próg sensowności: UI pokazuje "REWRITE now: +N Insight". Przycisk aktywny od `insightGain ≥ 18` pierwszego razu (potem ≥ +25% obecnego stanu — anty-klikanie prestiżu co 5 min).
 - Target pacingu: pierwszy REWRITE +5–8 Insight; w Akcie 2 rewrite co ~60–90 min.
 
 ### 2.3 Drzewko Insight (25 węzłów, pełna lista `09 §8`)
@@ -42,11 +42,11 @@ Sprzedajesz firmę (TensorCorp? Meridian? fabuła daje opcje). Dostajesz **Equit
 ### 3.2 Wzory
 ```
 equityGain = floor( (totalInsightEarned_thisRun / 25) ^ 0.6 )     // totalInsightEarned od ostatniego EXIT
-equityMult (globalny) = 1 + 0.25 × equity ^ 0.7
+equityMult (globalny) = 1 + 0.30 × equity ^ 0.7
 ```
-> Przy progu 300 Insight: gain = (12)^0.6 ≈ 4 — zgodne z targetem 3–5.
-- Warunek odblokowania 1. EXIT: event fabularny Aktu 3 (oferta przejęcia) + ≥ 300 Insight earned.
-- Target: 1. EXIT = 3–5 Equity; w kampanii 3–4 EXIT-y łącznie.
+> Przy progu 220 Insight: gain = (8.8)^0.6 ≈ 3 — zgodne z targetem 3–5; sensowny sim wychodzi od ~5 Equity zamiast farmić do 10+.
+- Warunek odblokowania 1. EXIT: event fabularny Aktu 3 (oferta przejęcia) + ≥ 220 Insight earned.
+- Target: 1. EXIT = 3–5 Equity; kampania zwykle robi 1–2 EXIT-y, a kolejne resetowe decyzje przechodzą do endless.
 
 ### 3.3 Perki Equity (15 pozycji, lista `09 §9`)
 Trwałe na zawsze (przeżywają wszystko poza twardym resetem sava):
@@ -77,10 +77,10 @@ Meta-ulepszenia (działają wszędzie): +sloty automatyzacji reguł (mini-skrypt
 
 ```ts
 export const PRESTIGE = {
-  INSIGHT_DIV: 1e7, INSIGHT_EXP: 0.42, INSIGHT_MULT_EXP: 0.85,
-  REWRITE_MIN_FIRST: 5, REWRITE_MIN_GAIN_RATIO: 0.25,
-  EQUITY_DIV: 25, EQUITY_EXP: 0.6, EQUITY_MULT_K: 0.25, EQUITY_MULT_EXP: 0.7,
-  EXIT_MIN_INSIGHT: 300,
+  INSIGHT_DIV: 1e7, INSIGHT_EXP: 0.42, INSIGHT_MULT_EXP: 0.75,
+  REWRITE_MIN_FIRST: 18, REWRITE_MIN_GAIN_RATIO: 0.25,
+  EQUITY_DIV: 25, EQUITY_EXP: 0.6, EQUITY_MULT_K: 0.30, EQUITY_MULT_EXP: 0.7,
+  EXIT_MIN_INSIGHT: 220,
   PARADOX_BASE: 2, PARADOX_MULT_EXP: 0.5,
   ITER_SOFTCAP_BASE_E: 35, ITER_SOFTCAP_STEP_E: 15, ITER_HOLD_S: 600,
   ITER_COST_E_PER_K: 5, ITER_PROD_POW_PER_K: 3,

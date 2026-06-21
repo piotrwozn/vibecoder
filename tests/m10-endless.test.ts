@@ -145,13 +145,13 @@ describe("M10 endless ITERATION", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
     state.owned.paradoxItems.add("x_rule_slot_1");
-    state.lifetime.locSinceExit = getInsightGainThreshold(5);
+    state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST);
     setAutomationEnabled(state, AUTO_REWRITE_ID, true);
     recomputeDerivedCache(state, cache);
 
     expect(tickAutomation(state, cache, 1)).toBe(true);
     expect(state.prestige.rewrites).toBe(1);
-    expect(state.res.insight.toNumber()).toBe(5);
+    expect(state.res.insight.toNumber()).toBe(PRESTIGE.REWRITE_MIN_FIRST);
   });
 
   it("maps each Paradox rule slot to an independent auto-REWRITE rule", () => {
@@ -184,7 +184,7 @@ describe("M10 endless ITERATION", () => {
     );
     expect(tickAutomation(state, cache, 1)).toBe(true);
     expect(state.prestige.rewrites).toBe(1);
-    expect(state.res.insight.toNumber()).toBe(10);
+    expect(state.res.insight.toNumber()).toBe(PRESTIGE.REWRITE_MIN_FIRST * PRESTIGE.PARADOX_BASE);
   });
 
   it("keeps auto-REWRITE hot path off rewrite preview allocation", () => {

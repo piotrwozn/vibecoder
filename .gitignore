@@ -4,6 +4,8 @@
 .swarm/
 node_modules/
 dist/
+models/*.gguf
+release/
 src-tauri/target/
 coverage/
 .vite/

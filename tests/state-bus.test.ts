@@ -31,7 +31,7 @@ describe("M2 state and bus", () => {
     expect(C.TICK_HZ).toBe(10);
     expect(C.CLICK_SYNERGY).toBe(0.02);
     expect(C.HW_BASE_CAP).toBe(6);
-    expect(C.HW_PC_MAX_CAP).toBe(3486);
+    expect(C.HW_PC_MAX_CAP).toBe(182);
     expect(C.MILESTONES).toEqual([10, 25, 50, 100, 250, 500, 1000]);
     expect(PRESTIGE.INSIGHT_DIV).toBe(1e7);
     expect(PRESTIGE.ITER_HOLD_S).toBe(600);

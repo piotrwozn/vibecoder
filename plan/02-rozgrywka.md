@@ -20,6 +20,11 @@
         └─► [REFACTOR / QA] ── pochłania LoC/czas ─────────┘
 
 Meta: REWRITE (reset → Insight) → EXIT (reset → Equity) → ITERATION (endless)
+
+Post-finał: AURORA PROJECT (true ending) — po wyborze OMEGA gracz odblokowuje
+megaprojekt, który buduje wieloagentową nakładkę AI robiącą pracę za niego.
+Aurora jest osobnym, trwałym celem 0→100%, przeżywa REWRITE/EXIT/ITERATION i
+zamyka grę dopiero po ukończeniu.
 ```
 
 Rytm decyzji gracza (to jest "strategia", której brakowało FACEMINER-owi):
@@ -37,7 +42,7 @@ Rytm decyzji gracza (to jest "strategia", której brakowało FACEMINER-owi):
 
 ### 2.2 Money (`money`)
 - Źródła: payout za ship, pasywny przychód z wydanych produktów ($/s), eventy fabularne.
-- Zużycie: agenci, hardware, część upgrade'ów.
+- Zużycie: agenci, hardware, część upgrade'ów, rachunki za prąd/hosting oraz kroki Aurory.
 - Przychód pasywny mnożony przez Hype i obniżany przez aktywne bugi.
 
 ### 2.3 Compute (`compute`) — capacity, odpowiednik prądu z FACEMINER
@@ -45,6 +50,12 @@ Rytm decyzji gracza (to jest "strategia", której brakowało FACEMINER-owi):
 - Suma zużycia ≤ cap. Cap podnosi **hardware** (osobna ścieżka zakupów: laptop → gaming rig → serwer → rack → DC → … `09 §4`).
 - Przekroczenie niemożliwe (UI blokuje zakup agenta i pokazuje "Insufficient compute" + skrót do sklepu hardware).
 - Tworzy rytm: tanie agenty → ściana compute → drogi hardware → znów agenci. Klasyczny "wall & release".
+
+### 2.3a Rachunki operacyjne (`billing`)
+- Hardware nadal daje wyłącznie `compute cap`, ale od M17 generuje koszt operacyjny `$ / s`.
+- Początek praktycznie 0; koszt rośnie z lepszym PC, serwerami i dedykowanymi serwerami Aurory.
+- Hosting Aurory daje alternatywę dla własnych serwerów, ale ma wysoki `$ / s`; własny pełny serwer jest ekonomicznie lepszy, bo płaci tylko prąd.
+- Rachunki nigdy nie robią ujemnych pieniędzy. Gdy nie da się opłacić kosztów Aurory, postęp Aurory pauzuje.
 
 ### 2.4 Hype (`hype`)
 - Mnożnik przychodu $ (nie LoC). Bazowo 1×.
@@ -100,6 +111,16 @@ Rytm decyzji gracza (to jest "strategia", której brakowało FACEMINER-owi):
 - **Sloty produktów:** liczba utrzymywanych produktów ograniczona (rośnie z erą/hardware). Nowy ship ponad limit = wybór, który stary produkt zarchiwizować (jego $/s znika). Decyzja portfolio.
 - Typy szablonów (pełna lista `09 §7`): od "Todo App", "Landing Page" w E1 po "Planetary OS" w E10. Specjalne: **Refactor** (zawsze dostępny, redukuje debt), **Open Source** (0 $, dużo RP i hype), projekty fabularne (wymuszone eventami).
 - Auto-ship (research/perki): automatycznie bierze projekty wg priorytetu ustawionego przez gracza (payout / $/s / RP).
+
+### 6.1 AURORA PROJECT
+- Po dowolnym wyborze OMEGA (`a5_12`) najpierw odpala się story `a5_13_aurora_seed`; dopiero jego efekt `aurora_seed_available` pozwala planszy projektów pokazać `p_aurora_seed`.
+- `p_aurora_seed` jest projektem odblokowującym: kosztuje LoC i czas, ale nie daje payoutu ani portfolio revenue; po shipie ustawia `aurora_unlocked`.
+- Odblokowana Aurora pojawia się jako osobna apka na pulpicie, poza zwykłą apką Projects.
+- Aurora składa się z faz 0→100% (`09 §12`): każda faza wymaga kosztu LoC, kosztu $, czasu pracy i minimalnej liczby serwerów Aurora.
+- Serwer Aurora można dostarczyć na dwa sposoby:
+  - **własny serwer:** poświęca 1 pełny bundle `h_rack+h_srv_board+h_srv_psu+h_srv_cooling+h_srv_net+h_exotic_core` przy `h_dyson_frame≥1`; bundle znika z normalnego compute i zostaje w Aurorze na zawsze,
+  - **hosting:** dodaje slot serwera bez zabierania compute, ale pobiera koszt `$ / s`.
+- Najtańsza ścieżka true ending wymaga 8 własnych serwerów Aurora-grade.
 
 ## 7. Automatyzacja (QoL jako progresja)
 

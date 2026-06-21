@@ -26,12 +26,12 @@ Skoki ×250–2500 — celowo nierówne (ery fabularne droższe). `eraMult = 1.5
 
 | id | Era | Nazwa EN | baseCost $ | growth | baseRate LoC/s | compute | special |
 |----|----|----------|-----------|--------|----------------|---------|---------|
-| g_autocomplete | E1 | Autocomplete Daemon | 15 | 1.10 | 0.5 | 1 | — |
-| g_parrot | E1 | PARROT Agent | 200 | 1.11 | 4 | 2 | — |
-| g_macro | E1 | Macro Recorder | 2.4e3 | 1.11 | 30 | 3 | — |
-| g_muse_junior | E2 | MUSE Junior Dev | 6.0e4 | 1.12 | 220 | 5 | — |
-| g_muse_pair | E2 | MUSE Pair Programmer | 7.0e5 | 1.12 | 1.6e3 | 8 | — |
-| g_qa_bot | E2 | QA Bot | 5.0e6 | 1.13 | 800 | 10 | debt −0.5%/s/szt (03 §6) |
+| g_autocomplete | E1 | Autocomplete Daemon | 30 | 1.10 | 0.5 | 1 | — |
+| g_parrot | E1 | PARROT Agent | 800 | 1.11 | 4 | 2 | — |
+| g_macro | E1 | Macro Recorder | 1.2e4 | 1.11 | 30 | 3 | — |
+| g_muse_junior | E2 | MUSE Junior Dev | 2.0e5 | 1.12 | 220 | 5 | — |
+| g_muse_pair | E2 | MUSE Pair Programmer | 2.5e6 | 1.12 | 1.6e3 | 8 | — |
+| g_qa_bot | E2 | QA Bot | 1.6e7 | 1.13 | 800 | 10 | debt −0.5%/s/szt (03 §6) |
 | g_intern_swarm | E3 | Intern Swarm | 2.5e7 | 1.12 | 1.2e4 | 12 | — |
 | g_golem_worker | E3 | GOLEM Worker | 3.0e8 | 1.12 | 9.0e4 | 16 | — |
 | g_ci_pipeline | E3 | CI/CD Pipeline | 3.5e9 | 1.13 | 7.0e5 | 20 | — |
@@ -57,20 +57,20 @@ Unlock: `{ era: <era agenta> }` + poprzedni typ ≥ 1 (poza pierwszym w erze). F
 
 ## 4. Hardware (`data/hardware.ts`) — compute cap z komponentów (M16)
 
-> Model i wizualizacja: `06 §16`. Wzory i stałe: `03 §3.4`. Hardware = **tylko cap compute** (`02 §3`). `HW_BASE_CAP = 6` (goła maszyna). Cap komponentu = `level × capPerLevel`; koszt poziomu = `baseCost × growth^level` (`03 §1`). Kolumny: `phase` (pc|server), `slot`, `maxLevel` (∞ = bez sufitu, P6), `baseCost $`, `growth`, `capPerLevel`, `unlock`, `isEnclosure`. Wartości wstępne — tuning po simie (`10 §3`).
+> Model i wizualizacja: `06 §16`. Wzory i stałe: `03 §3.4`. Hardware = **tylko cap compute** (`02 §3`). `HW_BASE_CAP = 6` (goła maszyna). Cap komponentu PC = `firstLevelCap + (level−1) × capPerLevel` po pierwszym poziomie; komponent bez `firstLevelCap` używa `level × capPerLevel`. Koszt poziomu = `baseCost × growth^level` (`03 §1`). Kolumny: `phase` (pc|server), `slot`, `maxLevel` (∞ = bez sufitu, P6), `baseCost $`, `growth`, `firstLevelCap`, `capPerLevel`, `unlock`, `isEnclosure`. Wartości wstępne — tuning po simie (`10 §3`).
 
 ### 4.1 Faza 1 — PC (komponenty skończone; `maxLevel` osiągnięty na wszystkich → `pcComplete` odblokowuje fazę 2)
 
-| id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
-|----|------|---------|-----------|--------|-------------|--------|-------------|
-| h_cpu | cpu | 20 | 80 | 1.55 | 40 | start | false |
-| h_ram | ram | 16 | 60 | 1.50 | 25 | h_cpu≥3 | false |
-| h_ssd | storage | 12 | 40 | 1.45 | 10 | h_cpu≥3 | false |
-| h_psu_pc | psu | 16 | 70 | 1.50 | 20 | h_cpu≥5 | false |
-| h_cooling_pc | cooling | 16 | 50 | 1.50 | 15 | h_psu_pc≥3 | false |
-| h_gpu | gpu | 20 | 300 | 1.60 | 80 | h_cooling_pc≥3 | false |
+| id | slot | maxLevel | baseCost $ | growth | firstLevelCap | capPerLevel | unlock | isEnclosure |
+|----|------|---------|-----------|--------|---------------|-------------|--------|-------------|
+| h_cpu | cpu | 20 | 80 | 1.55 | 2 | 2 | start | false |
+| h_ram | ram | 16 | 60 | 1.50 | 2 | 2 | h_cpu≥3 | false |
+| h_ssd | storage | 12 | 40 | 1.45 | 1 | 1 | h_cpu≥3 | false |
+| h_psu_pc | psu | 16 | 70 | 1.50 | 0 | 0 | h_cpu≥5 | false |
+| h_cooling_pc | cooling | 16 | 50 | 1.50 | 2 | 2 | h_psu_pc≥3 | false |
+| h_gpu | gpu | 20 | 300 | 1.60 | 3 | 3 | h_cooling_pc≥3 | false |
 
-Σ cap przy maxie = **3486** (= `HW_PC_MAX_CAP`); pełny build PC ≈ **$7,2 mln** (dominuje GPU ~$6,0 mln, ostatni poziom GPU ~$2,3 mln). Tempo: tanie poziomy w E1, dokończenie na styku E2→E3.
+Pełny tier PC daje zawsze **+10 compute** (CPU 2 + RAM 2 + SSD 1 + PSU 0 + Cooling 2 + GPU 3). PSU kosztuje, bramkuje tiery i zwiększa rachunek za prąd, ale **nie dodaje compute**. Od poziomu 2 obowiązuje tier gate zasilacza: zakup poziomu `N ≥ 2` dla PC części innych niż `h_psu_pc` wymaga `h_psu_pc ≥ min(N, h_psu_pc.maxLevel)`, więc np. CPU/RAM/GPU tier 2 najpierw wymagają PSU tier 2, a poziomy CPU/GPU powyżej 16 wymagają zmaksowanego PSU. Σ cap przy maxie = **182** (= `HW_PC_MAX_CAP`); pełny build PC ≈ **$7,2 mln** (dominuje GPU ~$6,0 mln, ostatni poziom GPU ~$2,3 mln). Tempo: tanie poziomy w E1, dokończenie na styku E2→E3.
 
 ### 4.2 Faza 2 — serwer (od pustej szafy; moduły compute `maxLevel = ∞`, cap ograniczany kosztem)
 
@@ -88,25 +88,25 @@ Unlock: `{ era: <era agenta> }` + poprzedni typ ≥ 1 (poza pierwszym w erze). F
 
 | id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
 |----|------|---------|-----------|--------|-------------|--------|-------------|
-| h_srv_board | board | ∞ | 1.5e6 | 2.0 | 120 | h_rack≥1 | false |
-| h_srv_psu | psu | ∞ | 1.2e6 | 2.0 | 90 | h_rack≥1 | false |
-| h_srv_cooling | cooling | ∞ | 1.8e6 | 2.0 | 110 | h_srv_board≥1 | false |
-| h_srv_net | network | ∞ | 2.5e6 | 2.0 | 140 | h_srv_board≥1 | false |
+| h_srv_board | board | ∞ | 1.5e6 | 2.0 | 4 | h_rack≥1 | false |
+| h_srv_psu | psu | ∞ | 1.2e6 | 2.0 | 0 | h_rack≥1 | false |
+| h_srv_cooling | cooling | ∞ | 1.8e6 | 2.0 | 4 | h_srv_board≥1 | false |
+| h_srv_net | network | ∞ | 2.5e6 | 2.0 | 4 | h_srv_board≥1 | false |
 
 **Moduły compute (główne źródło cap; eskalują z erą — zakotwiczone w starych tierach):**
 
 | id | slot | maxLevel | baseCost $ | growth | capPerLevel | unlock | isEnclosure |
 |----|------|---------|-----------|--------|-------------|--------|-------------|
-| h_blade | compute | ∞ | 2.0e6 | 2.0 | 300 | h_rack≥1 (E3) | false |
-| h_gpu_pod | compute | ∞ | 8.0e7 | 2.0 | 900 | E4 | false |
-| h_dc_module | compute | ∞ | 5.0e9 | 2.1 | 2.8e3 | E5, h_row≥1 | false |
-| h_accel_array | compute | ∞ | 8.0e11 | 2.1 | 9.0e3 | E6, h_datahall≥1 | false |
-| h_photonic_rack | compute | ∞ | 3.0e13 | 2.1 | 1.6e4 | E7 | false |
-| h_quantum_node | compute | ∞ | 5.0e14 | 2.2 | 3.0e4 | E8, h_dc_campus≥1 | false |
-| h_neuromorphic | compute | ∞ | 4.0e16 | 2.2 | 5.5e4 | E9 | false |
-| h_exotic_core | compute | ∞ | 1.0e18 | 2.2 | 1.0e5 | E10, h_dyson_frame≥1 | false |
+| h_blade | compute | ∞ | 2.0e6 | 2.0 | 8 | h_rack≥1 (E3) | false |
+| h_gpu_pod | compute | ∞ | 8.0e7 | 2.0 | 8 | E4 | false |
+| h_dc_module | compute | ∞ | 5.0e9 | 2.1 | 8 | E5, h_row≥1 | false |
+| h_accel_array | compute | ∞ | 8.0e11 | 2.1 | 8 | E6, h_datahall≥1 | false |
+| h_photonic_rack | compute | ∞ | 3.0e13 | 2.1 | 8 | E7 | false |
+| h_quantum_node | compute | ∞ | 5.0e14 | 2.2 | 8 | E8, h_dc_campus≥1 | false |
+| h_neuromorphic | compute | ∞ | 4.0e16 | 2.2 | 8 | E9 | false |
+| h_exotic_core | compute | ∞ | 1.0e18 | 2.2 | 8 | E10, h_dyson_frame≥1 | false |
 
-Krzywa cap/szt (300 → 900 → 2.8e3 → 9.0e3 → 1.6e4 → 3.0e4 → 5.5e4 → 1.0e5) i baseCosty (2.0e6 → 8.0e7 → 5.0e9 → 8.0e11 → 3.0e13 → 5.0e14 → 4.0e16 → 1.0e18) odtwarzają/uzupełniają stare tiery (E7 i E9 były luką; `h_blade`=stary rack, `h_quantum_node`=stary orbital, `h_exotic_core`=stary dyson). Skala E10 (10³⁵⁺ LoC/s, `03 §8`) bierze się z **poziomowania** modułu (`growth 2.2^level`), nie z baseCostu. Bramkowanie obudowami (`h_row`/`h_datahall`/`h_dc_campus`/`h_dyson_frame`) wymusza beat „najpierw postaw budynek, potem serwery".
+Pełny tier serwera daje **+20 compute**: rack/obudowa +0, board +4, PDU/PSU +0, cooling +4, net +4 i jeden moduł compute +8 (np. `h_blade` albo końcowo `h_exotic_core`). PDU/PSU kosztuje, bramkuje tiery i zwiększa rachunek za prąd, ale **nie dodaje compute**. BaseCosty modułów (2.0e6 → 8.0e7 → 5.0e9 → 8.0e11 → 3.0e13 → 5.0e14 → 4.0e16 → 1.0e18) nadal odtwarzają/uzupełniają stare tiery ekonomicznie, ale compute przyrost zostaje mały i czytelny. Bramkowanie obudowami (`h_row`/`h_datahall`/`h_dc_campus`/`h_dyson_frame`) wymusza beat „najpierw postaw budynek, potem serwery". Od poziomu 2 serwerowych części innych niż `h_srv_psu` i obudowy działa analogiczny tier gate: zakup poziomu `N ≥ 2` wymaga `h_srv_psu ≥ N`.
 
 ### 4.3 Migracja starych saveów (stare tiery → komponenty)
 
@@ -118,6 +118,36 @@ Migracja deterministyczna (P7 — save święty, fixture test `10 §4`):
 2. Nadaj **`h_legacy`** (komponent **tylko-migracyjny**, ukryty, niekupowalny, `capPerLevel = 1`, `isEnclosure=false`) na `level = tiersCap` → `newTotalCap = HW_BASE_CAP + tiersCap` = **stary cap 1:1** (baza liczona raz, bez podwójnego naliczenia). Pieniędzy nie zwracamy.
 3. Ustaw `pcComplete = ((HW_BASE_CAP + tiersCap) ≥ HW_PC_MAX_CAP) || (era ≥ E3)` — gracz w erze ≥E3 nie jest zmuszany do „re-maxowania" PC; nowe komponenty (PC i serwer) dokupuje normalnie ponad `h_legacy`.
 4. Bump `SAVE_VERSION` + migracja (M16); test: stary fixture → `newTotalCap == C_old`.
+
+### 4.4 Rachunki za prąd (`data/billing.ts`) — M17
+
+Stawki `$ / s / level`. Początek przy pustym PC wynosi 0, ale każdy realny upgrade ma być odczuwalnym rachunkiem. Pełny jeden tier PC (`CPU+RAM+SSD+PSU+cooling+GPU`) dodaje **10 $/s** prądu, mimo że PSU samo nie dodaje compute. Serwery używają tej samej skali x1000 względem pierwszej tabeli M17, więc po wejściu w racki koszt nie wraca do groszy. Dedicated Aurora server liczy prąd jako suma bundle'a: `h_rack + h_srv_board + h_srv_psu + h_srv_cooling + h_srv_net + h_exotic_core = 260280 $/s`.
+
+| hardwareId | power $/s/level |
+|------------|-----------------|
+| h_cpu | 2 |
+| h_ram | 1 |
+| h_ssd | 0.5 |
+| h_psu_pc | 1.5 |
+| h_cooling_pc | 1 |
+| h_gpu | 4 |
+| h_rack | 20 |
+| h_row | 200 |
+| h_datahall | 2000 |
+| h_dc_campus | 50000 |
+| h_dyson_frame | 400000 |
+| h_srv_board | 80 |
+| h_srv_psu | 60 |
+| h_srv_cooling | 70 |
+| h_srv_net | 50 |
+| h_blade | 120 |
+| h_gpu_pod | 600 |
+| h_dc_module | 2000 |
+| h_accel_array | 8000 |
+| h_photonic_rack | 25000 |
+| h_quantum_node | 70000 |
+| h_neuromorphic | 140000 |
+| h_exotic_core | 260000 |
 
 ## 5. Upgrade'y unikalne (`data/upgrades.ts`) — 36 + formułowe
 
@@ -185,11 +215,11 @@ Quality sumarycznie z researchu: 0.10+0.15+0.15+0.20 = 0.60; +perki Insight do 0
 
 | id | Era | Nazwa EN | costLoC | valueRatio | build s | bonus |
 |----|----|----------|---------|-----------|---------|-------|
-| p_llama_todo | E1 | Llama Farm Todo | 25 | 1.0 | 15 | tutorial |
-| p_landing | E1 | Landing Page Rush | 300 | 1.2 | 20 | — |
-| p_scope_creep | E1 | Scope Creep Special | 2.0e3 | 0.8 | 40 | +1 RP (pierwsze 3) |
-| p_micro_saas | E2 | Micro-SaaS | 3.0e4 | 1.2 | 30 | hype +0.3 |
-| p_chirper_bot | E2 | Chirper Bot | 2.0e5 | 0.9 | 25 | hype +0.5 |
+| p_llama_todo | E1 | Llama Farm Todo | 75 | 0.45 | 45 | tutorial; bez revenue/s |
+| p_landing | E1 | Landing Page Rush | 1.2e3 | 0.55 | 75 | — |
+| p_scope_creep | E1 | Scope Creep Special | 9.0e3 | 0.6 | 120 | +1 RP (pierwsze 3) |
+| p_micro_saas | E2 | Micro-SaaS | 1.5e5 | 0.75 | 80 | hype +0.3 |
+| p_chirper_bot | E2 | Chirper Bot | 9.0e5 | 0.65 | 90 | hype +0.5 |
 | p_mvp | E3 | Startup MVP | 3.0e6 | 1.3 | 45 | +2 RP (pierwsze 3) |
 | p_dashboard | E3 | Analytics Dashboard | 2.0e7 | 1.1 | 50 | — |
 | p_enterprise_mig | E4 | Enterprise Migration | 4.0e8 | 1.5 | 90 | — |
@@ -206,8 +236,29 @@ Quality sumarycznie z researchu: 0.10+0.15+0.15+0.20 = 0.60; +perki Insight do 0
 | p_reality_patch | E9 | Reality Patch | 1.2e20 | 1.3 | 90 | — |
 | p_planetary_os | E10 | Planetary OS | 2.0e21 | 1.5 | 150 | — |
 | p_omega_request | E10 | OMEGA REQUEST: [generated] | 3.0e22 | 2.0 | 60 | tylko Akt 5+ (05 a5_02) |
+| p_aurora_seed | E10 | AURORA PROJECT Seed | 5.0e22 | 0 | 300 | po OMEGA i po story `a5_13_aurora_seed`; unlock-only, ship → `aurora_unlocked` |
 
-**Specjalne (zawsze dostępne):** `p_refactor` (koszt = 60 s locRate, build 30 s, debt ×0.4, bez payout), `p_open_source` (koszt = 45 s locRate, $0, +2 RP, hype +0.4; cooldown 10 min). Po 2 szablony na erę dla rozmaitości planszy + 1 szablon/era dodawany w 1.x (wzorzec: costLoC ≈ 30 s × locRate ery, valueRatio 0.8–1.5).
+**Specjalne (zawsze dostępne):** `p_refactor` (koszt = 60 s locRate, build 30 s, debt ×0.4, bez payout), `p_open_source` (koszt = 45 s locRate, $0, +2 RP, hype +0.4; cooldown 10 min). Po 2 szablony na erę dla rozmaitości planszy + 1 szablon/era dodawany w 1.x (wzorzec: costLoC ≈ 30 s × locRate ery, valueRatio 0.45–1.5; early niżej, late wyżej).
+
+## 12. AURORA PROJECT (`data/aurora.ts`) — true ending M17
+
+Stałe:
+- `AURORA_REQUIRED_DEDICATED_SERVERS = 8`
+- `AURORA_HOSTING_PER_SERVER_S = 2.0e29 $/s`
+- własny serwer Aurora-grade = `h_rack + h_srv_board + h_srv_psu + h_srv_cooling + h_srv_net + h_exotic_core`, wymagając globalnie `h_dyson_frame≥1`.
+
+| id | percent | costLoC | cost $ | work s | required servers |
+|----|---------|---------|--------|--------|------------------|
+| aurora_bootstrap | 5 | 5.0e22 | 2.0e31 | 1800 | 0 |
+| voice_kernel | 10 | 2.0e24 | 8.0e31 | 3600 | 1 |
+| tool_mesh | 15 | 8.0e25 | 3.0e32 | 7200 | 2 |
+| agent_orchestrator | 15 | 3.0e27 | 1.0e33 | 10800 | 3 |
+| memory_fabric | 15 | 1.0e29 | 4.0e33 | 14400 | 4 |
+| self_improvement | 15 | 4.0e30 | 1.6e34 | 18000 | 5 |
+| delegation_layer | 15 | 1.0e32 | 6.0e34 | 21600 | 6 |
+| aurora_go_live | 10 | 3.0e33 | 2.0e35 | 30600 | 8 |
+
+Suma czasu przy spełnionych wymaganiach = 108 000 s = 30 h, czyli true ending nadal ląduje 20h+ po OMEGA, ale po spłaszczeniu hardware nie musi mieścić się w 100h strategii `sane`.
 
 ## 8. Drzewko Insight (`data/prestige.ts`) — 25 węzłów (koszty Insight)
 

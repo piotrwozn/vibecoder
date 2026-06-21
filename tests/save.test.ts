@@ -5,6 +5,7 @@ import v2Fixture from "./fixtures/saves/v2.json";
 import v3Fixture from "./fixtures/saves/v3.json";
 import v4Fixture from "./fixtures/saves/v4.json";
 import v5Fixture from "./fixtures/saves/v5.json";
+import v6Fixture from "./fixtures/saves/v6.json";
 import { Big } from "../src/core/bignum";
 import { SAVE_VERSION } from "../src/core/migrations";
 import {
@@ -190,5 +191,52 @@ describe("M4 save/load", () => {
       step: "done"
     });
     expect(result.state.owned.hardware[LEGACY_HARDWARE_ID]).toBe(3124);
+  });
+
+  it("migrates v6 saves to v7 with locked Aurora and a repaired Aurora window", () => {
+    const result = deserializeGameState(JSON.stringify(v6Fixture), {
+      edition: "full",
+      nowMs: 10_000
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.state.v).toBe(SAVE_VERSION);
+    expect(result.state.aurora).toEqual({
+      billingPaused: false,
+      completed: false,
+      currentPhase: 0,
+      dedicatedServers: 0,
+      hostedServers: 0,
+      phaseActive: false,
+      phaseElapsedS: 0,
+      status: "locked",
+      unlocked: false
+    });
+    expect(result.state.ui.windows.aurora.appId).toBe("aurora");
+    expect(result.state.ui.windows.aurora.open).toBe(false);
+  });
+
+  it("round-trips v7 Aurora progress, hosting, and dedicated servers", () => {
+    const state = createDefaultGameState(1_000, "full");
+    state.aurora = {
+      billingPaused: true,
+      completed: false,
+      currentPhase: 3,
+      dedicatedServers: 2,
+      hostedServers: 4,
+      phaseActive: true,
+      phaseElapsedS: 123,
+      status: "billing",
+      unlocked: true
+    };
+
+    const result = deserializeGameState(serializeGameState(state), {
+      edition: "full",
+      nowMs: 10_000
+    });
+
+    expect(result.repaired).toBe(false);
+    expect(result.state.v).toBe(SAVE_VERSION);
+    expect(result.state.aurora).toEqual(state.aurora);
   });
 });

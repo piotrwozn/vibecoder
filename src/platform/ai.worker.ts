@@ -16,10 +16,15 @@ type WorkerResponse =
   | { readonly loaded: number; readonly total: number; readonly type: "progress" }
   | { readonly type: "ready" };
 
-const MODEL_REPO = "bartowski/SmolLM2-135M-Instruct-GGUF";
 const MODEL_FILE = "SmolLM2-135M-Instruct-Q4_K_M.gguf";
+const BUNDLED_MODEL_URL = import.meta.env.DEV
+  ? `/models/${MODEL_FILE}`
+  : new URL(`../models/${MODEL_FILE}`, self.location.href).href;
 const SYSTEM_PROMPT =
   "You are Vibex: a dry, funny senior AI pair-programmer. Answer in 1-3 short sentences, under 60 tokens.";
+
+type LoadModelOptions = NonNullable<Parameters<Wllama["loadModel"]>[1]>;
+type LocalModelFile = Blob & { readonly name: string };
 
 let wllama: Wllama | undefined;
 let loading: Promise<void> | undefined;
@@ -85,21 +90,66 @@ async function loadModel(): Promise<void> {
     }
   );
 
-  await instance.loadModelFromHF(
-    {
-      file: MODEL_FILE,
-      repo: MODEL_REPO
-    },
-    {
-      n_gpu_layers: 0,
-      progressCallback(progress) {
-        post({ loaded: progress.loaded, total: progress.total, type: "progress" });
-      },
-      useCache: true
-    }
-  );
-
+  const loadOptions = createLoadOptions();
+  await loadBundledModel(instance, loadOptions);
   wllama = instance;
+}
+
+async function loadBundledModel(instance: Wllama, loadOptions: LoadModelOptions): Promise<void> {
+  const model = await fetchBundledModelFile();
+  await instance.loadModel([model], loadOptions);
+  post({ loaded: model.size, total: model.size, type: "progress" });
+}
+
+async function fetchBundledModelFile(): Promise<LocalModelFile> {
+  const response = await fetch(BUNDLED_MODEL_URL);
+
+  if (!response.ok) {
+    throw new Error(`Bundled Vibex model failed to load (${response.status})`);
+  }
+
+  const total = Number(response.headers.get("content-length") ?? 0);
+  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+
+  if (response.body === null) {
+    const blob = await response.blob();
+    post({ loaded: blob.size, total: total > 0 ? total : blob.size, type: "progress" });
+    return createLocalModelFile([blob], contentType);
+  }
+
+  const chunks: BlobPart[] = [];
+  const reader = response.body.getReader();
+  let loaded = 0;
+
+  for (;;) {
+    const result = await reader.read();
+
+    if (result.done) {
+      break;
+    }
+
+    loaded += result.value.byteLength;
+    chunks.push(result.value);
+    post({ loaded, total, type: "progress" });
+  }
+
+  return createLocalModelFile(chunks, contentType);
+}
+
+function createLocalModelFile(chunks: BlobPart[], type: string): LocalModelFile {
+  if (typeof File !== "undefined") {
+    return new File(chunks, MODEL_FILE, { type });
+  }
+
+  const blob = new Blob(chunks, { type }) as LocalModelFile;
+  Object.defineProperty(blob, "name", { value: MODEL_FILE });
+  return blob;
+}
+
+function createLoadOptions(): LoadModelOptions {
+  return {
+    n_gpu_layers: 0
+  };
 }
 
 function getWllama(): Wllama {

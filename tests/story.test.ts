@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Big } from "../src/core/bignum";
 import { createDefaultGameState, type EndingChoice, type GameState } from "../src/core/state";
 import { REFACTOR_COMPLETED_STAT } from "../src/data/conditions";
-import { PRESTIGE } from "../src/data/constants";
+import { C, PRESTIGE } from "../src/data/constants";
 import { calculateDebtD0 } from "../src/systems/debt";
 import {
   chooseStoryOption,
@@ -154,6 +154,24 @@ describe("M7 story engine", () => {
     expectEndingChoice("merge", "achievement.ending_merge");
     expectEndingChoice("unplug", "achievement.ending_unplug");
     expectEndingChoice("fork", "achievement.ending_fork");
+  });
+
+  it("holds the Act 2 agent-bank beat until the larger agent and shipping milestone", () => {
+    const state = createDefaultGameState();
+    state.meta.edition = "full";
+    state.story.act = 2;
+    state.story.flags.add("accepted_term_sheet");
+    state.stats[SHIPPED_STAT] = 350;
+
+    state.owned.generators.g_autocomplete = C.MILESTONES[1];
+    advanceStory(state);
+
+    expect(getInboxIds(state)).not.toContain("a2_02_agent_bank");
+
+    state.owned.generators.g_autocomplete = C.MILESTONES[3];
+    advanceStory(state);
+
+    expect(getInboxIds(state)).toContain("a2_02_agent_bank");
   });
 
   it("persists unread archive state through story flags", () => {

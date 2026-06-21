@@ -1,11 +1,13 @@
 import { big, type Big } from "../core/bignum";
+import { AURORA_SEED_AVAILABLE_FLAG, type AuroraCompletionEffect } from "./aurora";
 import type { Condition } from "./conditions";
 
-export type ProjectKind = "open_source" | "refactor" | "standard";
+export type ProjectKind = "open_source" | "refactor" | "standard" | "unlock";
 
 export interface ProjectDefinition {
   readonly bugResistant?: boolean;
   readonly buildS: number;
+  readonly completionEffect?: AuroraCompletionEffect;
   readonly costLoC: Big;
   readonly demoLocked?: boolean;
   readonly era: number;
@@ -13,6 +15,7 @@ export interface ProjectDefinition {
   readonly id: string;
   readonly kind: ProjectKind;
   readonly nameKey: string;
+  readonly recurringRevenue?: boolean;
   readonly rpFirst?: number;
   readonly rpReward?: number;
   readonly unlock?: Condition;
@@ -24,27 +27,28 @@ export const PROJECTS: readonly ProjectDefinition[] = [
     id: "p_llama_todo",
     era: 1,
     nameKey: "project.p_llama_todo.name",
-    costLoC: big(25),
-    valueRatio: 1,
-    buildS: 15,
-    kind: "standard"
+    costLoC: big(75),
+    valueRatio: 0.45,
+    buildS: 45,
+    kind: "standard",
+    recurringRevenue: false
   },
   {
     id: "p_landing",
     era: 1,
     nameKey: "project.p_landing.name",
-    costLoC: big(300),
-    valueRatio: 1.2,
-    buildS: 20,
+    costLoC: big(1.2e3),
+    valueRatio: 0.55,
+    buildS: 75,
     kind: "standard"
   },
   {
     id: "p_scope_creep",
     era: 1,
     nameKey: "project.p_scope_creep.name",
-    costLoC: big(2e3),
-    valueRatio: 0.8,
-    buildS: 40,
+    costLoC: big(9e3),
+    valueRatio: 0.6,
+    buildS: 120,
     kind: "standard",
     rpReward: 1,
     rpFirst: 3
@@ -53,9 +57,9 @@ export const PROJECTS: readonly ProjectDefinition[] = [
     id: "p_micro_saas",
     era: 2,
     nameKey: "project.p_micro_saas.name",
-    costLoC: big(3e4),
-    valueRatio: 1.2,
-    buildS: 30,
+    costLoC: big(1.5e5),
+    valueRatio: 0.75,
+    buildS: 80,
     kind: "standard",
     hypeBonus: 0.3
   },
@@ -63,9 +67,9 @@ export const PROJECTS: readonly ProjectDefinition[] = [
     id: "p_chirper_bot",
     era: 2,
     nameKey: "project.p_chirper_bot.name",
-    costLoC: big(2e5),
-    valueRatio: 0.9,
-    buildS: 25,
+    costLoC: big(9e5),
+    valueRatio: 0.65,
+    buildS: 90,
     kind: "standard",
     hypeBonus: 0.5
   },
@@ -239,6 +243,18 @@ export const PROJECTS: readonly ProjectDefinition[] = [
     buildS: 60,
     kind: "standard",
     unlock: { flag: "omega_requests" }
+  },
+  {
+    id: "p_aurora_seed",
+    era: 10,
+    demoLocked: true,
+    nameKey: "project.p_aurora_seed.name",
+    costLoC: big(5e22),
+    valueRatio: 0,
+    buildS: 300,
+    kind: "unlock",
+    unlock: { flag: AURORA_SEED_AVAILABLE_FLAG },
+    completionEffect: "unlockAurora"
   },
   {
     id: "p_open_source",

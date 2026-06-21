@@ -17,7 +17,13 @@ export interface BuyHardwareResult {
   readonly cost: Big;
   readonly id: string;
   readonly ok: boolean;
-  readonly reason?: "demoLocked" | "locked" | "maxed" | "unaffordable";
+  readonly reason?: "demoLocked" | "locked" | "maxed" | "psuTier" | "unaffordable";
+}
+
+export interface HardwareTierGateRequirement {
+  readonly currentLevel: number;
+  readonly hardwareId: string;
+  readonly requiredLevel: number;
 }
 
 export function getAvailableCompute(state: GameState, cache?: DerivedCache): number {
@@ -69,6 +75,11 @@ export function buyHardware(state: GameState, id: string, bus?: EventBus): BuyHa
   }
 
   const cost = getHardwareCost(hardware, owned, state.prestige.iteration);
+  const tierGate = getHardwareTierGateRequirement(state, hardware, owned + 1);
+
+  if (tierGate !== undefined) {
+    return { cost, id, ok: false, reason: "psuTier" };
+  }
 
   if (state.res.money.lt(cost)) {
     return { cost, id, ok: false, reason: "unaffordable" };
@@ -90,7 +101,7 @@ export function recomputeComputeCap(state: GameState): number {
   cap += (state.owned.hardware[LEGACY_HARDWARE_ID] ?? 0) * LEGACY_HARDWARE_CAP_PER_LEVEL;
 
   for (const hardware of HARDWARE) {
-    cap += getEffectiveHardwareLevel(state, hardware) * hardware.capPerLevel;
+    cap += getHardwareCapContribution(hardware, getEffectiveHardwareLevel(state, hardware));
   }
 
   if (!state.hardware.pcComplete && arePcComponentsMaxed(state)) {
@@ -121,6 +132,55 @@ export function isHardwareUnlocked(state: GameState, hardware: HardwareDefinitio
 
 export function isHardwareMaxed(hardware: HardwareDefinition, owned: number): boolean {
   return owned >= hardware.maxLevel;
+}
+
+export function getHardwareTierGateRequirement(
+  state: GameState,
+  hardware: HardwareDefinition,
+  nextLevel = (state.owned.hardware[hardware.id] ?? 0) + 1
+): HardwareTierGateRequirement | undefined {
+  if (nextLevel <= 1 || hardware.slot === "psu" || hardware.isEnclosure) {
+    return undefined;
+  }
+
+  const gateId = hardware.phase === "pc" ? "h_psu_pc" : "h_srv_psu";
+  const gateHardware = getHardware(gateId);
+
+  if (gateHardware === undefined) {
+    return undefined;
+  }
+
+  const requiredLevel = Math.min(nextLevel, gateHardware.maxLevel);
+  const currentLevel = state.owned.hardware[gateId] ?? 0;
+
+  return currentLevel >= requiredLevel
+    ? undefined
+    : {
+        currentLevel,
+        hardwareId: gateId,
+        requiredLevel
+      };
+}
+
+export function getHardwareCapContribution(hardware: HardwareDefinition, level: number): number {
+  const effectiveLevel = Math.min(Math.max(0, level), hardware.maxLevel);
+
+  if (effectiveLevel <= 0) {
+    return 0;
+  }
+
+  const firstLevelCap = hardware.firstLevelCap ?? hardware.capPerLevel;
+  return firstLevelCap + (effectiveLevel - 1) * hardware.capPerLevel;
+}
+
+export function getHardwareCapGain(hardware: HardwareDefinition, owned: number): number {
+  if (isHardwareMaxed(hardware, owned)) {
+    return 0;
+  }
+
+  return (
+    getHardwareCapContribution(hardware, owned + 1) - getHardwareCapContribution(hardware, owned)
+  );
 }
 
 export function isPcComplete(state: GameState): boolean {

@@ -1,0 +1,107 @@
+{
+  "v": 6,
+  "meta": {
+    "createdAt": 1000,
+    "edition": "full",
+    "lastSeen": 1000,
+    "playtimeS": 3600
+  },
+  "res": {
+    "computeCap": 3130,
+    "computeUsed": 0,
+    "debt": "0e0",
+    "equity": 0,
+    "hype": 1,
+    "insight": "0e0",
+    "loc": "1e5",
+    "money": "2e6",
+    "paradox": 0,
+    "rp": 0
+  },
+  "lifetime": {
+    "insightSinceExit": 0,
+    "loc": "1e5",
+    "locSinceExit": "1e5",
+    "money": "2e6"
+  },
+  "owned": {
+    "equityPerks": [],
+    "generators": {
+      "g_autocomplete": 5,
+      "g_parrot": 0,
+      "g_macro": 0
+    },
+    "hardware": {
+      "h_legacy": 3124
+    },
+    "insightNodes": [],
+    "paradoxItems": [],
+    "research": [],
+    "upgrades": []
+  },
+  "hardware": {
+    "pcComplete": true
+  },
+  "era": 5,
+  "projects": {
+    "active": [],
+    "board": [],
+    "boardRefreshAt": 0,
+    "portfolio": [],
+    "prioritySetting": "payout"
+  },
+  "bugs": [],
+  "flow": {
+    "activeUntil": 0,
+    "meter": 0
+  },
+  "prestige": {
+    "exits": 0,
+    "iteration": 0,
+    "rewrites": 1
+  },
+  "story": {
+    "act": 2,
+    "choices": {},
+    "flags": ["accepted_term_sheet"],
+    "inbox": [{ "eventId": "a1_10_act_end" }],
+    "seen": ["a1_10_act_end"]
+  },
+  "automation": {},
+  "stats": {},
+  "settings": {
+    "autosaveS": 10,
+    "doNotDisturb": false,
+    "glitch": true,
+    "lang": "en",
+    "notation": "sci",
+    "reducedFx": false,
+    "skipIntro": false,
+    "sound": true,
+    "vibexLocalAi": false,
+    "volume": 0.3
+  },
+  "ui": {
+    "bootSeen": true,
+    "scene": "desktop",
+    "tutorial": {
+      "active": false,
+      "completed": true,
+      "step": "done"
+    },
+    "windows": {
+      "vibex": {
+        "appId": "vibex",
+        "h": 640,
+        "maximized": false,
+        "minimized": false,
+        "open": true,
+        "w": 1000,
+        "x": 72,
+        "y": 112,
+        "z": 1
+      }
+    }
+  },
+  "rngSeed": 1
+}

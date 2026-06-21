@@ -151,7 +151,7 @@ Gra przestaje być jednym ekranem-IDE; staje się **symulacją pulpitu komputera
 
 **Settings z boota** = współdzielony komponent z apką Settings (§4), podzbiór: język, dźwięk+głośność, reduced motion, glitch on/off, „Skip intro". (Jedno źródło stanu ustawień.)
 
-**Animacja „wchodzenia w ekran":** po START → kamera **zoomuje w monitor** aż jego ekran wypełni viewport → cięcie do `DESKTOP` (§12). Czas 1,5–2,5 s, wyłącznie `transform: scale()+translate()` + `opacity` (§9). **Skippable** (klik/Esc). Przy `prefers-reduced-motion` → bez zoomu, proste `opacity` fade. Bleep „unlock/boot" (§6, z settings).
+**Animacja „wchodzenia w ekran":** po START → napisy/przyciski na ekranie znikają, a efekt odpalenia działa **tylko w obszarze monitora** → cięcie do `DESKTOP` (§12). Czas ok. 1,5–2 s, wyłącznie `opacity`/pseudo-warstwa CRT (§9). **Skippable** (klik/Esc). Przy `prefers-reduced-motion` → proste `opacity` fade. Bleep „unlock/boot" (§6, z settings).
 
 **Kiedy boot:** zawsze przy pierwszym uruchomieniu; potem zależnie od „Skip intro"; z gry powrót przez „Quit to title" (Settings). Boot to **nie** „ładowanie" (zakaz spinnerów, §9) — to scena; faktyczny boot silnika < 1 s.
 
@@ -239,13 +239,29 @@ Zamiast listy kafelków (stare `09 §4`: Old Laptop→Gaming Rig→…) — **wi
 
 **Mechanika (niezmienne zasady):** hardware = **tylko cap compute**, nie produkcja (`02 §3`); zakup blokowany gdy nie stać (komunikat + skrót); agenci nigdy nie kasowani. Komponenty bramkowane **erą** (E1–E10), by sprzęt szedł równo z modelami.
 
-**Dane — ✅ zdefiniowane:** komponenty, koszty, growth, capPerLevel, unlocki i obudowy (szafa `capPerLevel=0`) są w **`09 §4.1–4.3`**; wzory/stałe (`totalCap`, `HW_BASE_CAP=6`, `HW_PC_MAX_CAP=3486`, `pcComplete`) w **`03 §3.4`**. `data/hardware.ts` przepisać 1:1 z `09 §4` (schemat: `{ id, phase: pc|server, slot, maxLevel, baseCost, growth, capPerLevel, unlock, isEnclosure }`). Migracja starych saveów: `09 §4.3`.
+**Dane — ✅ zdefiniowane:** komponenty, koszty, growth, firstLevelCap, capPerLevel, unlocki i obudowy (szafa `capPerLevel=0`) są w **`09 §4.1–4.3`**; wzory/stałe (`totalCap`, `HW_BASE_CAP=6`, `HW_PC_MAX_CAP=182`, `pcComplete`) w **`03 §3.4`**. `data/hardware.ts` przepisać 1:1 z `09 §4` (schemat: `{ id, phase: pc|server, slot, maxLevel, baseCost, growth, firstLevelCap?, capPerLevel, unlock, isEnclosure }`). Migracja starych saveów: `09 §4.3`.
 
 **Warstwy kodu:** wizualizacja w `ui/` (SVG płyty/szafy/slotów; transform/opacity), logika cap w `systems/compute.ts` (rozszerzyć o komponenty/fazy/sloty), dane w `data/hardware.ts` (bez logiki, `07 §… / AGENTS rule 3`). i18n nazw/opisów. **Save:** nowy model hardware = bump `SAVE_VERSION` + migracja (stare tiery → ekwiwalent cap/komponentów).
 
-## 17. Apki Agents i Upgrades (rozdzielenie dawnego „Dev Floor")
+## 17. Apki Agents i Upgrades (rozdzielenie dawnego „Dev Floor”)
 
 Dawny Dev Floor (agenci + hardware + upgrade'y, §4) rozbity na **trzy** apki: **Agents**, **Hardware** (§16), **Upgrades**.
 
 - **Agents** (rename z „Dev Floor" — decyzja): pełna lista agentów (wiersz jak §4: ikona, nazwa, ilość, LoC/s, koszt, ×1/×10/×100/MAX, pasek do milestone'a), sekcja „obsolete" zwijana, oraz **rozbicie Compute** (który agent ile zużywa, ile zostało do cap). Sumaryczne `used/cap` dubluje się na karteczce (§13) — w apce są **szczegóły**.
 - **Upgrades**: siatka upgrade'ów do kupienia (`09 §5`); karta: nazwa, koszt, efekt, stan `locked/affordable/bought`; respektuje widoczność `02 §8`.
+
+## 18. Apka Aurora — true ending po OMEGA (M17)
+
+Aurora nie jest zwykłym ekranem Projects. Ikona **Aurora Project** pojawia się na pulpicie dopiero po shipie `p_aurora_seed`. Do tego momentu nie ma jej w docku, taskbarze ani skrótach.
+
+**Układ:** nagłówek z postępem 0–100%, aktualna faza, wymagania i status billing; pod nim dwa panele: zasoby serwerowe oraz “Aurora UI”.
+
+**Kontrole:**
+- przycisk finansowania aktualnej fazy, jeśli gracz ma `costLoC`, `costMoney` i wymagane serwery,
+- przycisk dedykowania własnego serwera Aurora-grade,
+- przycisk kupna hostingu,
+- czytelny status `Paused: billing`, `Paused: servers`, `Building`, `Complete`.
+
+**Aurora UI:** poziomy przewijalny graf małych nodów: Voice Control, Tool Mesh, Agent Router, Memory Fabric, Self-Improvement, Delegation Layer, Autonomy Core. Nody przechodzą ze stanu locked → active → complete. To flavor/wizualizacja, bez logiki w UI.
+
+**Hardware app:** po wykryciu pierwszego bundle'a Aurora-grade pokazuje licznik “Aurora-ready servers” i informację, że dedykacja przenosi serwer do Aurory oraz zabiera go z compute.

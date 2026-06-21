@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -27,7 +28,7 @@ describe("M3 Projects rendering", () => {
 
     expect(t("ui.boot.start")).toBe("START GRY");
     expect(t("ui.app.settings")).toBe("Ustawienia");
-    expect(t("ui.settings.saveTools")).toBe("Narzędzia zapisu");
+    expect(t("ui.settings.gameControls")).toBe("Sterowanie grą");
     expect(t("vibex.send")).toBe("Wyślij");
     expect(t("app.title")).toBe("VIBECODER");
   });
@@ -134,6 +135,60 @@ describe("M14 split app rendering", () => {
   });
 });
 
+describe("M13 desktop window interactions", () => {
+  it("drags windows with pointer capture and keeps the live frame inside the desktop", () => {
+    installDom();
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 900 });
+
+    const root = document.createElement("div");
+    let focusCount = 0;
+    let movedFrame: { x: number; y: number } | undefined;
+
+    mountApp(root, createDevFloorView(false), {
+      ...createActions(),
+      focusApp: () => {
+        focusCount += 1;
+      },
+      moveApp: (_appId, frame) => {
+        movedFrame = frame;
+      }
+    });
+
+    const windowNode = root.querySelector<HTMLElement>('.desktop-window[data-app-id="agents"]');
+    const titlebar = windowNode?.querySelector<HTMLElement>(".desktop-window__titlebar");
+    let captured = 0;
+    let released = 0;
+
+    Object.defineProperty(titlebar, "setPointerCapture", {
+      configurable: true,
+      value: () => {
+        captured += 1;
+      }
+    });
+    Object.defineProperty(titlebar, "releasePointerCapture", {
+      configurable: true,
+      value: () => {
+        released += 1;
+      }
+    });
+
+    dispatchPointer(titlebar!, "pointerdown", { clientX: 140, clientY: 180 });
+    dispatchPointer(window, "pointermove", { clientX: -300, clientY: -300 });
+
+    expect(windowNode?.style.transform).toBe("translate3d(0px, 0px, 0)");
+    expect(windowNode?.classList.contains("desktop-window--dragging")).toBe(true);
+
+    dispatchPointer(window, "pointerup", { clientX: -300, clientY: -300 });
+
+    expect(focusCount).toBe(1);
+    expect(captured).toBe(1);
+    expect(released).toBe(1);
+    expect(movedFrame).toEqual({ x: 0, y: 0 });
+    expect(windowNode?.classList.contains("desktop-window--dragging")).toBe(false);
+  });
+});
+
 describe("M4 Settings rendering", () => {
   it("does not overwrite an autosave value while the user is editing it", () => {
     const input = { defaultValue: "10", value: "1" };
@@ -165,9 +220,449 @@ describe("M4 Settings rendering", () => {
       }
     });
 
+    const settingsWindow = root.querySelector<HTMLElement>(
+      '.desktop-window[data-app-id="settings"]'
+    );
+
+    expect(settingsWindow?.textContent).toContain("Game controls");
+    expect(settingsWindow?.textContent).not.toContain("Save tools");
+    expect(settingsWindow?.textContent).not.toContain("Export");
+    expect(settingsWindow?.textContent).not.toContain("Import");
+
     findButton(root, "Replay tutorial")?.click();
 
     expect(replayCount).toBe(1);
+  });
+
+  it("applies glitch effect classes from settings", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+
+    const app = mountApp(root, view, createActions());
+
+    expect(root.querySelector(".app-shell")?.classList.contains("app-shell--glitch")).toBe(true);
+    expect(
+      root.querySelector(".vibex-terminal")?.classList.contains("terminal--theme-glitch")
+    ).toBe(true);
+    expect(
+      root
+        .querySelector('.desktop-window[data-app-id="agents"]')
+        ?.classList.contains("desktop-window--glitch")
+    ).toBe(false);
+    expect(
+      root
+        .querySelector('.desktop-icon[data-app-id="vibex"]')
+        ?.classList.contains("desktop-icon--glitch")
+    ).toBe(true);
+    expect(
+      root
+        .querySelector('.taskbar-item[data-app-id="agents"]')
+        ?.classList.contains("taskbar-item--glitch")
+    ).toBe(true);
+
+    const reducedView = {
+      ...createDevFloorView(false),
+      appearance: {
+        glitch: true,
+        reducedFx: true
+      }
+    };
+
+    app.updateDevFloor(reducedView);
+
+    expect(
+      root
+        .querySelector('.desktop-window[data-app-id="agents"]')
+        ?.classList.contains("desktop-window--glitch")
+    ).toBe(false);
+    expect(
+      root
+        .querySelector('.desktop-icon[data-app-id="vibex"]')
+        ?.classList.contains("desktop-icon--glitch")
+    ).toBe(false);
+    expect(
+      root
+        .querySelector('.taskbar-item[data-app-id="agents"]')
+        ?.classList.contains("taskbar-item--glitch")
+    ).toBe(false);
+  });
+});
+
+describe("M15 Vibex rendering", () => {
+  it("renders and refreshes the Vibex code stream lines", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    const app = mountApp(root, view, createActions());
+    const vibexWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="vibex"]');
+
+    expect(getVisibleVibexCodeLines(vibexWindow).map((line) => line.textContent)).toEqual([
+      "const ok = true;",
+      "commit();"
+    ]);
+
+    app.updateDevFloor({
+      ...view,
+      vibex: {
+        ...view.vibex,
+        codeLines: [
+          { id: "1:0", text: "const next = true;" },
+          { id: "1:1", text: "render(next);" },
+          { id: "1:2", text: "commit(next);" },
+          { id: "1:3", text: "ship();" }
+        ],
+        codeSequence: 1
+      }
+    });
+
+    expect(getVisibleVibexCodeLines(vibexWindow).map((line) => line.textContent)).toEqual([
+      "const next = true;",
+      "render(next);",
+      "commit(next);",
+      "ship();"
+    ]);
+
+    app.updateDevFloor({
+      ...view,
+      vibex: {
+        ...view.vibex,
+        codeLines: [{ id: "2:0", text: "trim();" }],
+        codeSequence: 2
+      }
+    });
+
+    expect(getVisibleVibexCodeLines(vibexWindow).map((line) => line.textContent)).toEqual([
+      "trim();"
+    ]);
+  });
+
+  it("keeps Vibex code visible when glitch effects override intro animations", () => {
+    const css = readFileSync(new URL("../src/ui/layout.css", import.meta.url), "utf8");
+
+    expect(css).toMatch(/\.vibex-code-line\s*\{[^}]*opacity:\s*1;/s);
+    expect(css).toMatch(
+      /\.app-shell--glitch\s+\.vibex-code-line--active\s*\{[^}]*vibex-code-line-in/s
+    );
+  });
+
+  it("routes prompts and Vibex responses into AI Assistant instead of the terminal log", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    mountApp(root, view, {
+      ...createActions(),
+      sendVibexPrompt: () => ({
+        committed: false,
+        loc: "1 Lines of Code",
+        prompt: "custom user prompt",
+        response: "Vibex assistant answer"
+      })
+    });
+
+    const vibexWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="vibex"]');
+    const input = vibexWindow?.querySelector<HTMLTextAreaElement>(".vibex-terminal__input");
+    const send = vibexWindow?.querySelector<HTMLButtonElement>(".terminal__prompt");
+
+    expect(input).not.toBeNull();
+    expect(send).not.toBeNull();
+    input!.value = "custom user prompt";
+    send!.click();
+
+    const assistant = vibexWindow?.querySelector<HTMLElement>(".vibex-canned");
+    const terminal = vibexWindow?.querySelector<HTMLElement>(".vibex-terminal-panel");
+
+    expect(assistant?.textContent).toContain("custom user prompt");
+    expect(assistant?.textContent).toContain("Vibex assistant answer");
+    expect(terminal?.textContent).not.toContain("custom user prompt");
+    expect(terminal?.textContent).not.toContain("Vibex assistant answer");
+  });
+
+  it("keeps auto-prompts as LoC-only terminal output without touching the AI Assistant or draft input", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    const sends: Array<{ readonly prompt: string; readonly source: string | undefined }> = [];
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    mountApp(root, view, {
+      ...createActions(),
+      sendVibexPrompt: (prompt, source) => {
+        sends.push({ prompt, source });
+
+        return prompt.length === 0
+          ? {
+              committed: false,
+              loc: "2 Lines of Code",
+              prompt: "background autoprompt",
+              response: "background auto-response"
+            }
+          : {
+              committed: false,
+              loc: "3 Lines of Code",
+              prompt,
+              response: "manual Vibex answer"
+            };
+      }
+    });
+
+    const vibexWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="vibex"]');
+    const input = vibexWindow?.querySelector<HTMLTextAreaElement>(".vibex-terminal__input");
+    const send = vibexWindow?.querySelector<HTMLButtonElement>(".terminal__prompt");
+    const assistant = vibexWindow?.querySelector<HTMLElement>(".vibex-canned");
+    const terminal = vibexWindow?.querySelector<HTMLElement>(".vibex-terminal-panel");
+
+    expect(input).not.toBeNull();
+    input!.value = "draft manual prompt";
+    input!.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: " " }));
+
+    expect(sends).toHaveLength(0);
+    expect(input!.value).toBe("draft manual prompt");
+
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: " " }));
+
+    expect(sends).toEqual([{ prompt: "", source: "auto" }]);
+    expect(input!.value).toBe("draft manual prompt");
+    expect(assistant?.textContent).not.toContain("background autoprompt");
+    expect(assistant?.textContent).not.toContain("background auto-response");
+    expect(terminal?.textContent).toContain("+2 Lines of Code");
+    expect(terminal?.textContent).not.toContain("background autoprompt");
+    expect(terminal?.textContent).not.toContain("background auto-response");
+    expect(terminal?.textContent).not.toContain("[AUTO-PROMPT]");
+    expect(terminal?.textContent).not.toContain("[VIBEX]");
+
+    send?.click();
+
+    expect(sends).toEqual([
+      { prompt: "", source: "auto" },
+      { prompt: "draft manual prompt", source: "manual" }
+    ]);
+    expect(input!.value).toBe("");
+    expect(assistant?.textContent).toContain("draft manual prompt");
+    expect(assistant?.textContent).toContain("manual Vibex answer");
+  });
+
+  it("routes an empty user Send click to the AI Assistant without logging prompt text", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    const sends: Array<{ readonly prompt: string; readonly source: string | undefined }> = [];
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    mountApp(root, view, {
+      ...createActions(),
+      sendVibexPrompt: (prompt, source) => {
+        sends.push({ prompt, source });
+        return {
+          committed: false,
+          loc: "4 Lines of Code",
+          prompt: "manual canned prompt",
+          response: "manual canned response"
+        };
+      }
+    });
+
+    const vibexWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="vibex"]');
+    const send = vibexWindow?.querySelector<HTMLButtonElement>(".terminal__prompt");
+    const assistant = vibexWindow?.querySelector<HTMLElement>(".vibex-canned");
+    const terminal = vibexWindow?.querySelector<HTMLElement>(".vibex-terminal-panel");
+
+    send?.click();
+
+    expect(sends).toEqual([{ prompt: "", source: "manual" }]);
+    expect(assistant?.textContent).toContain("manual canned prompt");
+    expect(assistant?.textContent).toContain("manual canned response");
+    expect(terminal?.textContent).toContain("+4 Lines of Code");
+    expect(terminal?.textContent).not.toContain("manual canned prompt");
+    expect(terminal?.textContent).not.toContain("manual canned response");
+  });
+
+  it("logs LoC on every Vibex send and only logs commits when a batch commits", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    let sends = 0;
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    mountApp(root, view, {
+      ...createActions(),
+      sendVibexPrompt: () => {
+        sends += 1;
+        return {
+          committed: sends % 10 === 0,
+          loc: "1 Lines of Code",
+          prompt: `prompt ${sends}`,
+          response: `response ${sends}`
+        };
+      }
+    });
+
+    const vibexWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="vibex"]');
+    const send = vibexWindow?.querySelector<HTMLButtonElement>(".terminal__prompt");
+
+    for (let i = 0; i < 9; i += 1) {
+      send?.click();
+    }
+
+    const terminal = vibexWindow?.querySelector<HTMLElement>(".vibex-terminal-panel");
+
+    expect(terminal?.textContent).toContain("+1 Lines of Code");
+    expect(terminal?.textContent).not.toContain("commit 1 Lines of Code");
+    expect(terminal?.textContent).not.toContain("commit: files staged");
+
+    send?.click();
+
+    expect(terminal?.textContent).toContain("commit: files staged");
+  });
+});
+
+describe("M16 Hardware rendering", () => {
+  it("renders hardware as PC and server sections without the old SVG visualizer", () => {
+    installDom();
+    const root = document.createElement("div");
+    const base = createDevFloorView(false);
+    base.ui.windows.hardware.open = true;
+    base.ui.windows.hardware.minimized = false;
+    base.ui.windows.hardware.z = 10;
+    const view = {
+      ...base,
+      hardware: [
+        {
+          active: false,
+          canBuy: true,
+          capAdd: "+2 compute / level",
+          cost: "$80",
+          id: "h_cpu",
+          isEnclosure: false,
+          levelLabel: "0/20",
+          name: "CPU",
+          phase: "pc" as const,
+          powerCost: "Power -$2/s",
+          psuRequirement: "",
+          slot: "cpu",
+          slotLabel: "CPU"
+        },
+        {
+          active: false,
+          canBuy: true,
+          capAdd: "0 compute",
+          cost: "$1,000,000",
+          id: "h_rack",
+          isEnclosure: true,
+          levelLabel: "0",
+          name: "Empty Rack",
+          phase: "server" as const,
+          powerCost: "Power -$20/s",
+          psuRequirement: "",
+          slot: "enclosure",
+          slotLabel: "Frame"
+        }
+      ]
+    };
+
+    mountApp(root, view, createActions());
+
+    const hardwareWindow = root.querySelector<HTMLElement>(
+      '.desktop-window[data-app-id="hardware"]'
+    );
+    const pcSection = hardwareWindow?.querySelector<HTMLElement>(
+      '.hardware-section[data-phase="pc"]'
+    );
+    const serverSection = hardwareWindow?.querySelector<HTMLElement>(
+      '.hardware-section[data-phase="server"]'
+    );
+
+    expect(hardwareWindow?.querySelector("svg")).toBeNull();
+    expect(pcSection?.textContent).toContain("PC build");
+    expect(pcSection?.textContent).toContain("CPU");
+    expect(pcSection?.textContent).toContain("Power -$2/s");
+    expect(serverSection?.hidden).toBe(false);
+    expect(serverSection?.textContent).toContain("Server build");
+    expect(serverSection?.textContent).toContain("Empty Rack");
+  });
+
+  it("hides the Aurora-ready hardware counter until Aurora is unlocked", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = {
+      ...createDevFloorView(false),
+      aurora: {
+        ...createDevFloorView(false).aurora,
+        readyServerCount: 1,
+        readyServers: "1"
+      }
+    };
+    view.ui.windows.hardware.open = true;
+    view.ui.windows.hardware.minimized = false;
+
+    const app = mountApp(root, view, createActions());
+    const counter = root.querySelector<HTMLElement>(".hardware-aurora-counter");
+
+    expect(counter?.hidden).toBe(true);
+
+    app.updateDevFloor({
+      ...view,
+      aurora: {
+        ...view.aurora,
+        unlocked: true
+      }
+    });
+
+    expect(counter?.hidden).toBe(false);
+    expect(counter?.textContent).toContain("Aurora-ready servers");
+  });
+});
+
+describe("M17 Aurora desktop visibility", () => {
+  it("hides the Aurora desktop icon and taskbar item until the app is unlocked", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.aurora.open = true;
+    view.ui.windows.aurora.minimized = false;
+    view.ui.windows.aurora.z = 10;
+
+    const app = mountApp(root, view, createActions());
+    const icon = root.querySelector<HTMLButtonElement>('.desktop-icon[data-app-id="aurora"]');
+    const taskbar = root.querySelector<HTMLButtonElement>('.taskbar-item[data-app-id="aurora"]');
+    const windowNode = root.querySelector<HTMLElement>('.desktop-window[data-app-id="aurora"]');
+
+    expect(icon?.hidden).toBe(true);
+    expect(taskbar?.hidden).toBe(true);
+    expect(windowNode?.hidden).toBe(true);
+
+    app.updateDevFloor({
+      ...view,
+      aurora: {
+        ...view.aurora,
+        unlocked: true
+      }
+    });
+
+    expect(icon?.hidden).toBe(false);
+    expect(taskbar?.hidden).toBe(false);
+    expect(windowNode?.hidden).toBe(false);
+  });
+
+  it("keeps hidden desktop buttons visually removed in CSS", () => {
+    const css = readFileSync("src/ui/layout.css", "utf8");
+
+    expect(css).toContain(".desktop-icon[hidden]");
+    expect(css).toContain(".taskbar-item[hidden]");
   });
 });
 
@@ -244,6 +739,8 @@ describe("M13 desktop shell rendering", () => {
   it("renders the boot continue button and runs the desktop transition", () => {
     installDom();
     const root = document.createElement("div");
+    let bootSoundCount = 0;
+    let clickSoundCount = 0;
     let startCount = 0;
 
     mountApp(
@@ -251,6 +748,12 @@ describe("M13 desktop shell rendering", () => {
       { ...createDevFloorView(false), ui: createShellUiView("boot") },
       {
         ...createActions(),
+        playBootSound: () => {
+          bootSoundCount += 1;
+        },
+        playUiClick: () => {
+          clickSoundCount += 1;
+        },
         startDesktop: () => {
           startCount += 1;
         }
@@ -263,9 +766,15 @@ describe("M13 desktop shell rendering", () => {
     expect(continueButton?.textContent).toBe("CONTINUE");
 
     continueButton?.click();
+    expect(bootScene?.classList.contains("boot-scene--entering")).toBe(true);
+    expect(bootSoundCount).toBe(1);
+    expect(clickSoundCount).toBe(1);
+    bootScene?.click();
     bootScene?.click();
 
     expect(startCount).toBe(1);
+    expect(bootSoundCount).toBe(1);
+    expect(clickSoundCount).toBe(1);
   });
 
   it("renders steam without the removed boot room animations", () => {
@@ -613,6 +1122,28 @@ function findButton(root: ParentNode, label: string): HTMLButtonElement | undefi
   );
 }
 
+function dispatchPointer(
+  target: EventTarget,
+  type: string,
+  options: { readonly button?: number; readonly clientX: number; readonly clientY: number }
+): void {
+  const event = new window.MouseEvent(type, {
+    bubbles: true,
+    button: options.button ?? 0,
+    cancelable: true,
+    clientX: options.clientX,
+    clientY: options.clientY
+  });
+  Object.defineProperty(event, "pointerId", { value: 1 });
+  target.dispatchEvent(event);
+}
+
+function getVisibleVibexCodeLines(root: ParentNode | null | undefined): HTMLElement[] {
+  return Array.from(root?.querySelectorAll<HTMLElement>(".vibex-code-line") ?? []).filter(
+    (line) => !line.hidden
+  );
+}
+
 function createActions(): AppActions {
   return {
     buyEra(): void {},
@@ -635,24 +1166,29 @@ function createActions(): AppActions {
     changeVolume(): void {},
     chooseStoryChoice(): void {},
     closeApp(): void {},
+    dedicateAuroraServer(): void {},
     dismissOffline(): void {},
     downloadVibexModel(): void {},
     exit(): void {},
     exportSave: () => "",
     fixBug(): void {},
     focusApp(): void {},
+    fundAuroraPhase(): void {},
     importSave: () => false,
     iterate(): void {},
     maximizeApp(): void {},
     minimizeApp(): void {},
     moveApp(): void {},
     openApp(): void {},
+    playBootSound(): void {},
+    playUiClick(): void {},
     prompt: () => ({ loc: "0" }),
     quitToTitle(): void {},
     resetSettings(): void {},
     resetWindowLayout(): void {},
     replayTutorial(): void {},
     resizeApp(): void {},
+    rentAuroraHost(): void {},
     rewrite(): void {},
     selectRunModifier(): void {},
     sendVibexPrompt: () => ({
@@ -680,9 +1216,32 @@ function createDevFloorView(booting: boolean): DevFloorView {
       unlocked: "0/50"
     },
     appearance: {
+      glitch: true,
       reducedFx: false
     },
     automation: [],
+    aurora: {
+      availableServers: "0",
+      canDedicate: false,
+      canFund: false,
+      canHost: false,
+      completed: false,
+      costLoc: "0 LoC",
+      costMoney: "$0",
+      dedicatedServers: "0",
+      hostedServers: "0",
+      hostingRate: "$0/s",
+      nodes: [],
+      phaseName: "No phase",
+      progress: 0,
+      progressLabel: "0%",
+      readyServerCount: 0,
+      readyServers: "0",
+      requiredServers: "0",
+      statusLabel: "Locked",
+      timeRemaining: "0s",
+      unlocked: false
+    },
     comms: {
       messages: [],
       quiet: false,

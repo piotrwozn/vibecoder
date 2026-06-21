@@ -6,10 +6,14 @@
 .vite-*.log
 coverage/
 dist/
+models/
 node_modules/
 plan/
+release/
 review/
 ruvector.db
+src-tauri/gen/schemas/
+src-tauri/target/
 AGENTS.md
 README.md
 package-lock.json

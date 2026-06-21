@@ -47,7 +47,7 @@ describe("M9 content tables", () => {
     expect(ACT2_EVENTS).toHaveLength(14);
     expect(ACT3_EVENTS).toHaveLength(16);
     expect(ACT4_EVENTS).toHaveLength(14);
-    expect(ACT5_EVENTS).toHaveLength(12);
+    expect(ACT5_EVENTS).toHaveLength(20);
 
     for (const event of events) {
       expect(hasMessage(event.textKey) || hasMessage(`${event.textKey}.1`)).toBe(true);
@@ -198,7 +198,7 @@ describe("M9 EXIT prestige", () => {
     recomputeDerivedCache(state, cache);
 
     expect(cache.project.boardSlots).toBe(C.PROJECT_BOARD_BASE_SLOTS + 1);
-    expect(getProjectPayout(project, cache).toNumber()).toBeCloseTo(300 * 1.2 * 3);
+    expect(getProjectPayout(project, cache).toNumber()).toBeCloseTo(1_200 * 0.55 * 3);
   });
 });
 

@@ -41,6 +41,23 @@ describe("M13 window manager", () => {
     expect(windows.agents.y + windows.agents.h).toBeLessThanOrEqual(720);
   });
 
+  it("keeps oversized settings windows compact after old persisted resizes", () => {
+    const windows = createDefaultWindowStates();
+
+    openWindow(windows, "settings", { height: 1200, width: 1900 });
+    resizeWindow(
+      windows,
+      "settings",
+      { h: 1100, w: 1600, x: 280, y: 390 },
+      { height: 1200, width: 1900 }
+    );
+
+    expect(windows.settings.w).toBe(980);
+    expect(windows.settings.h).toBe(760);
+    expect(windows.settings.x + windows.settings.w).toBeLessThanOrEqual(1900);
+    expect(windows.settings.y + windows.settings.h).toBeLessThanOrEqual(1200);
+  });
+
   it("maximizes new windows on narrow desktops and restores saved frames", () => {
     const windows = createDefaultWindowStates();
 

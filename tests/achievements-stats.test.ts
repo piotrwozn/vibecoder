@@ -148,6 +148,7 @@ describe("M11 audio", () => {
         return {
           connect(): void {},
           disconnect(): void {},
+          frequency: { value: 0 },
           start(): void {},
           stop(): void {
             stopped = true;
@@ -194,6 +195,7 @@ describe("M11 audio", () => {
         return {
           connect(): void {},
           disconnect(): void {},
+          frequency: { value: 0 },
           start(): void {},
           stop(): void {
             stopped = true;
@@ -228,6 +230,151 @@ describe("M11 audio", () => {
 
     expect(() => createAudioController({ sound: true, volume: 0.3 }).play("click")).not.toThrow();
     expect(stopped).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("plays bundled CC0 samples and starts background music when Audio is available", () => {
+    const played: string[] = [];
+
+    class FakeHtmlAudio {
+      loop = false;
+      paused = true;
+      preload = "";
+      volume = 0;
+
+      constructor(readonly src = "") {}
+
+      play(): Promise<void> {
+        this.paused = false;
+        played.push(this.src);
+        return Promise.resolve();
+      }
+
+      pause(): void {
+        this.paused = true;
+      }
+    }
+
+    vi.stubGlobal("window", {
+      Audio: FakeHtmlAudio
+    });
+
+    createAudioController({ sound: true, volume: 0.3 }).play("message");
+
+    expect(played.some((src) => src.includes("music-out-there.ogg"))).toBe(true);
+    expect(played.some((src) => src.includes("ui-message.ogg"))).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to WebAudio effects and ambient when OGG playback is unavailable", () => {
+    let started = 0;
+    let stopped = 0;
+    let htmlPlayCalls = 0;
+
+    class FakeAudioContext {
+      destination = {};
+
+      createGain() {
+        return {
+          connect(): void {},
+          disconnect(): void {},
+          gain: { value: 0 }
+        };
+      }
+
+      createOscillator() {
+        return {
+          connect(): void {},
+          disconnect(): void {},
+          frequency: { value: 0 },
+          start(): void {
+            started += 1;
+          },
+          stop(): void {
+            stopped += 1;
+          },
+          type: "sine"
+        };
+      }
+
+      resume(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    class FakeHtmlAudio {
+      loop = false;
+      paused = true;
+      preload = "";
+      volume = 0;
+
+      constructor(readonly src = "") {}
+
+      canPlayType(): CanPlayTypeResult {
+        return "";
+      }
+
+      play(): Promise<void> {
+        htmlPlayCalls += 1;
+        return Promise.resolve();
+      }
+
+      pause(): void {
+        this.paused = true;
+      }
+    }
+
+    vi.stubGlobal("window", {
+      Audio: FakeHtmlAudio,
+      AudioContext: FakeAudioContext,
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      }
+    });
+
+    createAudioController({ sound: true, volume: 0.3 }).play("message");
+
+    expect(htmlPlayCalls).toBe(0);
+    expect(started).toBe(3);
+    expect(stopped).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("pauses background music when sound is disabled", () => {
+    const created: FakeHtmlAudio[] = [];
+
+    class FakeHtmlAudio {
+      loop = false;
+      paused = true;
+      preload = "";
+      volume = 0;
+
+      constructor(readonly src = "") {
+        created.push(this);
+      }
+
+      play(): Promise<void> {
+        this.paused = false;
+        return Promise.resolve();
+      }
+
+      pause(): void {
+        this.paused = true;
+      }
+    }
+
+    vi.stubGlobal("window", {
+      Audio: FakeHtmlAudio
+    });
+
+    const audio = createAudioController({ sound: true, volume: 0.3 });
+    audio.play("unlock");
+    audio.setSettings({ sound: false, volume: 0.3 });
+
+    const music = created.find((item) => item.src.includes("music-out-there.ogg"));
+
+    expect(music?.paused).toBe(true);
     vi.unstubAllGlobals();
   });
 });

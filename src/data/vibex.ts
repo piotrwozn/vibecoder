@@ -15,6 +15,25 @@ export interface VibexFileDefinition {
   readonly fragments: readonly VibexCodeFragmentDefinition[];
 }
 
+export const VIBEX_FILE_LABEL_KEYS: readonly string[] = [
+  "vibex.file.appMain",
+  "vibex.file.coreLoop",
+  "vibex.file.systemsAgents",
+  "vibex.file.uiTerminal",
+  "vibex.file.authGate",
+  "vibex.file.billingRules",
+  "vibex.file.cacheWorker",
+  "vibex.file.deployPlan",
+  "vibex.file.featureFlags",
+  "vibex.file.metricsPipe",
+  "vibex.file.promptRouter",
+  "vibex.file.shaderCache",
+  "vibex.file.storyBus",
+  "vibex.file.taskQueue",
+  "vibex.file.vectorStore",
+  "vibex.file.windowRig"
+] as const;
+
 export const VIBEX_CANNED_PAIRS: readonly VibexCannedPairDefinition[] = [
   {
     id: "regex-exorcism",
@@ -56,6 +75,13 @@ export const VIBEX_CANNED_PAIRS: readonly VibexCannedPairDefinition[] = [
     promptKey: "vibex.canned.cacheInvalidation.prompt",
     responseKey: "vibex.canned.cacheInvalidation.response"
   }
+] as const;
+
+export const VIBEX_MANUAL_FALLBACK_KEYS: readonly string[] = [
+  "vibex.ai.manualFallback.0",
+  "vibex.ai.manualFallback.1",
+  "vibex.ai.manualFallback.2",
+  "vibex.ai.manualFallback.3"
 ] as const;
 
 export const VIBEX_CODE_FILES: readonly VibexFileDefinition[] = [

@@ -8,10 +8,25 @@ import { buyHardware, getAvailableHardware, recomputeComputeCap } from "../src/s
 import { buyGenerator, createDerivedCache, recomputeDerivedCache } from "../src/systems/production";
 
 describe("M16 component hardware", () => {
+  it("shows every PC component from the start and hides server hardware until PC max", () => {
+    const state = createDefaultGameState(1_000, "full");
+    const availableIds = getAvailableHardware(state).map((hardware) => hardware.id);
+
+    expect(availableIds).toEqual(
+      expect.arrayContaining(["h_cpu", "h_ram", "h_ssd", "h_psu_pc", "h_cooling_pc", "h_gpu"])
+    );
+    expect(availableIds).not.toContain("h_rack");
+
+    state.res.money = Big.fromNumber(1e9);
+    buyPcToMax(state);
+
+    expect(getAvailableHardware(state).map((hardware) => hardware.id)).toContain("h_rack");
+  });
+
   it("blocks generator purchases over compute cap and releases the wall with hardware", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
-    state.res.money = Big.fromNumber(1_000);
+    state.res.money = Big.fromNumber(2_000);
     recomputeDerivedCache(state, cache);
 
     expect(buyGenerator(state, cache, "g_autocomplete", 10).reason).toBe("compute");
@@ -21,7 +36,18 @@ describe("M16 component hardware", () => {
 
     expect(hardware.ok).toBe(true);
     expect(state.owned.hardware.h_cpu).toBe(1);
-    expect(state.res.computeCap).toBe(46);
+    expect(state.res.computeCap).toBe(8);
+    for (const id of ["h_ram", "h_ssd", "h_psu_pc", "h_cooling_pc", "h_gpu"]) {
+      expect(buyHardware(state, id).ok).toBe(true);
+    }
+    expect(state.res.computeCap).toBe(16);
+    const blockedCpuTier = buyHardware(state, "h_cpu");
+    expect(blockedCpuTier.ok).toBe(false);
+    expect(blockedCpuTier.reason).toBe("psuTier");
+    expect(buyHardware(state, "h_psu_pc").ok).toBe(true);
+    expect(state.res.computeCap).toBe(16);
+    expect(buyHardware(state, "h_cpu").ok).toBe(true);
+    expect(state.res.computeCap).toBe(18);
     recomputeDerivedCache(state, cache);
 
     expect(buyGenerator(state, cache, "g_autocomplete", 10).ok).toBe(true);
@@ -48,16 +74,46 @@ describe("M16 component hardware", () => {
     expect(buyHardware(state, "h_rack").ok).toBe(true);
     expect(state.res.computeCap).toBe(C.HW_PC_MAX_CAP);
 
-    expect(buyHardware(state, "h_blade").ok).toBe(true);
-    expect(state.res.computeCap).toBe(C.HW_PC_MAX_CAP + 300);
+    for (const id of ["h_srv_board", "h_srv_psu", "h_srv_cooling", "h_srv_net", "h_blade"]) {
+      expect(buyHardware(state, id).ok).toBe(true);
+    }
+    expect(state.res.computeCap).toBe(C.HW_PC_MAX_CAP + 20);
+    const blockedBladeTier = buyHardware(state, "h_blade");
+    expect(blockedBladeTier.ok).toBe(false);
+    expect(blockedBladeTier.reason).toBe("psuTier");
+    expect(buyHardware(state, "h_srv_psu").ok).toBe(true);
+    for (const id of ["h_srv_board", "h_srv_cooling", "h_srv_net", "h_blade"]) {
+      expect(buyHardware(state, id).ok).toBe(true);
+    }
+    expect(state.res.computeCap).toBe(C.HW_PC_MAX_CAP + 40);
   });
 });
 
 function buyPcToMax(state: ReturnType<typeof createDefaultGameState>): void {
-  for (const hardware of HARDWARE.filter((entry) => entry.phase === "pc")) {
-    while ((state.owned.hardware[hardware.id] ?? 0) < hardware.maxLevel) {
+  const pcHardware = HARDWARE.filter((entry) => entry.phase === "pc");
+  let progress = true;
+
+  while (
+    progress &&
+    pcHardware.some((hardware) => (state.owned.hardware[hardware.id] ?? 0) < hardware.maxLevel)
+  ) {
+    progress = false;
+
+    for (const hardware of pcHardware) {
+      if ((state.owned.hardware[hardware.id] ?? 0) >= hardware.maxLevel) {
+        continue;
+      }
+
       const result = buyHardware(state, hardware.id);
-      expect(result.ok).toBe(true);
+      if (result.ok) {
+        progress = true;
+      } else {
+        expect(result.reason).toBe("psuTier");
+      }
     }
+  }
+
+  for (const hardware of pcHardware) {
+    expect(state.owned.hardware[hardware.id] ?? 0).toBe(hardware.maxLevel);
   }
 }

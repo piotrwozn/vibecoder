@@ -41,7 +41,7 @@ describe("M8 prestige REWRITE", () => {
   it("matches the REWRITE forecast with the actual selective reset", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
-    state.lifetime.locSinceExit = getInsightGainThreshold(5);
+    state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST);
     state.res.loc = Big.fromNumber(12_345);
     state.res.money = Big.fromNumber(10_000);
     state.res.debt = Big.fromNumber(999);
@@ -89,8 +89,8 @@ describe("M8 prestige REWRITE", () => {
     expect(preview.startMoney.toNumber()).toBeCloseTo(600);
 
     expect(state.prestige.rewrites).toBe(1);
-    expect(state.res.insight.toNumber()).toBe(5);
-    expect(state.lifetime.insightSinceExit).toBe(5);
+    expect(state.res.insight.toNumber()).toBe(PRESTIGE.REWRITE_MIN_FIRST);
+    expect(state.lifetime.insightSinceExit).toBe(PRESTIGE.REWRITE_MIN_FIRST);
     expect(state.res.loc.eq0()).toBe(true);
     expect(state.res.money.toNumber()).toBeCloseTo(preview.startMoney.toNumber());
     expect(state.res.debt.eq0()).toBe(true);
@@ -143,7 +143,7 @@ describe("M8 prestige REWRITE", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
 
-    state.lifetime.locSinceExit = getInsightGainThreshold(4);
+    state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST - 1);
     expect(performRewrite(state, cache)).toMatchObject({ ok: false, reason: "threshold" });
     expect(state.prestige.rewrites).toBe(0);
 
@@ -158,7 +158,7 @@ describe("M8 prestige REWRITE", () => {
   it("keeps automation through REWRITE only with the core node", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
-    state.lifetime.locSinceExit = getInsightGainThreshold(5);
+    state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST);
     state.owned.insightNodes.add("i_v1");
     state.owned.insightNodes.add("i_v2");
     state.owned.insightNodes.add("i_v3");
@@ -174,7 +174,7 @@ describe("M8 prestige REWRITE", () => {
   it("round-trips a post-REWRITE save without repair", () => {
     const state = createDefaultGameState(1_000);
     const cache = createDerivedCache();
-    state.lifetime.locSinceExit = getInsightGainThreshold(5);
+    state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST);
     state.owned.insightNodes.add("i_v1");
 
     expect(performRewrite(state, cache).ok).toBe(true);
@@ -186,7 +186,7 @@ describe("M8 prestige REWRITE", () => {
 
     expect(result.repaired).toBe(false);
     expect(result.state.prestige.rewrites).toBe(1);
-    expect(result.state.res.insight.toNumber()).toBe(5);
+    expect(result.state.res.insight.toNumber()).toBe(PRESTIGE.REWRITE_MIN_FIRST);
     expect(result.state.owned.insightNodes.has("i_v1")).toBe(true);
     expect(result.state.owned.generators.g_autocomplete).toBe(5);
     expect(isRewriteBooting(result.state)).toBe(true);

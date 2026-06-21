@@ -1,4 +1,7 @@
 import type { StoryEvent } from "./types";
+import { PRESTIGE } from "../constants";
+
+const FIRST_EXIT_OFFER_INSIGHT = PRESTIGE.EXIT_MIN_INSIGHT;
 
 export const ACT3_EVENTS: readonly StoryEvent[] = [
   {
@@ -14,7 +17,7 @@ export const ACT3_EVENTS: readonly StoryEvent[] = [
     id: "a3_02_takeover_offer",
     act: 3,
     demoLocked: true,
-    trigger: { insightSinceExitGte: 300 },
+    trigger: { insightSinceExitGte: FIRST_EXIT_OFFER_INSIGHT },
     channel: "mail",
     speaker: "tensorcorp",
     textKey: "story.a3_02_takeover_offer",

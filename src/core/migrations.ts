@@ -4,7 +4,7 @@ import { LEGACY_HARDWARE_ID, OLD_HARDWARE_TIERS } from "../data/hardware";
 
 type RawSaveObject = Record<string, unknown>;
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface MigrationResult {
   readonly raw: RawSaveObject;
@@ -47,7 +47,8 @@ const migrations: readonly Migration[] = [
     v: 4
   }),
   migrateM16Hardware,
-  migrateTutorialUi
+  migrateTutorialUi,
+  migrateAuroraState
 ];
 
 export function migrateRawSave(rawValue: unknown): MigrationResult {
@@ -179,6 +180,26 @@ function migrateTutorialUi(raw: RawSaveObject): RawSaveObject {
       tutorial: createDefaultTutorialState(completed)
     },
     v: 6
+  };
+}
+
+function migrateAuroraState(raw: RawSaveObject): RawSaveObject {
+  return {
+    ...raw,
+    aurora: isRecord(raw.aurora)
+      ? raw.aurora
+      : {
+          billingPaused: false,
+          completed: false,
+          currentPhase: 0,
+          dedicatedServers: 0,
+          hostedServers: 0,
+          phaseActive: false,
+          phaseElapsedS: 0,
+          status: "locked",
+          unlocked: false
+        },
+    v: 7
   };
 }
 

@@ -129,8 +129,10 @@ export function clampWindow(windowState: WindowState, bounds: WindowBounds): voi
 
   const minW = Math.min(definition.minW, bounds.width);
   const minH = Math.min(definition.minH, bounds.height);
-  windowState.w = Math.min(Math.max(windowState.w, minW), bounds.width);
-  windowState.h = Math.min(Math.max(windowState.h, minH), bounds.height);
+  const maxW = Math.max(minW, Math.min(definition.maxW ?? bounds.width, bounds.width));
+  const maxH = Math.max(minH, Math.min(definition.maxH ?? bounds.height, bounds.height));
+  windowState.w = Math.min(Math.max(windowState.w, minW), maxW);
+  windowState.h = Math.min(Math.max(windowState.h, minH), maxH);
   windowState.x = clamp(windowState.x, 0, Math.max(0, bounds.width - windowState.w));
   windowState.y = clamp(windowState.y, 0, Math.max(0, bounds.height - windowState.h));
 }

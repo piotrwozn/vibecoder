@@ -31,6 +31,7 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
   let nextId = 1;
   let worker: Worker | undefined;
   let status: VibexAiStatus = "idle";
+  let errorMessage: string | undefined;
   let progress: VibexAiProgress | undefined;
   const pending = new Map<number, PendingRequest>();
 
@@ -44,6 +45,7 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
       const message = event.data;
 
       if (message.type === "progress") {
+        errorMessage = undefined;
         progress = { loaded: message.loaded, total: message.total };
         status = "downloading";
         onChange();
@@ -51,6 +53,7 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
       }
 
       if (message.type === "ready") {
+        errorMessage = undefined;
         status = "ready";
         onChange();
         return;
@@ -63,6 +66,12 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
 
       pending.delete(message.id);
       status = message.ok ? "ready" : "error";
+      if (!message.ok) {
+        errorMessage = message.message;
+        progress = undefined;
+      } else {
+        errorMessage = undefined;
+      }
       onChange();
 
       if (message.ok) {
@@ -73,6 +82,8 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
     });
     worker.addEventListener("error", () => {
       status = "error";
+      errorMessage = "Vibex AI worker failed";
+      progress = undefined;
       rejectPending(new Error("Vibex AI worker failed"));
       onChange();
     });
@@ -95,6 +106,7 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
       const id = nextId;
       nextId += 1;
       status = "downloading";
+      errorMessage = undefined;
       progress = { loaded: 0, total: 0 };
       onChange();
 
@@ -103,8 +115,10 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
         status = "ready";
         onChange();
         return true;
-      } catch {
+      } catch (error) {
         status = "error";
+        errorMessage = error instanceof Error ? error.message : "Vibex AI download failed";
+        progress = undefined;
         onChange();
         return false;
       }
@@ -135,6 +149,7 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
         ? createIdleSnapshot()
         : {
             canDownload: status !== "busy" && status !== "downloading",
+            errorMessage,
             modelSizeLabel: createIdleSnapshot().modelSizeLabel,
             progress,
             status

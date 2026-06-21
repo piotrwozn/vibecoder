@@ -7,6 +7,7 @@ import { createDefaultGameState } from "./core/state";
 import { TUTORIAL_STEPS, type AppId, type TutorialStep, type WindowFrame } from "./core/ui-state";
 import { createViewInvalidation, markResourceEvent } from "./core/view-invalidation";
 import { ACHIEVEMENTS, ACHIEVEMENT_LOC_BONUS } from "./data/achievements";
+import { AURORA_PHASES } from "./data/aurora";
 import { C } from "./data/constants";
 import { createDevPerfPanel, type DevPerfPanel } from "./dev/perf-panel";
 import { GENERATORS } from "./data/generators";
@@ -47,9 +48,29 @@ import {
   buyHardware as purchaseHardware,
   canFitCompute,
   getAvailableHardware,
+  getHardware,
+  getHardwareCapGain,
   getHardwareCost,
+  getHardwareTierGateRequirement,
   isHardwareMaxed
 } from "./systems/compute";
+import {
+  AURORA_REQUIRED_DEDICATED_SERVERS,
+  dedicateAuroraServer as dedicateAuroraServerToProject,
+  fundAuroraPhase as fundAuroraPhaseStep,
+  getAuroraProgress,
+  getAuroraReadyServerCount,
+  getAvailableAuroraServers,
+  getCurrentAuroraPhase,
+  rentAuroraHost as rentAuroraHosting,
+  tickAurora
+} from "./systems/aurora";
+import {
+  createBillingBreakdown,
+  getHardwarePowerRatePerLevel,
+  getNetMoneyRate,
+  tickBilling
+} from "./systems/billing";
 import { fixBug as repairBug, tickDebt } from "./systems/debt";
 import { isDemoLocked } from "./systems/demo";
 import { tickHype } from "./systems/hype";
@@ -61,7 +82,9 @@ import {
   createVibexCannedBag,
   createVibexCodeState,
   drawVibexCannedPair,
-  getVibexCodeFrame
+  getVibexCodeFrame,
+  getVibexFileLabelKey,
+  getVibexManualFallbackKey
 } from "./systems/vibex";
 import { getLocRateSamples, tickStats } from "./systems/stats";
 import { buyNextEra, canBuyEra, getCurrentEra, getEraCost, getNextEra } from "./systems/eras";
@@ -102,7 +125,9 @@ import {
   getProjectIncomeRate,
   getProjectPayout,
   getProjectRevenue,
+  getProductRevenue,
   getVisibleProjectOffers,
+  hasActiveProjectBuild,
   refreshProjectBoard,
   startProject as startProjectBuild,
   tickProjects
@@ -147,6 +172,8 @@ import {
   type AchievementsView,
   type AppActions,
   type AppShell,
+  type AuroraNodeView,
+  type AuroraView,
   type AutomationToggleView,
   type CommsMessageView,
   type CommsView,
@@ -173,6 +200,7 @@ import {
   type ResearchView,
   type RunModifierView,
   type SettingsView,
+  type VibexPromptSource,
   type VibexSendView,
   type VibexView,
   type StatsRowView,
@@ -235,9 +263,22 @@ let lastDevFloorView: DevFloorView | undefined;
 const vibexAi = createVibexAiClient(platform.edition, () => updateVisibleView());
 let vibexCannedBag = createVibexCannedBag(state.rngSeed);
 let currentVibexCanned = drawVibexCannedPair(vibexCannedBag);
-let vibexCodeState = createVibexCodeState();
+let currentVibexAssistant = createIdleVibexAssistant();
+let vibexCodeState = createVibexCodeState(state.rngSeed);
 let currentVibexCodeFrame = getVibexCodeFrame(vibexCodeState);
 let localeChangeToken = 0;
+
+type VibexAssistantState =
+  | {
+      readonly kind: "keys";
+      readonly promptKey: string;
+      readonly responseKey: string;
+    }
+  | {
+      readonly kind: "text";
+      readonly prompt: string;
+      readonly response: string;
+    };
 
 const invalidation = createViewInvalidation();
 bus.on("res:changed", (resource) => {
@@ -332,6 +373,33 @@ const appActions: AppActions = {
     invalidation.markVisibleChanged(result.ok);
   },
 
+  dedicateAuroraServer(): void {
+    const result = dedicateAuroraServerToProject(state, bus);
+    invalidation.markVisibleChanged(result.ok);
+
+    if (result.ok) {
+      void persistNow();
+    }
+  },
+
+  fundAuroraPhase(): void {
+    const result = fundAuroraPhaseStep(state, bus);
+    invalidation.markVisibleChanged(result.ok);
+
+    if (result.ok) {
+      void persistNow();
+    }
+  },
+
+  rentAuroraHost(): void {
+    const result = rentAuroraHosting(state, bus);
+    invalidation.markVisibleChanged(result.ok);
+
+    if (result.ok) {
+      void persistNow();
+    }
+  },
+
   buyUpgrade(id: string): void {
     const result = purchaseUpgrade(state, cache, id, bus);
     invalidation.markVisibleChanged(result.ok);
@@ -385,6 +453,11 @@ const appActions: AppActions = {
     state.settings.vibexLocalAi = enabled;
     updateVisibleView();
     void persistNow();
+    if (enabled) {
+      void vibexAi.downloadModel().then(() => {
+        updateVisibleView();
+      });
+    }
   },
 
   changeVolume(volume: number): void {
@@ -455,6 +528,10 @@ const appActions: AppActions = {
   },
 
   openApp(appId: AppId, bounds: WindowBounds): void {
+    if (appId === "aurora" && !state.aurora.unlocked) {
+      return;
+    }
+
     openWindow(state.ui.windows, appId, bounds);
     markCommsAppRead(appId);
     state.ui.scene = "desktop";
@@ -462,34 +539,90 @@ const appActions: AppActions = {
     void persistNow();
   },
 
+  playBootSound(): void {
+    audio.play("boot");
+  },
+
+  playUiClick(): void {
+    audio.play("click");
+  },
+
   prompt(): { readonly loc: string } {
     const gained = performPromptClick(state, cache, state.meta.playtimeS, bus);
     audio.play("click");
-    return { loc: formatLoc(gained) };
+    return { loc: formatLinesOfCode(gained) };
   },
 
-  sendVibexPrompt(promptText: string): VibexSendView {
+  sendVibexPrompt(promptText: string, source: VibexPromptSource = "manual"): VibexSendView {
     const gained = performPromptClick(state, cache, state.meta.playtimeS, bus);
     const codeFrame = advanceVibexCode(vibexCodeState);
     currentVibexCodeFrame = codeFrame;
     audio.play("click");
 
     const trimmedPrompt = promptText.trim();
+    const userTriggered = source === "manual";
     const eraModel = getCurrentEraModel();
     const aiSnapshot = vibexAi.snapshot();
-    const loc = formatLoc(gained);
-    let pendingResponse: Promise<string | undefined> | undefined;
+    const loc = formatLinesOfCode(gained);
+    let pendingGeneration: Promise<string | undefined> | undefined;
+    let pendingResponse: Promise<string> | undefined;
     let prompt = trimmedPrompt;
     let response = t("vibex.ai.typing");
+    const manualFallbackResponse =
+      trimmedPrompt.length > 0
+        ? createVibexManualFallbackResponse(trimmedPrompt, eraModel, codeFrame.sequence)
+        : "";
 
-    if (trimmedPrompt.length > 0 && state.settings.vibexLocalAi && aiSnapshot.status === "ready") {
-      pendingResponse = vibexAi.generate(trimmedPrompt, eraModel);
+    if (
+      trimmedPrompt.length > 0 &&
+      state.settings.vibexLocalAi &&
+      aiSnapshot.status !== "unavailable"
+    ) {
+      pendingGeneration = generateVibexAiResponse(trimmedPrompt, eraModel, aiSnapshot.status);
     }
 
-    if (pendingResponse === undefined) {
-      currentVibexCanned = drawVibexCannedPair(vibexCannedBag);
-      prompt = trimmedPrompt.length > 0 ? trimmedPrompt : t(currentVibexCanned.promptKey);
-      response = t(currentVibexCanned.responseKey);
+    if (pendingGeneration === undefined) {
+      if (trimmedPrompt.length > 0) {
+        response = manualFallbackResponse;
+        if (userTriggered) {
+          currentVibexAssistant = {
+            kind: "text",
+            prompt,
+            response
+          };
+        }
+      } else {
+        currentVibexCanned = drawVibexCannedPair(vibexCannedBag);
+        prompt = t(currentVibexCanned.promptKey);
+        response = t(currentVibexCanned.responseKey);
+        if (userTriggered) {
+          currentVibexAssistant = {
+            kind: "text",
+            prompt,
+            response
+          };
+        }
+      }
+    } else {
+      if (userTriggered) {
+        currentVibexAssistant = {
+          kind: "text",
+          prompt,
+          response
+        };
+      }
+      pendingResponse = pendingGeneration.then((generatedResponse) => {
+        const finalResponse = generatedResponse ?? manualFallbackResponse;
+        if (userTriggered) {
+          currentVibexAssistant = {
+            kind: "text",
+            prompt,
+            response: finalResponse
+          };
+        }
+        updateVisibleView();
+        return finalResponse;
+      });
     }
 
     updateVisibleView();
@@ -587,7 +720,6 @@ const appActions: AppActions = {
     if (!state.ui.tutorial.completed) {
       state.ui.tutorial.active = true;
     }
-    audio.play("unlock");
     updateVisibleView();
     void persistNow();
   },
@@ -641,6 +773,23 @@ const appActions: AppActions = {
     void persistNow();
   }
 };
+
+async function generateVibexAiResponse(
+  prompt: string,
+  eraModel: string,
+  status: VibexAiSnapshot["status"]
+): Promise<string | undefined> {
+  if (status !== "ready") {
+    const loaded = await vibexAi.downloadModel();
+
+    if (!loaded) {
+      return undefined;
+    }
+  }
+
+  return vibexAi.generate(prompt, eraModel);
+}
+
 app = mountApp(appRoot, createDevFloorView(cache, true), appActions);
 
 bus.on("story:message", ({ eventId }) => {
@@ -716,6 +865,8 @@ startLoop({
     invalidation.markVisibleChanged(tickPromptFlow(state, dtS));
     tickProduction(state, cache, dtS, bus);
     invalidation.markVisibleChanged(tickProjects(state, cache, dtS, bus));
+    invalidation.markVisibleChanged(tickBilling(state, dtS, bus));
+    invalidation.markVisibleChanged(tickAurora(state, dtS, bus));
     invalidation.markVisibleChanged(tickHype(state, dtS, cache, bus));
     invalidation.markVisibleChanged(tickDebt(state, cache, dtS, bus));
     invalidation.markVisibleChanged(tickAutomation(state, cache, dtS, bus));
@@ -770,11 +921,38 @@ function installState(nextState: typeof state): void {
 function resetVibexTransientState(): void {
   vibexCannedBag = createVibexCannedBag(state.rngSeed);
   currentVibexCanned = drawVibexCannedPair(vibexCannedBag);
-  vibexCodeState = createVibexCodeState();
+  currentVibexAssistant = createIdleVibexAssistant();
+  vibexCodeState = createVibexCodeState(state.rngSeed);
   currentVibexCodeFrame = getVibexCodeFrame(vibexCodeState);
 }
 
+function createIdleVibexAssistant(): VibexAssistantState {
+  return {
+    kind: "keys",
+    promptKey: "vibex.aiAssistant.idlePrompt",
+    responseKey: "vibex.aiAssistant.idleResponse"
+  };
+}
+
+function getCurrentVibexAssistant(): { readonly prompt: string; readonly response: string } {
+  if (currentVibexAssistant.kind === "keys") {
+    return {
+      prompt: t(currentVibexAssistant.promptKey),
+      response: t(currentVibexAssistant.responseKey)
+    };
+  }
+
+  return {
+    prompt: currentVibexAssistant.prompt,
+    response: currentVibexAssistant.response
+  };
+}
+
 function syncSceneAfterLoad(): void {
+  if (!state.aurora.unlocked) {
+    closeWindow(state.ui.windows, "aurora");
+  }
+
   if (state.ui.scene === "boot" && state.ui.bootSeen && state.settings.skipIntro) {
     state.ui.scene = "desktop";
   }
@@ -906,6 +1084,7 @@ function createDevFloorView(derived: DerivedCache, includeClosedApps = false): D
   const buildHardware = shouldBuildAppView(state.ui.windows, "hardware", includeClosedApps);
   const buildUpgrades = shouldBuildAppView(state.ui.windows, "upgrades", includeClosedApps);
   const buildProjects = shouldBuildAppView(state.ui.windows, "projects", includeClosedApps);
+  const buildAurora = shouldBuildAppView(state.ui.windows, "aurora", includeClosedApps);
   const buildResearch = shouldBuildAppView(state.ui.windows, "research", includeClosedApps);
   const buildRewrite = shouldBuildAppView(state.ui.windows, "rewrite", includeClosedApps);
   const buildStats = shouldBuildAppView(state.ui.windows, "stats", includeClosedApps);
@@ -917,6 +1096,7 @@ function createDevFloorView(derived: DerivedCache, includeClosedApps = false): D
       ? createAchievementsView()
       : (previous?.achievements ?? createAchievementsView()),
     automation: buildAgents ? createAutomationViews(derived) : (previous?.automation ?? []),
+    aurora: buildAurora ? createAuroraView() : (previous?.aurora ?? createAuroraView()),
     comms: getCommsView(),
     compute: buildAgents
       ? createComputeBreakdownView(derived)
@@ -944,7 +1124,7 @@ function createDevFloorView(derived: DerivedCache, includeClosedApps = false): D
       locRate: formatPerSecond(derived.locRate),
       locRateTooltip: createLocRateTooltip(derived),
       money: formatMoney(state.res.money),
-      moneyRate: formatMoneyRate(getProjectIncomeRate(state, cache)),
+      moneyRate: formatMoneyRate(getNetMoneyRate(getProjectIncomeRate(state, cache), state)),
       moneyRateTooltip: createMoneyRateTooltip(),
       rp: formatRp(state.res.rp)
     },
@@ -968,6 +1148,7 @@ function createAppearanceView(): AppearanceView {
 
   return {
     ending: state.prestige.endingChoice,
+    glitch: state.settings.glitch,
     reducedFx: state.settings.reducedFx,
     theme: theme === "crt" || theme === "glitch" || theme === "void" ? theme : undefined
   };
@@ -983,7 +1164,7 @@ function createSettingsView(): SettingsView {
     localAiCanDownload: ai.canDownload,
     localAiModelSize: ai.modelSizeLabel,
     localAiProgress: formatVibexAiProgress(ai),
-    localAiStatus: t(`vibex.ai.status.${ai.status}`),
+    localAiStatus: formatVibexAiStatus(ai),
     lang: state.settings.lang,
     notation: state.settings.notation,
     reducedFx: state.settings.reducedFx,
@@ -1007,26 +1188,38 @@ function createTutorialView(): TutorialView {
 function createVibexView(): VibexView {
   const activeFileId = currentVibexCodeFrame.fileId;
   const ai = vibexAi.snapshot();
+  const assistant = getCurrentVibexAssistant();
 
   return {
     aiCanDownload: ai.canDownload,
     aiEnabled: state.settings.vibexLocalAi,
     aiModelSize: ai.modelSizeLabel,
     aiProgress: formatVibexAiProgress(ai),
-    aiStatus: t(`vibex.ai.status.${ai.status}`),
-    cannedPrompt: t(currentVibexCanned.promptKey),
-    cannedResponse: t(currentVibexCanned.responseKey),
+    aiStatus: formatVibexAiStatus(ai),
+    cannedPrompt: assistant.prompt,
+    cannedResponse: assistant.response,
     codeLines: currentVibexCodeFrame.lineKeys.map((lineKey, index) => ({
       id: `${currentVibexCodeFrame.sequence}:${index}`,
       text: t(lineKey)
     })),
     codeSequence: currentVibexCodeFrame.sequence,
-    files: VIBEX_CODE_FILES.map((file) => ({
+    files: VIBEX_CODE_FILES.map((file, index) => ({
       active: file.id === activeFileId,
       id: file.id,
-      label: t(file.labelKey)
+      label: t(getVibexFileLabelKey(vibexCodeState, index))
     }))
   };
+}
+
+function createVibexManualFallbackResponse(
+  prompt: string,
+  eraModel: string,
+  sequence: number
+): string {
+  return t(getVibexManualFallbackKey(sequence), {
+    model: eraModel,
+    prompt: prompt.slice(0, 72)
+  });
 }
 
 function createAchievementsView(): AchievementsView {
@@ -1184,13 +1377,17 @@ function createOfflineView(): OfflineView {
 }
 
 function createEndingModalView(): EndingModalView {
-  const event = getStoryEvent("a5_12_final_choice");
+  const event = ["a5_12_final_choice", "a5_17_aurora_complete"]
+    .map((id) => getStoryEvent(id))
+    .find(
+      (entry) =>
+        entry !== undefined &&
+        state.story.seen.has(entry.id) &&
+        entry.choices !== undefined &&
+        state.story.choices[entry.id] === undefined
+    );
 
-  if (
-    event === undefined ||
-    !state.story.seen.has(event.id) ||
-    state.story.choices[event.id] !== undefined
-  ) {
+  if (event === undefined) {
     return {
       choices: [],
       eventId: "a5_12_final_choice",
@@ -1440,20 +1637,34 @@ function createHardwareViews(): readonly HardwareRowView[] {
     const owned = state.owned.hardware[hardware.id] ?? 0;
     const maxed = isHardwareMaxed(hardware, owned);
     const cost = maxed ? undefined : getHardwareCost(hardware, owned, state.prestige.iteration);
+    const tierGate = getHardwareTierGateRequirement(state, hardware);
+    const requiredHardware = tierGate === undefined ? undefined : getHardware(tierGate.hardwareId);
 
     return {
       id: hardware.id,
       active: owned > 0,
-      canBuy: cost !== undefined && state.res.money.gte(cost),
+      canBuy: cost !== undefined && tierGate === undefined && state.res.money.gte(cost),
       capAdd:
-        hardware.capPerLevel === 0
+        getHardwareCapGain(hardware, owned) === 0
           ? t("ui.hardware.zeroCap")
-          : t("ui.hardware.capPerLevel", { cap: formatCompute(hardware.capPerLevel) }),
+          : t("ui.hardware.capPerLevel", {
+              cap: formatCompute(getHardwareCapGain(hardware, owned))
+            }),
       cost: cost === undefined ? t("ui.hardware.maxed") : formatMoney(cost),
       isEnclosure: hardware.isEnclosure,
       levelLabel: formatHardwareLevel(owned, hardware.maxLevel),
       name: t(hardware.nameKey),
       phase: hardware.phase,
+      powerCost: t("ui.hardware.powerCost", {
+        rate: formatHardwarePowerRate(getHardwarePowerRatePerLevel(hardware.id))
+      }),
+      psuRequirement:
+        tierGate === undefined || requiredHardware === undefined
+          ? ""
+          : t("ui.hardware.psuRequirement", {
+              level: tierGate.requiredLevel,
+              name: t(requiredHardware.nameKey)
+            }),
       slot: hardware.slot,
       slotLabel: t(`hardware.slot.${hardware.slot}`)
     };
@@ -1662,6 +1873,8 @@ function createParadoxItemView(item: ParadoxItemDefinition): ParadoxItemView {
 }
 
 function createProjectsView(): ProjectsView {
+  const canStartProject = !hasActiveProjectBuild(state);
+
   return {
     activeBuilds: state.projects.active.map((build): ActiveBuildView => {
       const project = getProject(build.projectId);
@@ -1691,16 +1904,15 @@ function createProjectsView(): ProjectsView {
         canFix: product.bugged,
         id: product.id,
         name: project === undefined ? product.projectId : t(project.nameKey),
-        revenue: formatMoneyRate(
-          Big.mul(product.revenue, Big.fromNumber(cache.project.revenueMultiplier))
-        ),
+        revenue: formatMoneyRate(getProductRevenue(product, cache)),
         status: t(product.bugged ? "ui.projects.statusBugged" : "ui.projects.statusOk")
       };
     }),
     refactor: {
       buildTime: formatTime(REFACTOR_PROJECT.buildS),
-      canStart: state.res.loc.gte(getProjectCost(REFACTOR_PROJECT, cache)),
-      cost: formatLoc(getProjectCost(REFACTOR_PROJECT, cache)),
+      canStart:
+        canStartProject && state.res.loc.gte(getProjectCost(REFACTOR_PROJECT, cache, state)),
+      cost: formatLoc(getProjectCost(REFACTOR_PROJECT, cache, state)),
       debt: formatBig(state.res.debt, state.settings.notation),
       effect: t("ui.projects.refactorEffect", {
         mult: formatMultiplier(cache.debt.refactorMultiplier)
@@ -1709,16 +1921,112 @@ function createProjectsView(): ProjectsView {
   };
 }
 
+function createAuroraView(): AuroraView {
+  const phase = getCurrentAuroraPhase(state);
+  const progress = getAuroraProgress(state);
+  const availableServers = getAvailableAuroraServers(state);
+  const readyServers = getAuroraReadyServerCount(state);
+  const billing = createBillingBreakdown(state);
+  const status = getAuroraStatusForView();
+  const serverRatio =
+    phase === undefined || phase.requiredServers <= 0
+      ? 1
+      : Math.min(1, availableServers / phase.requiredServers);
+  const remainingS =
+    phase === undefined
+      ? 0
+      : state.aurora.phaseActive
+        ? Math.max(0, (phase.workS - state.aurora.phaseElapsedS) / Math.max(0.001, serverRatio))
+        : phase.workS;
+  const canFund =
+    state.aurora.unlocked &&
+    !state.aurora.completed &&
+    !state.aurora.phaseActive &&
+    phase !== undefined &&
+    availableServers >= phase.requiredServers &&
+    state.res.loc.gte(phase.costLoc) &&
+    state.res.money.gte(phase.costMoney);
+
+  return {
+    availableServers: t("ui.aurora.serverCount", { count: availableServers }),
+    canDedicate:
+      state.aurora.unlocked &&
+      !state.aurora.completed &&
+      state.aurora.dedicatedServers < AURORA_REQUIRED_DEDICATED_SERVERS &&
+      readyServers > 0,
+    canFund,
+    canHost: state.aurora.unlocked && !state.aurora.completed,
+    completed: state.aurora.completed,
+    costLoc: phase === undefined ? t("ui.aurora.done") : formatLoc(phase.costLoc),
+    costMoney: phase === undefined ? t("ui.aurora.done") : formatMoney(phase.costMoney),
+    dedicatedServers: t("ui.aurora.serverCount", { count: state.aurora.dedicatedServers }),
+    hostedServers: t("ui.aurora.serverCount", { count: state.aurora.hostedServers }),
+    hostingRate: formatMoneyRate(billing.auroraHosting),
+    nodes: AURORA_PHASES.map((entry, index): AuroraNodeView => {
+      const nodeState =
+        state.aurora.completed || index < state.aurora.currentPhase
+          ? "complete"
+          : index === state.aurora.currentPhase
+            ? "active"
+            : "locked";
+
+      return {
+        id: entry.id,
+        name: t(entry.nameKey),
+        state: nodeState
+      };
+    }),
+    phaseName:
+      phase === undefined
+        ? t(state.aurora.completed ? "ui.aurora.phaseComplete" : "ui.aurora.phaseNone")
+        : t(phase.nameKey),
+    progress: progress / 100,
+    progressLabel: t("ui.aurora.progress", { percent: progress.toFixed(1) }),
+    readyServerCount: readyServers,
+    readyServers: t("ui.aurora.serverCount", { count: readyServers }),
+    requiredServers:
+      phase === undefined
+        ? t("ui.aurora.done")
+        : t("ui.aurora.serverCount", { count: phase.requiredServers }),
+    statusLabel: t(`ui.aurora.status.${status}`),
+    timeRemaining: formatTime(remainingS),
+    unlocked: state.aurora.unlocked
+  };
+}
+
+function getAuroraStatusForView(): AuroraView["nodes"][number]["state"] | string {
+  const phase = getCurrentAuroraPhase(state);
+
+  if (!state.aurora.unlocked) {
+    return "locked";
+  }
+
+  if (state.aurora.completed || phase === undefined) {
+    return "complete";
+  }
+
+  if (state.aurora.phaseActive && state.aurora.billingPaused) {
+    return "billing";
+  }
+
+  if (getAvailableAuroraServers(state) < phase.requiredServers) {
+    return "servers";
+  }
+
+  return state.aurora.phaseActive ? "ready" : "funding";
+}
+
 function createProjectOfferView(project: ProjectDefinition): ProjectOfferView {
-  const cost = getProjectCost(project, cache);
+  const cost = getProjectCost(project, cache, state);
   const payout = getProjectPayout(project, cache);
   const revenue = getProjectRevenue(project, cache);
+  const canStartProject = !hasActiveProjectBuild(state);
 
   return {
     id: project.id,
     name: t(project.nameKey),
     buildTime: formatTime(getProjectBuildTime(project, cache)),
-    canStart: state.res.loc.gte(cost),
+    canStart: canStartProject && state.res.loc.gte(cost),
     cost: formatLoc(cost),
     payout: formatMoney(payout),
     revenue: formatMoneyRate(revenue),
@@ -1729,6 +2037,10 @@ function createProjectOfferView(project: ProjectDefinition): ProjectOfferView {
 function getProjectTag(project: ProjectDefinition): string {
   if (project.id === "p_llama_todo") {
     return t("ui.projects.tagTutorial");
+  }
+
+  if (project.kind === "unlock") {
+    return t("ui.projects.tagUnlock");
   }
 
   if (project.rpReward !== undefined) {
@@ -1752,6 +2064,14 @@ function getUnlockToastName(kind: string, id: string): string {
   if (kind === "achievement") {
     const achievement = ACHIEVEMENTS.find((entry) => entry.id === id);
     return achievement === undefined ? id : t(achievement.nameKey);
+  }
+
+  if (kind === "story" && id === "aurora") {
+    return t("ui.app.aurora");
+  }
+
+  if (kind === "story" && id === "aurora.complete") {
+    return t("ui.aurora.phaseComplete");
   }
 
   return id;
@@ -1856,11 +2176,18 @@ function createLocRateTooltip(derived: DerivedCache): string {
 }
 
 function createMoneyRateTooltip(): string {
+  const gross = getProjectIncomeRate(state, cache);
+  const billing = createBillingBreakdown(state);
   return t("ui.tooltip.moneyRate", {
+    auroraHosting: formatMoneyRate(billing.auroraHosting),
+    auroraPower: formatMoneyRate(billing.auroraPower),
+    gross: formatMoneyRate(gross),
     hype: formatMultiplier(state.res.hype),
+    net: formatMoneyRate(getNetMoneyRate(gross, state)),
+    power: formatMoneyRate(billing.hardwarePower),
     prestige: formatMultiplier(cache.multipliers.prestige),
     revenue: formatMultiplier(cache.project.revenueMultiplier),
-    total: formatMoneyRate(getProjectIncomeRate(state, cache))
+    total: formatMoneyRate(getNetMoneyRate(gross, state))
   });
 }
 
@@ -1897,12 +2224,32 @@ function formatLoc(value: Big): string {
   return t("ui.format.loc", { value: formatBig(value, state.settings.notation) });
 }
 
+function formatLinesOfCode(value: Big): string {
+  return t("ui.format.linesOfCode", { value: formatBig(value, state.settings.notation) });
+}
+
 function formatMoney(value: Big): string {
   return t("ui.format.money", { value: formatBig(value, state.settings.notation) });
 }
 
 function formatMoneyRate(value: Big): string {
   return t("ui.format.perSecond", { value: formatMoney(value) });
+}
+
+function formatHardwarePowerRate(value: Big): string {
+  const abs = value.abs();
+
+  if (!abs.eq0() && abs.e < 0) {
+    const precise = abs
+      .toNumber()
+      .toFixed(4)
+      .replace(/\.?0+$/u, "");
+    return t("ui.format.perSecond", {
+      value: t("ui.format.money", { value: precise })
+    });
+  }
+
+  return formatMoneyRate(value);
 }
 
 function formatPerSecond(value: Big): string {
@@ -1971,6 +2318,26 @@ function formatVibexAiProgress(ai: VibexAiSnapshot): string {
   return t("vibex.ai.progress", {
     percent: Math.floor((ai.progress.loaded / ai.progress.total) * 100)
   });
+}
+
+function formatVibexAiStatus(ai: VibexAiSnapshot): string {
+  if (ai.status !== "error" || ai.errorMessage === undefined || ai.errorMessage.length === 0) {
+    return t(`vibex.ai.status.${ai.status}`);
+  }
+
+  return t("vibex.ai.status.errorDetail", {
+    message: truncateStatusMessage(ai.errorMessage)
+  });
+}
+
+function truncateStatusMessage(message: string): string {
+  const normalized = message.replace(/\s+/g, " ").trim();
+
+  if (normalized.length <= 72) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, 69)}...`;
 }
 
 function getNumericStat(key: string): number {

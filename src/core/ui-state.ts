@@ -4,6 +4,7 @@ export const APP_IDS = [
   "hardware",
   "upgrades",
   "projects",
+  "aurora",
   "research",
   "rewrite",
   "stats",
@@ -60,6 +61,8 @@ export interface TutorialState {
 
 export interface WindowDefinition {
   readonly defaultFrame: WindowFrame;
+  readonly maxH?: number;
+  readonly maxW?: number;
   readonly minH: number;
   readonly minW: number;
 }
@@ -89,6 +92,11 @@ export const WINDOW_DEFINITIONS: Record<AppId, WindowDefinition> = {
     defaultFrame: { h: 520, w: 760, x: 120, y: 152 },
     minH: 520,
     minW: 760
+  },
+  aurora: {
+    defaultFrame: { h: 620, w: 920, x: 132, y: 164 },
+    minH: 620,
+    minW: 920
   },
   research: {
     defaultFrame: { h: 520, w: 760, x: 144, y: 172 },
@@ -127,6 +135,8 @@ export const WINDOW_DEFINITIONS: Record<AppId, WindowDefinition> = {
   },
   settings: {
     defaultFrame: { h: 520, w: 760, x: 248, y: 264 },
+    maxH: 760,
+    maxW: 980,
     minH: 520,
     minW: 760
   }

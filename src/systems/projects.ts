@@ -6,16 +6,20 @@ import { C } from "../data/constants";
 import { PROJECTS, REFACTOR_PROJECT, type ProjectDefinition } from "../data/projects";
 import { isDemoLocked } from "./demo";
 import { addShipHype } from "./hype";
+import { unlockAurora } from "./aurora";
 import type { DerivedCache } from "./production";
 
 const PROJECT_STARTED_STAT = "projects.started";
 const PROJECT_SHIPPED_STAT = "projects.shipped";
+const PROJECT_STARTED_PREFIX = "project.started.";
+const PROJECT_GLOBAL_COST_GROWTH = C.REVENUE_RATIO;
+const PROJECT_TEMPLATE_COST_GROWTH = C.FLOW_GAIN;
 
 export interface StartProjectResult {
   readonly cost: Big;
   readonly id: string;
   readonly ok: boolean;
-  readonly reason?: "demoLocked" | "locked" | "unaffordable" | "missing";
+  readonly reason?: "busy" | "demoLocked" | "locked" | "unaffordable" | "missing";
 }
 
 export function ensureProjectBoard(state: GameState): void {
@@ -28,7 +32,9 @@ export function ensureProjectBoard(state: GameState): void {
 
 export function refreshProjectBoard(state: GameState): void {
   state.projects.board = PROJECTS.filter(
-    (project) => project.kind === "standard" && isProjectUnlocked(state, project)
+    (project) =>
+      (project.kind === "standard" || project.kind === "unlock") &&
+      isProjectUnlocked(state, project)
   )
     .sort((left, right) => right.era - left.era)
     .map((project) => ({
@@ -58,7 +64,11 @@ export function startProject(
     return { cost: Big.zero(), id: projectId, ok: false, reason: "locked" };
   }
 
-  const cost = getProjectCost(project, cache);
+  if (hasActiveProjectBuild(state)) {
+    return { cost: Big.zero(), id: projectId, ok: false, reason: "busy" };
+  }
+
+  const cost = getProjectCost(project, cache, state);
 
   if (state.res.loc.lt(cost)) {
     return { cost, id: projectId, ok: false, reason: "unaffordable" };
@@ -68,9 +78,15 @@ export function startProject(
   Big.subIn(state.res.loc, cost);
   state.projects.active.push(activeBuild);
   state.stats[PROJECT_STARTED_STAT] = getNumericStat(state, PROJECT_STARTED_STAT) + 1;
+  state.stats[getProjectStartedStatKey(project.id)] =
+    getNumericStat(state, getProjectStartedStatKey(project.id)) + 1;
 
   bus?.emit("res:changed", "loc");
   return { cost, id: projectId, ok: true };
+}
+
+export function hasActiveProjectBuild(state: GameState): boolean {
+  return state.projects.active.length > 0;
 }
 
 export function tickProjects(
@@ -107,7 +123,11 @@ export function tickProjectIncome(
   return true;
 }
 
-export function getProjectCost(project: ProjectDefinition, cache: DerivedCache): Big {
+export function getProjectCost(
+  project: ProjectDefinition,
+  cache: DerivedCache,
+  state?: GameState
+): Big {
   const iterationCost = Big.fromNumber(cache.costs.projectMultiplier);
 
   switch (project.kind) {
@@ -118,9 +138,29 @@ export function getProjectCost(project: ProjectDefinition, cache: DerivedCache):
         Big.mul(cache.locRate, Big.fromNumber(C.REFACTOR_COST_SECONDS)),
         iterationCost
       );
+    case "unlock":
     case "standard":
-      return Big.mul(project.costLoC, iterationCost);
+      return Big.mul(
+        Big.mul(project.costLoC, getProjectStartCostMultiplier(project, state)),
+        iterationCost
+      );
   }
+}
+
+export function getProjectStartCostMultiplier(project: ProjectDefinition, state?: GameState): Big {
+  if (state === undefined) {
+    return Big.one();
+  }
+
+  const globalMultiplier =
+    1 + getNumericStat(state, PROJECT_STARTED_STAT) * PROJECT_GLOBAL_COST_GROWTH;
+  const templateMultiplier =
+    1 + getNumericStat(state, getProjectStartedStatKey(project.id)) * PROJECT_TEMPLATE_COST_GROWTH;
+  return Big.fromNumber(globalMultiplier * templateMultiplier);
+}
+
+function getProjectStartedStatKey(projectId: string): string {
+  return `${PROJECT_STARTED_PREFIX}${projectId}`;
 }
 
 export function getProjectPayout(project: ProjectDefinition, cache: DerivedCache): Big {
@@ -128,7 +168,17 @@ export function getProjectPayout(project: ProjectDefinition, cache: DerivedCache
 }
 
 export function getProjectRevenue(project: ProjectDefinition, cache: DerivedCache): Big {
-  return Big.mul(getBaseProjectRevenue(project), Big.fromNumber(cache.project.revenueMultiplier));
+  return Big.mul(
+    getProjectPortfolioRevenue(project),
+    Big.fromNumber(cache.project.revenueMultiplier)
+  );
+}
+
+export function getProductRevenue(product: Product, cache: DerivedCache): Big {
+  return Big.mul(
+    getProductPortfolioRevenue(product),
+    Big.fromNumber(cache.project.revenueMultiplier)
+  );
 }
 
 export function getProjectIncomeRate(
@@ -140,7 +190,10 @@ export function getProjectIncomeRate(
 
   for (const product of state.projects.portfolio) {
     const bugPenalty = product.bugged ? cache.debt.bugPenalty : 1;
-    productRevenue = Big.add(productRevenue, Big.mul(product.revenue, Big.fromNumber(bugPenalty)));
+    productRevenue = Big.add(
+      productRevenue,
+      Big.mul(getProductPortfolioRevenue(product), Big.fromNumber(bugPenalty))
+    );
   }
 
   if (productRevenue.eq0()) {
@@ -167,7 +220,9 @@ export function getVisibleProjectOffers(
   return state.projects.board
     .filter((offer) => {
       const project = getProject(offer.projectId);
-      return project !== undefined && !isDemoLocked(state, project);
+      return (
+        project !== undefined && !isDemoLocked(state, project) && isProjectUnlocked(state, project)
+      );
     })
     .slice(0, cache?.project.boardSlots ?? C.PROJECT_BOARD_BASE_SLOTS);
 }
@@ -224,6 +279,10 @@ function completeBuild(
     state.projects.portfolio.push(createProduct(state, build));
   }
 
+  if (project.kind === "unlock") {
+    applyProjectCompletionEffect(state, project, bus);
+  }
+
   state.stats[PROJECT_SHIPPED_STAT] = getNumericStat(state, PROJECT_SHIPPED_STAT) + 1;
   state.stats[`project.${project.id}.shipped`] =
     getNumericStat(state, `project.${project.id}.shipped`) + 1;
@@ -249,7 +308,7 @@ function createActiveBuild(
     elapsedS: 0,
     payout: project.kind === "standard" ? getProjectPayout(project, cache) : Big.zero(),
     projectId: project.id,
-    revenue: project.kind === "standard" ? getBaseProjectRevenue(project) : Big.zero()
+    revenue: project.kind === "standard" ? getProjectPortfolioRevenue(project) : Big.zero()
   };
 }
 
@@ -267,6 +326,24 @@ function getBaseProjectPayout(project: ProjectDefinition): Big {
 
 function getBaseProjectRevenue(project: ProjectDefinition): Big {
   return Big.mul(getBaseProjectPayout(project), Big.fromNumber(C.REVENUE_RATIO));
+}
+
+function getProjectPortfolioRevenue(project: ProjectDefinition): Big {
+  if (project.recurringRevenue === false) {
+    return Big.zero();
+  }
+
+  return getBaseProjectRevenue(project);
+}
+
+function getProductPortfolioRevenue(product: Product): Big {
+  const project = getProject(product.projectId);
+
+  if (project?.recurringRevenue === false) {
+    return Big.zero();
+  }
+
+  return product.revenue;
 }
 
 function createProduct(state: GameState, build: ActiveBuild): Product {
@@ -295,7 +372,25 @@ function grantProjectRp(state: GameState, project: ProjectDefinition, cache: Der
   }
 }
 
+function applyProjectCompletionEffect(
+  state: GameState,
+  project: ProjectDefinition,
+  bus?: EventBus
+): void {
+  switch (project.completionEffect) {
+    case "unlockAurora":
+      unlockAurora(state, bus);
+      break;
+    case undefined:
+      break;
+  }
+}
+
 function isProjectUnlocked(state: GameState, project: ProjectDefinition): boolean {
+  if (project.completionEffect === "unlockAurora" && state.aurora.unlocked) {
+    return false;
+  }
+
   return (
     !isDemoLocked(state, project) &&
     project.era <= state.era &&

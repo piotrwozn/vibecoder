@@ -9,6 +9,7 @@ import { createDefaultUiState, type GameUiState } from "./ui-state";
 export type Edition = "demo" | "full";
 export type ProjectPriority = "payout" | "revenue" | "rp";
 export type EndingChoice = "merge" | "unplug" | "fork";
+export type AuroraStatus = "billing" | "complete" | "funding" | "locked" | "ready" | "servers";
 
 export interface ProjectOffer {
   readonly id: string;
@@ -31,6 +32,18 @@ export interface Product {
   readonly projectId: string;
   readonly revenue: Big;
   readonly shippedAtS: number;
+}
+
+export interface AuroraState {
+  billingPaused: boolean;
+  completed: boolean;
+  currentPhase: number;
+  dedicatedServers: number;
+  hostedServers: number;
+  phaseActive: boolean;
+  phaseElapsedS: number;
+  status: AuroraStatus;
+  unlocked: boolean;
 }
 
 export interface ActiveBug {
@@ -83,6 +96,7 @@ export interface GameState {
   hardware: {
     pcComplete: boolean;
   };
+  aurora: AuroraState;
   era: number;
   projects: {
     active: ActiveBuild[];
@@ -170,6 +184,7 @@ export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "d
     hardware: {
       pcComplete: false
     },
+    aurora: createDefaultAuroraState(),
     era: STARTING_ERA.index,
     projects: {
       active: [],
@@ -211,6 +226,20 @@ export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "d
     },
     ui: createDefaultUiState("boot", false),
     rngSeed: DEFAULT_RNG_SEED
+  };
+}
+
+export function createDefaultAuroraState(): AuroraState {
+  return {
+    billingPaused: false,
+    completed: false,
+    currentPhase: 0,
+    dedicatedServers: 0,
+    hostedServers: 0,
+    phaseActive: false,
+    phaseElapsedS: 0,
+    status: "locked",
+    unlocked: false
   };
 }
 

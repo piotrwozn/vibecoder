@@ -6,6 +6,8 @@ import {
   type ActiveBuild,
   type ActiveBug,
   type AutomationRule,
+  type AuroraState,
+  type AuroraStatus,
   type Edition,
   type EndingChoice,
   type GameState,
@@ -289,6 +291,8 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     mark
   );
 
+  defaults.aurora = repairAurora(raw.aurora, defaults.aurora, "aurora", mark);
+
   defaults.era = repairNumber(raw.era, defaults.era, "era", mark, {
     integer: true,
     nonNegative: true
@@ -366,6 +370,9 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   defaults.story.flags = repairStringSet(story.flags, defaults.story.flags, "story.flags", mark);
   defaults.story.inbox = repairInbox(story.inbox, "story.inbox", mark);
   defaults.story.seen = repairStringSet(story.seen, defaults.story.seen, "story.seen", mark);
+  if (defaults.story.seen.has("a5_13_aurora_seed") || defaults.aurora.unlocked) {
+    defaults.story.flags.add("aurora_seed_available");
+  }
 
   defaults.automation = repairAutomation(raw.automation, "automation", mark);
   defaults.stats = repairStats(raw.stats, "stats", mark);
@@ -615,6 +622,93 @@ function repairProjectPriority(
 
 function repairEndingChoice(value: unknown): EndingChoice | undefined {
   return value === "merge" || value === "unplug" || value === "fork" ? value : undefined;
+}
+
+function repairAurora(
+  value: unknown,
+  fallback: AuroraState,
+  path: string,
+  mark: (path: string) => void
+): AuroraState {
+  if (!isRecord(value)) {
+    mark(path);
+    return { ...fallback };
+  }
+
+  return {
+    billingPaused: repairBoolean(
+      value.billingPaused,
+      fallback.billingPaused,
+      `${path}.billingPaused`,
+      mark
+    ),
+    completed: repairBoolean(value.completed, fallback.completed, `${path}.completed`, mark),
+    currentPhase: repairNumber(
+      value.currentPhase,
+      fallback.currentPhase,
+      `${path}.currentPhase`,
+      mark,
+      {
+        integer: true,
+        nonNegative: true
+      }
+    ),
+    dedicatedServers: repairNumber(
+      value.dedicatedServers,
+      fallback.dedicatedServers,
+      `${path}.dedicatedServers`,
+      mark,
+      { integer: true, nonNegative: true }
+    ),
+    hostedServers: repairNumber(
+      value.hostedServers,
+      fallback.hostedServers,
+      `${path}.hostedServers`,
+      mark,
+      {
+        integer: true,
+        nonNegative: true
+      }
+    ),
+    phaseActive: repairBoolean(
+      value.phaseActive,
+      fallback.phaseActive,
+      `${path}.phaseActive`,
+      mark
+    ),
+    phaseElapsedS: repairNumber(
+      value.phaseElapsedS,
+      fallback.phaseElapsedS,
+      `${path}.phaseElapsedS`,
+      mark,
+      {
+        nonNegative: true
+      }
+    ),
+    status: repairAuroraStatus(value.status, fallback.status, `${path}.status`, mark),
+    unlocked: repairBoolean(value.unlocked, fallback.unlocked, `${path}.unlocked`, mark)
+  };
+}
+
+function repairAuroraStatus(
+  value: unknown,
+  fallback: AuroraStatus,
+  path: string,
+  mark: (path: string) => void
+): AuroraStatus {
+  if (
+    value === "billing" ||
+    value === "complete" ||
+    value === "funding" ||
+    value === "locked" ||
+    value === "ready" ||
+    value === "servers"
+  ) {
+    return value;
+  }
+
+  mark(path);
+  return fallback;
 }
 
 function repairNumberRecord(

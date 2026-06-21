@@ -13,6 +13,7 @@ export interface HardwareDefinition {
   readonly baseCost: Big;
   readonly capPerLevel: number;
   readonly demoLocked?: boolean;
+  readonly firstLevelCap?: number;
   readonly growth?: number;
   readonly id: string;
   readonly isEnclosure: boolean;
@@ -51,7 +52,8 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: 20,
     baseCost: big(80),
     growth: 1.55,
-    capPerLevel: 40,
+    capPerLevel: 2,
+    firstLevelCap: 2,
     unlock: [{ kind: "start" }],
     isEnclosure: false,
     nameKey: "hardware.h_cpu.name"
@@ -63,8 +65,9 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: 16,
     baseCost: big(60),
     growth: 1.5,
-    capPerLevel: 25,
-    unlock: [{ kind: "hardware", id: "h_cpu", level: 3 }],
+    capPerLevel: 2,
+    firstLevelCap: 2,
+    unlock: [{ kind: "start" }],
     isEnclosure: false,
     nameKey: "hardware.h_ram.name"
   },
@@ -75,8 +78,9 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: 12,
     baseCost: big(40),
     growth: 1.45,
-    capPerLevel: 10,
-    unlock: [{ kind: "hardware", id: "h_cpu", level: 3 }],
+    capPerLevel: 1,
+    firstLevelCap: 1,
+    unlock: [{ kind: "start" }],
     isEnclosure: false,
     nameKey: "hardware.h_ssd.name"
   },
@@ -87,8 +91,9 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: 16,
     baseCost: big(70),
     growth: 1.5,
-    capPerLevel: 20,
-    unlock: [{ kind: "hardware", id: "h_cpu", level: 5 }],
+    capPerLevel: 0,
+    firstLevelCap: 0,
+    unlock: [{ kind: "start" }],
     isEnclosure: false,
     nameKey: "hardware.h_psu_pc.name"
   },
@@ -99,8 +104,9 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: 16,
     baseCost: big(50),
     growth: 1.5,
-    capPerLevel: 15,
-    unlock: [{ kind: "hardware", id: "h_psu_pc", level: 3 }],
+    capPerLevel: 2,
+    firstLevelCap: 2,
+    unlock: [{ kind: "start" }],
     isEnclosure: false,
     nameKey: "hardware.h_cooling_pc.name"
   },
@@ -111,8 +117,9 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: 20,
     baseCost: big(300),
     growth: 1.6,
-    capPerLevel: 80,
-    unlock: [{ kind: "hardware", id: "h_cooling_pc", level: 3 }],
+    capPerLevel: 3,
+    firstLevelCap: 3,
+    unlock: [{ kind: "start" }],
     isEnclosure: false,
     nameKey: "hardware.h_gpu.name"
   },
@@ -196,7 +203,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(1.5e6),
     growth: 2,
-    capPerLevel: 120,
+    capPerLevel: 4,
     unlock: [{ kind: "hardware", id: "h_rack", level: 1 }],
     isEnclosure: false,
     demoLocked: true,
@@ -209,7 +216,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(1.2e6),
     growth: 2,
-    capPerLevel: 90,
+    capPerLevel: 0,
     unlock: [{ kind: "hardware", id: "h_rack", level: 1 }],
     isEnclosure: false,
     demoLocked: true,
@@ -222,7 +229,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(1.8e6),
     growth: 2,
-    capPerLevel: 110,
+    capPerLevel: 4,
     unlock: [{ kind: "hardware", id: "h_srv_board", level: 1 }],
     isEnclosure: false,
     demoLocked: true,
@@ -235,7 +242,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(2.5e6),
     growth: 2,
-    capPerLevel: 140,
+    capPerLevel: 4,
     unlock: [{ kind: "hardware", id: "h_srv_board", level: 1 }],
     isEnclosure: false,
     demoLocked: true,
@@ -248,7 +255,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(2e6),
     growth: 2,
-    capPerLevel: 300,
+    capPerLevel: 8,
     unlock: [{ kind: "hardware", id: "h_rack", level: 1 }],
     isEnclosure: false,
     demoLocked: true,
@@ -261,7 +268,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(8e7),
     growth: 2,
-    capPerLevel: 900,
+    capPerLevel: 8,
     unlock: [{ kind: "era", era: 4 }],
     isEnclosure: false,
     demoLocked: true,
@@ -274,7 +281,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(5e9),
     growth: 2.1,
-    capPerLevel: 2.8e3,
+    capPerLevel: 8,
     unlock: [
       { kind: "era", era: 5 },
       { kind: "hardware", id: "h_row", level: 1 }
@@ -290,7 +297,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(8e11),
     growth: 2.1,
-    capPerLevel: 9e3,
+    capPerLevel: 8,
     unlock: [
       { kind: "era", era: 6 },
       { kind: "hardware", id: "h_datahall", level: 1 }
@@ -306,7 +313,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(3e13),
     growth: 2.1,
-    capPerLevel: 1.6e4,
+    capPerLevel: 8,
     unlock: [{ kind: "era", era: 7 }],
     isEnclosure: false,
     demoLocked: true,
@@ -319,7 +326,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(5e14),
     growth: 2.2,
-    capPerLevel: 3e4,
+    capPerLevel: 8,
     unlock: [
       { kind: "era", era: 8 },
       { kind: "hardware", id: "h_dc_campus", level: 1 }
@@ -335,7 +342,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(4e16),
     growth: 2.2,
-    capPerLevel: 5.5e4,
+    capPerLevel: 8,
     unlock: [{ kind: "era", era: 9 }],
     isEnclosure: false,
     demoLocked: true,
@@ -348,7 +355,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(1e18),
     growth: 2.2,
-    capPerLevel: 1e5,
+    capPerLevel: 8,
     unlock: [
       { kind: "era", era: 10 },
       { kind: "hardware", id: "h_dyson_frame", level: 1 }

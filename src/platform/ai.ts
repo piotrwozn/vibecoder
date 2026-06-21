@@ -9,6 +9,7 @@ export interface VibexAiProgress {
 
 export interface VibexAiSnapshot {
   readonly canDownload: boolean;
+  readonly errorMessage?: string;
   readonly modelSizeLabel: string;
   readonly progress: VibexAiProgress | undefined;
   readonly status: VibexAiStatus;

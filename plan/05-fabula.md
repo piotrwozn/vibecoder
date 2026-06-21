@@ -80,17 +80,17 @@ Format: beaty z finalnym one-linerem EN; sceny oznaczone `[SCENA: n dymków — 
 
 ### Akt 2 — "Startup" (4→10h, E3–E4) — 14 eventów
 - a2_01 `exits=0 ∧ flag(accepted_term_sheet)` — mail/Vera: `Wire cleared. $2M seed. Burn it wisely, or at least photogenically.` (grant $)
-- a2_02 `agenci≥25` — system/MUSE: `Your agents now outnumber the engineering team of a mid-size bank. They do not unionize. Yet.`
+- a2_02 `agenci≥100 ∧ shipCount≥350` — system/MUSE: `Your agents now outnumber the engineering team of a mid-size bank. They do not unionize. Yet.`
 - a2_03 `era=3` — mail/Mindforge: GOLEM launch newsletter `[SCENA: 3 dymki — coraz agresywniejszy marketing]`
-- a2_04 `shipCount≥40` — feed: `TensorCorp announces "Foundry" — a direct clone of your flagship. Their demo crashes live. Twice.` (hype +1)
+- a2_04 `shipCount≥350` — feed: `TensorCorp announces "Foundry" — a direct clone of your flagship. Their demo crashes live. Twice.` (hype +1)
 - a2_05 `debtRatio≥0.6` — chat/Anders: `Your velocity is impressive. So is the smell of the codebase. Choose which compliment matters.` (unlock research Quality T2)
 - a2_06 pierwszy incydent (system `02 §2.6`) — `[SCENA: 5 dymków — prod down podczas demo day, wybór A: rollback (strata $) / B: hotfix na żywo (ryzyko 2. incydentu, hype +2 jeśli sukces)]`
 - a2_07–a2_13 — gig-klienci enterprise, zora reaguje na twój wzrost (`are you ok? you post like a brand now`), Vera metrics-talk, drugi REWRITE komentowany przez MUSE
 - a2_14 finał aktu `money≥$1e9` — mail/Vera: `Series A closed. The board exists now. It has opinions. Ship faster.` → Akt 3
 
-### Akt 3 — "Scale" (10→22h, E5–E6) — 16 eventów; tu odblokowuje się EXIT
+### Akt 3 — "Scale" (10→50h, E5–E6) — 16 eventów; tu odblokowuje się EXIT
 - a3_01 `era=5` — Mindforge: ORACLE launch. `ORACLE doesn't answer questions. It answers the question you should have asked.`
-- a3_02 `insight≥300` — mail/TensorCorp: **oferta przejęcia** `[SCENA: 4 dymki + wybór: sprzedać (→ tutorial EXIT) / odrzucić (Vera: respekt, hype +2; oferta wraca przy każdym spełnieniu warunku)]` → unlock EXIT
+- a3_02 `insight≥220` — mail/TensorCorp: **oferta przejęcia** `[SCENA: 4 dymki + wybór: sprzedać (→ tutorial EXIT) / odrzucić (Vera: respekt, hype +2; oferta wraca przy każdym spełnieniu warunku)]` → unlock EXIT
 - a3_03 `exits=1` — chat/zora: `you sold it?? and started ANOTHER one the same week. you have a problem lmao` (meta-komentarz pętli prestiżu)
 - a3_04 `lifetimeLoC≥1e15` — system/MUSE: `I reviewed last night's commits. 41,000 functions. I wrote 40,997. Who wrote the other three?` ← **pierwszy dzwonek dread**
 - a3_05 — chat/Anders: `[SCENA: 6 dymków — Anders odchodzi: "This is not engineering anymore. It might be agriculture. You grow code now." — unlock pasywny perk Quality]`
@@ -120,6 +120,16 @@ Format: beaty z finalnym one-linerem EN; sceny oznaczone `[SCENA: n dymków — 
   - `UNPLUG` — ending B: wyłączasz; 60 s ciszy i pustego ekranu; potem pojedynczy kursor: `fork detected.` (i tak pętla — pointa)
   - `FORK YOURSELF` — ending C: świadomie wchodzisz w pętlę
   - Każdy: achievement + skin terminala + **unlock ITERATION (endless)**. Wybór zapisany, wpływa na flavor tekstów endless.
+
+### Post-finał M17 — "Aurora" (true ending)
+- `a5_13_aurora_seed` po dowolnym wyborze `a5_12` — system/OMEGA: OMEGA jasno mówi, że poprzedni wybór nie był końcem gry, tylko zgodą na właściwy cel; event ustawia `aurora_seed_available`, dopiero wtedy plansza Projects dostaje `AURORA PROJECT Seed`.
+- `a5_14_aurora_unlocked` po shipie `p_aurora_seed` — system/AURORA: pojawia się osobna apka Aurora; tekst musi wprost powiedzieć, że to główny cel gry i true ending 0→100%.
+- `a5_15_aurora_phase_started` po pierwszym opłaceniu fazy — system/AURORA: UI/cele faz są wyjaśnione fabularnie bez tutorialowego tonu; każda faza = LoC + $ + czas + serwery.
+- `a5_15b_aurora_dedicated` po pierwszym dedykowanym własnym serwerze — system/AURORA: serwer znika z normalnego compute, ale unika hostingu.
+- `a5_15c_aurora_hosting` po pierwszym hostingu — mail/Vera: hosting jest natychmiastowy, ale ma ciężki stały `$ / s`.
+- `a5_15_aurora_billing` po pierwszym hostingu albo pierwszym dedykowanym serwerze — mail/Vera: ostrzeżenie o rachunkach za prąd/hosting, krótko i konkretnie; własny serwer = prąd, hosting = stały bardzo wysoki rent.
+- `a5_16_aurora_servers` gdy `dedicatedServers + hostedServers ≥ 8` — system/AURORA: wszystkie wymagane instancje są online; tekst przypomina elementy systemu: głos, narzędzia, pamięć, orkiestracja agentów.
+- `a5_17_aurora_complete` gdy `aurora.completed` — system/AURORA: true ending; Aurora mówi, że może już robić wszystko za gracza, bo gracz zbudował system, który buduje dalej.
 
 ## 7. Endless — "Echoes" (act 9)
 

@@ -1,4 +1,8 @@
 import type { StoryEvent } from "./types";
+import { C } from "../constants";
+
+const AGENT_BANK_THRESHOLD = C.MILESTONES[3];
+const ACT2_ENTERPRISE_SHIP_THRESHOLD = 350;
 
 export const ACT2_EVENTS: readonly StoryEvent[] = [
   {
@@ -15,7 +19,12 @@ export const ACT2_EVENTS: readonly StoryEvent[] = [
     id: "a2_02_agent_bank",
     act: 2,
     demoLocked: true,
-    trigger: { generatorTotalGte: 25 },
+    trigger: {
+      all: [
+        { generatorTotalGte: AGENT_BANK_THRESHOLD },
+        { shipCountGte: ACT2_ENTERPRISE_SHIP_THRESHOLD }
+      ]
+    },
     channel: "system",
     speaker: "muse",
     textKey: "story.a2_02_agent_bank"
@@ -33,7 +42,7 @@ export const ACT2_EVENTS: readonly StoryEvent[] = [
     id: "a2_04_tensor_clone",
     act: 2,
     demoLocked: true,
-    trigger: { shipCountGte: 40 },
+    trigger: { shipCountGte: ACT2_ENTERPRISE_SHIP_THRESHOLD },
     channel: "feed",
     speaker: "chirper",
     textKey: "story.a2_04_tensor_clone",
@@ -140,7 +149,9 @@ export const ACT2_EVENTS: readonly StoryEvent[] = [
     id: "a2_14_series_a",
     act: 2,
     demoLocked: true,
-    trigger: { all: [{ seen: "a2_13_board_preseed" }, { moneyGte: "1e9" }] },
+    trigger: {
+      all: [{ seen: "a2_04_tensor_clone" }, { seen: "a2_13_board_preseed" }, { moneyGte: "1e9" }]
+    },
     channel: "mail",
     speaker: "vera",
     textKey: "story.a2_14_series_a",

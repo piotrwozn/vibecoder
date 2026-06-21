@@ -627,7 +627,7 @@ export function performIteration(
   state.lifetime.locSinceExit = Big.zero();
   state.lifetime.insightSinceExit = 0;
   state.prestige.iteration += 1;
-  state.story.act = 9;
+  state.story.act = state.aurora.unlocked && !state.aurora.completed ? 5 : 9;
 
   resetOwnedGenerators(state, {});
   state.owned.hardware = {};

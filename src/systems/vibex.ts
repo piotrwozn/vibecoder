@@ -1,5 +1,12 @@
 import { nextRandomIndex } from "../core/rng";
-import { VIBEX_CANNED_PAIRS, VIBEX_CODE_FILES } from "../data/vibex";
+import {
+  VIBEX_CANNED_PAIRS,
+  VIBEX_CODE_FILES,
+  VIBEX_FILE_LABEL_KEYS,
+  VIBEX_MANUAL_FALLBACK_KEYS
+} from "../data/vibex";
+
+const VIBEX_SENDS_PER_COMMIT = 10;
 
 export interface VibexCannedBag {
   lastId: string | undefined;
@@ -15,6 +22,7 @@ export interface VibexCannedDraw {
 export interface VibexCodeState {
   fileIndex: number;
   fragmentIndex: number;
+  seed: number;
   sequence: number;
 }
 
@@ -62,32 +70,37 @@ export function drawVibexCannedPair(bag: VibexCannedBag): VibexCannedDraw {
   };
 }
 
-export function createVibexCodeState(): VibexCodeState {
+export function createVibexCodeState(seed = 1): VibexCodeState {
   return {
     fileIndex: 0,
     fragmentIndex: -1,
+    seed,
     sequence: 0
   };
 }
 
 export function advanceVibexCode(state: VibexCodeState): VibexCodeFrame {
   const files = VIBEX_CODE_FILES;
-  let committed = false;
-  let nextFileIndex = state.fileIndex;
-  let nextFragmentIndex = state.fragmentIndex + 1;
-  const currentFile = files[nextFileIndex]!;
+  let fileRandom = nextRandomIndex(state.seed, files.length);
+  state.seed = fileRandom.seed;
 
-  if (nextFragmentIndex >= currentFile.fragments.length) {
-    nextFragmentIndex = 0;
-    nextFileIndex = (nextFileIndex + 1) % files.length;
-    committed = nextFileIndex === 0;
+  if (files.length > 1 && fileRandom.index === state.fileIndex) {
+    fileRandom = {
+      ...fileRandom,
+      index: (fileRandom.index + 1) % files.length
+    };
   }
 
-  state.fileIndex = nextFileIndex;
-  state.fragmentIndex = nextFragmentIndex;
-  state.sequence += 1;
+  const file = files[fileRandom.index]!;
+  const fragmentRandom = nextRandomIndex(state.seed, file.fragments.length);
+  state.seed = fragmentRandom.seed;
+  const nextSequence = state.sequence + 1;
 
-  return getVibexCodeFrame(state, committed);
+  state.fileIndex = fileRandom.index;
+  state.fragmentIndex = fragmentRandom.index;
+  state.sequence = nextSequence;
+
+  return getVibexCodeFrame(state, nextSequence % VIBEX_SENDS_PER_COMMIT === 0);
 }
 
 export function getVibexCodeFrame(state: VibexCodeState, committed = false): VibexCodeFrame {
@@ -104,4 +117,14 @@ export function getVibexCodeFrame(state: VibexCodeState, committed = false): Vib
 
 export function getVibexFileIds(): readonly string[] {
   return VIBEX_CODE_FILES.map((file) => file.id);
+}
+
+export function getVibexFileLabelKey(state: VibexCodeState, fileIndex: number): string {
+  const batch = Math.floor(state.sequence / VIBEX_SENDS_PER_COMMIT);
+  const labelIndex = (batch * VIBEX_CODE_FILES.length + fileIndex) % VIBEX_FILE_LABEL_KEYS.length;
+  return VIBEX_FILE_LABEL_KEYS[labelIndex]!;
+}
+
+export function getVibexManualFallbackKey(sequence: number): string {
+  return VIBEX_MANUAL_FALLBACK_KEYS[sequence % VIBEX_MANUAL_FALLBACK_KEYS.length]!;
 }

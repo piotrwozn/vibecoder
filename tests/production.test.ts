@@ -32,7 +32,7 @@ describe("M2 production and generator purchases", () => {
   it("buys all three E1 generators with money and unlock prerequisites", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
-    state.res.money = Big.fromNumber(10_000);
+    state.res.money = Big.fromNumber(25_000);
     state.res.computeCap = 100;
     recomputeDerivedCache(state, cache);
 
