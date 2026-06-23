@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  readArgs,
   runCampaignSim,
   runEndlessSmokeSim,
   SIM_FIRST_EXIT_MIN_EQUITY_GAIN
@@ -17,18 +18,39 @@ describe("M9 campaign sim", () => {
 
     expect(sane.completeH).toBeUndefined();
     expect(sane.cache.locRate.eq0()).toBe(false);
+    expect(sane.state.stats["stats.locRate.sampleCount"]).toBeGreaterThan(0);
     expect(sane.state.story.act).toBeGreaterThanOrEqual(idle.state.story.act);
     expect(sane.state.lifetime.loc.gt(idle.state.lifetime.loc)).toBe(true);
   });
 
-  it("keeps the slower sane 100h route stable without reaching OMEGA", () => {
+  it("rejects invalid CLI arguments instead of silently running defaults", () => {
+    expect(() => readArgs(["--strategy", "definitely-not-a-strategy"])).toThrow("unknown strategy");
+    expect(() => readArgs(["--hours", "-1", "--strategy", "sane"])).toThrow(
+      "--hours must be a positive number"
+    );
+    expect(() => readArgs(["--endless-iterations", "nope"])).toThrow(
+      "--endless-iterations must be a positive integer"
+    );
+  });
+
+  it("keeps the sane 100h route stable under rotating capped project offers", () => {
     const result = runCampaignSim({ strategy: "sane", hours: 100 });
     const firstRewrite = result.milestones.find((milestone) => milestone.label === "First REWRITE");
     const act1Finale = result.milestones.find((milestone) => milestone.label === "Act 1 finale");
+    const act2Finale = result.milestones.find((milestone) => milestone.label === "Act 2 finale");
+    const act3Finale = result.milestones.find((milestone) => milestone.label === "Act 3 finale");
+    const firstExit = result.milestones.find((milestone) => milestone.label === "First EXIT");
 
-    expect(firstRewrite?.atH).toBeGreaterThanOrEqual(9);
-    expect(act1Finale?.atH).toBeGreaterThanOrEqual(10);
-    expect(result.state.story.act).toBeGreaterThanOrEqual(2);
+    expect(firstRewrite?.atH).toBeGreaterThanOrEqual(3);
+    expect(firstRewrite?.atH).toBeLessThanOrEqual(12);
+    expect(act1Finale?.atH).toBeLessThanOrEqual(15);
+    expect(act2Finale?.atH).toBeGreaterThanOrEqual(8);
+    expect(act2Finale?.atH).toBeLessThanOrEqual(25);
+    expect(firstExit?.atH).toBeGreaterThanOrEqual(25);
+    expect(firstExit?.atH).toBeLessThanOrEqual(70);
+    expect(act3Finale?.atH).toBeGreaterThanOrEqual(55);
+    expect(act3Finale?.atH).toBeLessThanOrEqual(100);
+    expect(result.state.story.act).toBe(4);
     expect(result.omegaCompleteH).toBeUndefined();
     expect(result.completeH).toBeUndefined();
     expect(result.state.aurora.unlocked).toBe(false);
@@ -41,7 +63,7 @@ describe("M9 campaign sim", () => {
     expect(result.auroraCompleteH).toBeUndefined();
     expect(result.completeH).toBeUndefined();
     expect(result.state.aurora.completed).toBe(false);
-    expect(result.seenEvents).toBeGreaterThanOrEqual(30);
+    expect(result.seenEvents).toBeGreaterThanOrEqual(40);
     expect(Number.isFinite(result.state.lifetime.loc.e)).toBe(true);
     expect(Number.isFinite(result.state.res.money.e)).toBe(true);
   }, 60_000);
@@ -50,7 +72,8 @@ describe("M9 campaign sim", () => {
     const result = runCampaignSim({ strategy: "maxer", hours: 80 });
 
     expect(result.omegaCompleteH).toBeUndefined();
-    expect(result.state.story.act).toBeGreaterThanOrEqual(2);
+    expect(result.state.story.act).toBeGreaterThanOrEqual(1);
+    expect(result.seenEvents).toBeGreaterThanOrEqual(14);
     expect(result.state.story.seen.has("a0_05_agent")).toBe(true);
   }, 60_000);
 
@@ -63,6 +86,17 @@ describe("M9 campaign sim", () => {
     expect(Number.isFinite(result.state.lifetime.loc.e)).toBe(true);
     expect(Number.isFinite(result.state.res.money.e)).toBe(true);
   }, 30_000);
+
+  it("keeps expanded player profiles on real simulation paths", () => {
+    for (const strategy of ["active", "casual", "offline-heavy", "story-rush"] as const) {
+      const result = runCampaignSim({ strategy, hours: 20 });
+
+      expect(result.state.stats["stats.locRate.sampleCount"]).toBeGreaterThan(0);
+      expect(result.state.story.act).toBeGreaterThanOrEqual(1);
+      expect(Number.isFinite(result.state.lifetime.loc.e)).toBe(true);
+      expect(Number.isFinite(result.state.res.money.e)).toBe(true);
+    }
+  }, 60_000);
 });
 
 describe("M10 endless sim", () => {

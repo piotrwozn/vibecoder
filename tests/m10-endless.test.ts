@@ -106,6 +106,22 @@ describe("M10 endless ITERATION", () => {
     expect(state.prestige.rewrites).toBe(4);
   });
 
+  it("keeps high-iteration Paradox preview finite", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.story.flags.add("iteration_unlocked");
+    state.prestige.endingChoice = "merge";
+    state.prestige.iteration = 1024;
+    state.stats[ITERATION_HOLD_STAT] = PRESTIGE.ITER_HOLD_S;
+    cache.locRate = getIterationSoftcapThreshold(1024);
+
+    expect(() => createIterationPreview(state, cache)).not.toThrow();
+    const preview = createIterationPreview(state, cache);
+    expect(Number.isFinite(preview.paradoxGain)).toBe(true);
+    expect(Number.isFinite(preview.paradoxAfter)).toBe(true);
+    expect(Number.isFinite(preview.targetMultiplier)).toBe(true);
+  });
+
   it("applies iteration cost to agent and project build costs only", () => {
     const baseState = createDefaultGameState();
     const baseCache = createDerivedCache();
@@ -145,6 +161,11 @@ describe("M10 endless ITERATION", () => {
     expect(getProjectRevenue(project, iterCache).toString()).toBe(
       getProjectRevenue(project, baseCache).toString()
     );
+  });
+
+  it("keeps the survivable iteration curve stable in code", () => {
+    expect(PRESTIGE.ITER_COST_E_PER_K).toBe(0.9);
+    expect(calculateIterationCostMultiplier(1).toNumber()).toBeCloseTo(10 ** 0.9);
   });
 
   it("buys Paradox items, applies engine multiplier, and unlocks echo flags", () => {

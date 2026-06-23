@@ -1,6 +1,11 @@
 import type { EventBus } from "../core/bus";
 import { Big } from "../core/bignum";
-import type { GameState } from "../core/state";
+import { createDefaultBankState, type GameState } from "../core/state";
+import {
+  BUILD_MOMENTUM,
+  BUILD_MOMENTUM_DECAY_ACCUM_STAT,
+  BUILD_MOMENTUM_STAT
+} from "../data/momentum";
 import { PRESTIGE } from "../data/constants";
 import { STARTING_ERA } from "../data/eras";
 import { GENERATORS } from "../data/generators";
@@ -8,6 +13,7 @@ import {
   EQUITY_PERKS,
   INSIGHT_NODES,
   PARADOX_ITEMS,
+  REWRITE_MILESTONES,
   RUN_MODIFIERS,
   getEquityPerk,
   getInsightNode,
@@ -19,6 +25,7 @@ import {
   type InsightNodeDefinition,
   type ParadoxItemDefinition,
   type ParadoxItemState,
+  type RewriteMilestoneDefinition,
   type RunModifierDefinition,
   type RunModifierId
 } from "../data/prestige";
@@ -28,14 +35,26 @@ import {
   getIterationSoftcapThreshold,
   isIterationUnlocked
 } from "./iteration";
+import {
+  calculateEquityMultiplier,
+  calculateInsightMultiplier,
+  calculateParadoxMultiplier
+} from "./prestige-math";
+import { addBuildMomentum } from "./momentum";
 import { refreshProjectBoard } from "./projects";
 import { recomputeDerivedCache, type DerivedCache } from "./production";
 
+export {
+  calculateEquityMultiplier,
+  calculateInsightMultiplier,
+  calculateParadoxMultiplier
+} from "./prestige-math";
+
 export type InsightNodeState = "available" | "bought" | "locked" | "unaffordable";
 
-export const ANGEL_NETWORK_UNTIL_STAT = "prestige.angelNetworkUntil";
-export const ACTIVE_RUN_MODIFIER_PREFIX = "prestige.runModifier.active.";
-export const NEXT_RUN_MODIFIER_PREFIX = "prestige.runModifier.next.";
+const ANGEL_NETWORK_UNTIL_STAT = "prestige.angelNetworkUntil";
+const ACTIVE_RUN_MODIFIER_PREFIX = "prestige.runModifier.active.";
+const NEXT_RUN_MODIFIER_PREFIX = "prestige.runModifier.next.";
 
 export interface BuyInsightNodeResult {
   readonly costInsight: number;
@@ -55,6 +74,9 @@ export interface RewritePreview {
   readonly lostMoney: Big;
   readonly lostProducts: number;
   readonly lostUpgrades: number;
+  readonly nextInsightNodeId?: string;
+  readonly nextMilestone?: RewriteMilestoneDefinition;
+  readonly nextMilestoneProgress: number;
   readonly requiredInsight: number;
   readonly speedup: number;
   readonly startEra: number;
@@ -68,6 +90,13 @@ export interface RewriteResult {
   readonly ok: boolean;
   readonly preview: RewritePreview;
   readonly reason?: "threshold";
+}
+
+export interface RewriteMilestoneProgress {
+  readonly current?: RewriteMilestoneDefinition;
+  readonly next?: RewriteMilestoneDefinition;
+  readonly progress: number;
+  readonly remaining: number;
 }
 
 export interface ExitPreview {
@@ -132,7 +161,7 @@ export interface BuyParadoxItemResult {
   readonly reason?: "bought" | "locked" | "missing" | "unaffordable";
 }
 
-export const REWRITE_BOOT_S = 3;
+const REWRITE_BOOT_S = 3;
 export const REWRITE_BOOT_UNTIL_STAT = "prestige.rewriteBootUntil";
 export const ITERATION_HOLD_STAT = "prestige.iterationHoldS";
 
@@ -146,6 +175,8 @@ const LOC_RATE_SAMPLE_COUNT_STAT = "stats.locRate.sampleCount";
 const LOC_RATE_SAMPLE_INDEX_STAT = "stats.locRate.sampleIndex";
 const LOC_RATE_SAMPLE_LAST_AT_STAT = "stats.locRate.lastSampleAt";
 const RUN_STAT_RESET_KEYS = [
+  BUILD_MOMENTUM_STAT,
+  BUILD_MOMENTUM_DECAY_ACCUM_STAT,
   PROJECT_STARTED_STAT,
   LOC_RATE_SAMPLE_COUNT_STAT,
   LOC_RATE_SAMPLE_INDEX_STAT,
@@ -159,12 +190,33 @@ const RUN_STAT_RESET_PREFIXES = [
 const RESET_LAYER_STAT_KEYS: Readonly<Record<PrestigeResetLayer, readonly string[]>> = {
   exit: [ITERATION_HOLD_STAT, REWRITE_BOOT_UNTIL_STAT],
   iteration: [ANGEL_NETWORK_UNTIL_STAT, ITERATION_HOLD_STAT, REWRITE_BOOT_UNTIL_STAT],
-  rewrite: []
+  rewrite: [ITERATION_HOLD_STAT]
 };
-export const PARADOX_ECHO_FLAG_PREFIX = "paradox.echo.";
+const PARADOX_ECHO_FLAG_PREFIX = "paradox.echo.";
 
 export function getInsightTree(): readonly InsightNodeDefinition[] {
   return INSIGHT_NODES;
+}
+
+export function getRewriteMilestoneProgress(state: GameState): RewriteMilestoneProgress {
+  const current = [...REWRITE_MILESTONES]
+    .reverse()
+    .find((milestone) => state.prestige.rewrites >= milestone.count);
+  const next = REWRITE_MILESTONES.find((milestone) => state.prestige.rewrites < milestone.count);
+  const previousCount = current?.count ?? 0;
+  const nextCount = next?.count ?? previousCount;
+  const span = Math.max(1, nextCount - previousCount);
+  const progress =
+    next === undefined
+      ? 1
+      : Math.min(1, Math.max(0, (state.prestige.rewrites - previousCount) / span));
+
+  return {
+    current,
+    next,
+    progress,
+    remaining: next === undefined ? 0 : Math.max(0, next.count - state.prestige.rewrites)
+  };
 }
 
 export function getEquityPerks(): readonly EquityPerkDefinition[] {
@@ -314,11 +366,11 @@ export function getParadoxItemState(
   return state.res.paradox >= item.costParadox ? "available" : "unaffordable";
 }
 
-export function isParadoxShopUnlocked(state: GameState): boolean {
+function isParadoxShopUnlocked(state: GameState): boolean {
   return isIterationUnlocked(state);
 }
 
-export function isEquityPerkUnlocked(): boolean {
+function isEquityPerkUnlocked(): boolean {
   return true;
 }
 
@@ -337,8 +389,15 @@ export function getInsightNodeState(
   return state.res.insight.gte(Big.fromNumber(node.costInsight)) ? "available" : "unaffordable";
 }
 
-export function isInsightNodeUnlocked(state: GameState, node: InsightNodeDefinition): boolean {
-  if (node.requires !== undefined && !state.owned.insightNodes.has(node.requires)) {
+function isInsightNodeUnlocked(state: GameState, node: InsightNodeDefinition): boolean {
+  return isInsightNodeUnlockedForOwned(state.owned.insightNodes, node);
+}
+
+function isInsightNodeUnlockedForOwned(
+  ownedInsightNodes: ReadonlySet<string>,
+  node: InsightNodeDefinition
+): boolean {
+  if (node.requires !== undefined && !ownedInsightNodes.has(node.requires)) {
     return false;
   }
 
@@ -346,9 +405,7 @@ export function isInsightNodeUnlocked(state: GameState, node: InsightNodeDefinit
     const requiredTier = node.requiresAnyTierGte;
     return INSIGHT_NODES.some(
       (entry) =>
-        entry.branch !== "core" &&
-        entry.tier >= requiredTier &&
-        state.owned.insightNodes.has(entry.id)
+        entry.branch !== "core" && entry.tier >= requiredTier && ownedInsightNodes.has(entry.id)
     );
   }
 
@@ -361,6 +418,7 @@ export function createRewritePreview(state: GameState): RewritePreview {
   const currentMultiplier = calculateInsightMultiplier(state.res.insight);
   const insightAfter = Big.add(state.res.insight, Big.fromNumber(availableInsight));
   const targetMultiplier = calculateInsightMultiplier(insightAfter);
+  const milestone = getRewriteMilestoneProgress(state);
 
   return {
     availableInsight,
@@ -373,6 +431,9 @@ export function createRewritePreview(state: GameState): RewritePreview {
     lostMoney: state.res.money.copy(),
     lostProducts: state.projects.portfolio.length,
     lostUpgrades: state.owned.upgrades.size,
+    nextInsightNodeId: getNextInsightNodeId(state, insightAfter),
+    nextMilestone: milestone.next,
+    nextMilestoneProgress: milestone.progress,
     requiredInsight,
     speedup: currentMultiplier <= 0 ? 1 : targetMultiplier / currentMultiplier,
     startEra: getRewriteStartEra(state),
@@ -380,6 +441,15 @@ export function createRewritePreview(state: GameState): RewritePreview {
     startMoney: getRewriteStartMoney(state),
     targetMultiplier
   };
+}
+
+function getNextInsightNodeId(state: GameState, insightAfter: Big): string | undefined {
+  return INSIGHT_NODES.find(
+    (node) =>
+      !state.owned.insightNodes.has(node.id) &&
+      isInsightNodeUnlockedForOwned(state.owned.insightNodes, node) &&
+      insightAfter.gte(Big.fromNumber(node.costInsight))
+  )?.id;
 }
 
 export function performRewrite(
@@ -432,9 +502,22 @@ export function performRewrite(
     activeUntil: 0,
     meter: 0
   };
+  state.roadmap = {
+    completed: state.roadmap.completed,
+    cooldownUntilS: 0,
+    endsAtS: 0,
+    startedAtS: 0
+  };
+  state.incidents = {
+    active: [],
+    // Capped diagnostic history intentionally survives prestige; active incidents reset per run.
+    history: state.incidents.history,
+    nextCheckAtS: state.meta.playtimeS + 90
+  };
   state.automation = preservedAutomation;
   applyPrestigeResetSpec(state, "rewrite");
   state.stats[REWRITE_BOOT_UNTIL_STAT] = state.meta.playtimeS + REWRITE_BOOT_S;
+  addBuildMomentum(state, BUILD_MOMENTUM.GAINS.REWRITE_COMPLETED, bus);
 
   recomputeComputeCap(state);
   refreshProjectBoard(state);
@@ -528,6 +611,18 @@ export function performExit(state: GameState, cache: DerivedCache, bus?: EventBu
     activeUntil: 0,
     meter: 0
   };
+  state.roadmap = {
+    completed: state.roadmap.completed,
+    cooldownUntilS: 0,
+    endsAtS: 0,
+    startedAtS: 0
+  };
+  state.incidents = {
+    active: [],
+    // Capped diagnostic history intentionally survives prestige; active incidents reset per run.
+    history: state.incidents.history,
+    nextCheckAtS: state.meta.playtimeS + 90
+  };
   state.automation = {};
   applyPrestigeResetSpec(state, "exit");
   applyPostExitRunModifier(state, nextRunModifier);
@@ -600,7 +695,7 @@ export function createIterationPreview(state: GameState, cache: DerivedCache): I
   const holdS = getIterationHoldS(state);
   const paradoxGain = calculateParadoxGain(state.prestige.iteration);
   const currentMultiplier = calculateParadoxMultiplier(state, state.res.paradox);
-  const paradoxAfter = state.res.paradox + paradoxGain;
+  const paradoxAfter = addFinite(state.res.paradox, paradoxGain);
   const targetMultiplier = calculateParadoxMultiplier(state, paradoxAfter);
 
   return {
@@ -644,7 +739,7 @@ export function performIteration(
   const startInsight = getParadoxStartInsight(state);
   const prioritySetting = state.projects.prioritySetting;
 
-  state.res.paradox += preview.paradoxGain;
+  state.res.paradox = addFinite(state.res.paradox, preview.paradoxGain);
   state.res.equity = 0;
   state.res.insight = startInsight;
   state.res.rp = 0;
@@ -679,6 +774,18 @@ export function performIteration(
     activeUntil: 0,
     meter: 0
   };
+  state.roadmap = {
+    completed: state.roadmap.completed,
+    cooldownUntilS: 0,
+    endsAtS: 0,
+    startedAtS: 0
+  };
+  state.incidents = {
+    active: [],
+    // Capped diagnostic history intentionally survives prestige; active incidents reset per run.
+    history: state.incidents.history,
+    nextCheckAtS: state.meta.playtimeS + 90
+  };
   state.automation = preservedAutomation;
   applyPrestigeResetSpec(state, "iteration");
   clearRunModifierFlags(state, ACTIVE_RUN_MODIFIER_PREFIX);
@@ -710,20 +817,7 @@ export function calculateBaseEquityGain(state: GameState): number {
   return Math.floor(scaledInsight ** PRESTIGE.EQUITY_EXP);
 }
 
-export function calculateEquityMultiplier(state: GameState, equity = state.res.equity): number {
-  const exponent = PRESTIGE.EQUITY_MULT_EXP + getCompoundingExponentBonus(state);
-  return 1 + PRESTIGE.EQUITY_MULT_K * equity ** exponent;
-}
-
-export function calculateParadoxMultiplier(state: GameState, paradox = state.res.paradox): number {
-  const exponent = state.owned.paradoxItems.has("x_paradox_engine")
-    ? PRESTIGE.PARADOX_ENGINE_MULT_EXP
-    : PRESTIGE.PARADOX_MULT_EXP;
-
-  return (1 + paradox) ** exponent;
-}
-
-export function hasEquityPerk(state: GameState, id: string): boolean {
+function hasEquityPerk(state: GameState, id: string): boolean {
   return state.owned.equityPerks.has(id);
 }
 
@@ -753,7 +847,7 @@ export function getActiveParadoxTheme(state: GameState): string | undefined {
   return undefined;
 }
 
-export function getParadoxEchoFlag(eventId: string): string {
+function getParadoxEchoFlag(eventId: string): string {
   return `${PARADOX_ECHO_FLAG_PREFIX}${eventId}`;
 }
 
@@ -786,10 +880,6 @@ export function getActiveRunModifier(state: GameState): RunModifierId | undefine
   return getRunModifierFromFlags(state, ACTIVE_RUN_MODIFIER_PREFIX);
 }
 
-export function isRunModifierActive(state: GameState, id: RunModifierId): boolean {
-  return state.story.flags.has(`${ACTIVE_RUN_MODIFIER_PREFIX}${id}`);
-}
-
 export function calculateAvailableInsightGain(state: GameState): number {
   return Math.max(0, calculateTotalInsightPotential(state) - state.lifetime.insightSinceExit);
 }
@@ -807,16 +897,12 @@ export function calculateRewriteRequirement(state: GameState): number {
   return state.lifetime.insightSinceExit * getRewriteMinGainRatio(state);
 }
 
-export function calculateInsightMultiplier(insight: Big): number {
-  return Big.pow(Big.add(Big.one(), insight), PRESTIGE.INSIGHT_MULT_EXP).toNumber();
-}
-
 export function isRewriteBooting(state: GameState): boolean {
   const bootUntil = state.stats[REWRITE_BOOT_UNTIL_STAT];
   return typeof bootUntil === "number" && state.meta.playtimeS < bootUntil;
 }
 
-export function getRewriteStartEra(state: GameState): number {
+function getRewriteStartEra(state: GameState): number {
   let era: number = STARTING_ERA.index;
 
   for (const effect of getOwnedInsightEffects(state)) {
@@ -829,23 +915,27 @@ export function getRewriteStartEra(state: GameState): number {
 }
 
 export function getRewriteStartMoney(state: GameState): Big {
-  const money = Big.zero();
+  const flatMoney = Big.zero();
+  const ratioMoney = Big.zero();
 
   for (const effect of getOwnedInsightEffects(state)) {
     switch (effect.kind) {
       case "startMoney":
-        Big.addIn(money, Big.from(effect.amount));
+        Big.addIn(flatMoney, Big.from(effect.amount));
         break;
       case "startMoneyRatio":
-        Big.addIn(money, Big.mul(state.res.money, Big.fromNumber(effect.fraction)));
+        Big.addIn(ratioMoney, Big.mul(state.res.money, Big.fromNumber(effect.fraction)));
         break;
     }
   }
 
-  return Big.mul(money, Big.fromNumber(getEquityStartMoneyMultiplier(state)));
+  return Big.add(
+    Big.mul(flatMoney, Big.fromNumber(getEquityStartMoneyMultiplier(state))),
+    ratioMoney
+  );
 }
 
-export function shouldKeepAutomationOnRewrite(state: GameState): boolean {
+function shouldKeepAutomationOnRewrite(state: GameState): boolean {
   return getOwnedInsightEffects(state).some((effect) => effect.kind === "keepAutomation");
 }
 
@@ -876,24 +966,6 @@ function getOwnedInsightEffects(state: GameState): InsightEffect[] {
   }
 
   return effects;
-}
-
-function getCompoundingExponentBonus(state: GameState): number {
-  let bonus = 0;
-
-  for (const perk of EQUITY_PERKS) {
-    if (!state.owned.equityPerks.has(perk.id)) {
-      continue;
-    }
-
-    for (const effect of perk.effects) {
-      if (effect.kind === "compounding") {
-        bonus += effect.exponentAdd;
-      }
-    }
-  }
-
-  return bonus;
 }
 
 function getEquityStartMoneyMultiplier(state: GameState): number {
@@ -998,7 +1070,14 @@ function getIterationHoldS(state: GameState): number {
   return typeof value === "number" ? value : 0;
 }
 
+function addFinite(left: number, right: number): number {
+  const sum = left + right;
+  return Number.isFinite(sum) ? sum : Number.MAX_VALUE;
+}
+
 function applyPrestigeResetSpec(state: GameState, layer: PrestigeResetLayer): void {
+  state.bank = createDefaultBankState();
+
   for (const key of RUN_STAT_RESET_KEYS) {
     delete state.stats[key];
   }

@@ -5,6 +5,7 @@ import {
   AURORA_PHASE_STARTED_FLAG,
   AURORA_SEED_AVAILABLE_FLAG
 } from "../aurora";
+import { OMEGA } from "../constants";
 
 export const ACT5_EVENTS: readonly StoryEvent[] = [
   {
@@ -102,7 +103,13 @@ export const ACT5_EVENTS: readonly StoryEvent[] = [
     id: "a5_11_finale",
     act: 5,
     demoLocked: true,
-    trigger: { all: [{ era: 10 }, { locLifetimeGte: "1e35" }] },
+    trigger: {
+      all: [
+        { era: 10 },
+        { locLifetimeGte: OMEGA.LIFETIME_LOC_TARGET },
+        { projectShipped: OMEGA.PROJECT_ID }
+      ]
+    },
     channel: "system",
     speaker: "omega",
     textKey: "story.a5_11_finale",
@@ -148,7 +155,18 @@ export const ACT5_EVENTS: readonly StoryEvent[] = [
     id: "a5_13_aurora_seed",
     act: 5,
     demoLocked: true,
-    trigger: { flag: "iteration_unlocked" },
+    trigger: {
+      all: [
+        { flag: "iteration_unlocked" },
+        {
+          any: [
+            { flag: "achievement.ending_merge" },
+            { flag: "achievement.ending_unplug" },
+            { flag: "achievement.ending_fork" }
+          ]
+        }
+      ]
+    },
     channel: "system",
     speaker: "omega",
     textKey: "story.a5_13_aurora_seed",

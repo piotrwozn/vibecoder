@@ -2,6 +2,7 @@ import type { EventBus } from "../core/bus";
 import type { GameState } from "../core/state";
 import { RESEARCH, getResearch, type ResearchDefinition } from "../data/research";
 import { recomputeDerivedCache, type DerivedCache } from "./production";
+import { canSpendNumber, spendNumber } from "./resources";
 
 export interface BuyResearchResult {
   readonly costRp: number;
@@ -32,11 +33,11 @@ export function buyResearch(
     return { costRp: research.costRp, id, ok: false, reason: "locked" };
   }
 
-  if (state.res.rp < research.costRp) {
+  if (!canSpendNumber(state.res.rp, research.costRp)) {
     return { costRp: research.costRp, id, ok: false, reason: "unaffordable" };
   }
 
-  state.res.rp -= research.costRp;
+  state.res.rp = spendNumber(state.res.rp, research.costRp) ?? state.res.rp;
   state.owned.research.add(id);
   recomputeDerivedCache(state, cache);
   bus?.emit("res:changed", "rp");
@@ -55,10 +56,10 @@ export function getResearchState(state: GameState, research: ResearchDefinition)
     return "locked";
   }
 
-  return state.res.rp >= research.costRp ? "available" : "unaffordable";
+  return canSpendNumber(state.res.rp, research.costRp) ? "available" : "unaffordable";
 }
 
-export function isResearchUnlocked(state: GameState, research: ResearchDefinition): boolean {
+function isResearchUnlocked(state: GameState, research: ResearchDefinition): boolean {
   return research.requires === undefined || state.owned.research.has(research.requires);
 }
 

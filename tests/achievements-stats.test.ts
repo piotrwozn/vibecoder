@@ -130,6 +130,70 @@ describe("M11 audio", () => {
     vi.unstubAllGlobals();
   });
 
+  it("defers browser audio until the first user gesture", () => {
+    let contexts = 0;
+    const listeners = new Map<string, EventListener>();
+
+    class FakeAudioContext {
+      destination = {};
+
+      constructor() {
+        contexts += 1;
+      }
+
+      createGain() {
+        return {
+          connect(): void {},
+          disconnect(): void {},
+          gain: { value: 0 }
+        };
+      }
+
+      createOscillator() {
+        return {
+          connect(): void {},
+          disconnect(): void {},
+          frequency: { value: 0 },
+          start(): void {},
+          stop(): void {},
+          type: "sine"
+        };
+      }
+
+      resume(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+
+    vi.stubGlobal("window", {
+      AudioContext: FakeAudioContext,
+      document: {
+        addEventListener(type: string, listener: EventListener): void {
+          listeners.set(type, listener);
+        },
+        removeEventListener(type: string): void {
+          listeners.delete(type);
+        }
+      },
+      navigator: { userActivation: { hasBeenActive: false } },
+      requestAnimationFrame: (callback: FrameRequestCallback) => {
+        callback(0);
+        return 1;
+      }
+    });
+
+    const audio = createAudioController({ sound: true, volume: 0.3 });
+    audio.play("click");
+
+    expect(contexts).toBe(0);
+
+    listeners.get("pointerdown")?.(new Event("pointerdown"));
+    audio.play("click");
+
+    expect(contexts).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
   it("uses webkitAudioContext when standard AudioContext is unavailable", () => {
     let resumed = false;
     let stopped = false;

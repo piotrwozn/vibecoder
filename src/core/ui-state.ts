@@ -4,6 +4,7 @@ export const APP_IDS = [
   "hardware",
   "upgrades",
   "projects",
+  "roadmap",
   "aurora",
   "research",
   "rewrite",
@@ -92,6 +93,11 @@ export const WINDOW_DEFINITIONS: Record<AppId, WindowDefinition> = {
     defaultFrame: { h: 520, w: 760, x: 120, y: 152 },
     minH: 520,
     minW: 760
+  },
+  roadmap: {
+    defaultFrame: { h: 600, w: 920, x: 128, y: 160 },
+    minH: 560,
+    minW: 860
   },
   aurora: {
     defaultFrame: { h: 620, w: 920, x: 132, y: 164 },

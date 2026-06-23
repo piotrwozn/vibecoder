@@ -51,6 +51,12 @@ export const screenLinks: readonly ScreenLink[] = [
     iconPath: "M4 5h7l2 2h7v12H4z"
   },
   {
+    appId: "roadmap",
+    key: "ui.app.roadmap",
+    shortcut: "6",
+    iconPath: "M5 6h14 M5 12h14 M5 18h14 M8 6v12 M16 6v12"
+  },
+  {
     appId: "aurora",
     key: "ui.app.aurora",
     iconPath:
@@ -59,7 +65,7 @@ export const screenLinks: readonly ScreenLink[] = [
   {
     appId: "research",
     key: "ui.app.research",
-    shortcut: "6",
+    shortcut: "7",
     iconPath: "M12 3a4 4 0 0 0-2 7.46V13h4v-2.54A4 4 0 0 0 12 3z M9 16h6 M10 20h4"
   },
   {
@@ -95,7 +101,7 @@ export const screenLinks: readonly ScreenLink[] = [
   {
     appId: "settings",
     key: "ui.app.settings",
-    shortcut: "7",
+    shortcut: "8",
     iconPath:
       "M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8z M12 2v3 M12 19v3 M4.93 4.93l2.12 2.12 M16.95 16.95l2.12 2.12 M2 12h3 M19 12h3 M4.93 19.07l2.12-2.12 M16.95 7.05l2.12-2.12"
   }

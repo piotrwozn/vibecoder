@@ -7,59 +7,65 @@ import {
   type WindowState
 } from "../core/ui-state";
 import { el, setText, text } from "./dom";
+import {
+  createAgentsScreen,
+  resetAgentsRenderCache,
+  syncAutomationToggles,
+  syncGeneratorRows,
+  updateComputeBreakdown,
+  updateFullGame
+} from "./render/agents";
 import { createAppIcon, getShortcutApp, screenLinks } from "./render/app-icons";
+import { createAuroraScreen, resetAuroraRenderCache, updateAurora } from "./render/aurora";
+import { createCommsPanels, updateComms, type CommsNodes } from "./render/comms";
+import {
+  createHardwareScreen,
+  createUpgradesScreen,
+  resetHardwareUpgradeRenderCache,
+  syncHardwareRows,
+  syncUpgradeRows,
+  updateHardwareAuroraCounter
+} from "./render/hardware-upgrades";
+import { createProjectsScreen, resetProjectsRenderCache, updateProjects } from "./render/projects";
+import { createRoadmapScreen, resetRoadmapRenderCache, updateRoadmap } from "./render/roadmap";
+import { createResearchScreen, resetResearchRenderCache, updateResearch } from "./render/research";
+import { createRewriteScreen, resetRewriteRenderCache, updateRewrite } from "./render/rewrite";
+import {
+  createAchievementsScreen,
+  createStatsScreen,
+  resetStatsAchievementRenderCaches,
+  updateAchievements,
+  updateStats
+} from "./render/stats-achievements";
+import { createSettingsScreen, resetSettingsRenderCache, updateSettings } from "./render/settings";
 import { createToasts } from "./render/toasts";
 import { clampWindow, isWindowVisible, type WindowBounds } from "./wm/window-manager";
 import type {
-  ActiveBuildView,
-  AchievementCardView,
-  AchievementsView,
   AppActions,
   AppShell,
   AppearanceView,
-  AuroraNodeView,
-  AuroraView,
-  AutomationToggleView,
   CommsChannel,
-  CommsChoiceView,
-  CommsMessageView,
-  CommsView,
-  ComputeBreakdownView,
-  ComputeRowView,
   DevFloorView,
   EndingModalView,
-  EquityPerkView,
-  ExitView,
-  FullGameView,
-  GeneratorRowView,
-  HardwareRowView,
-  InsightNodeView,
+  GameOverView,
+  LazyTooltip,
   ModelView,
   OfflineView,
-  ParadoxItemView,
-  ParadoxView,
-  ProductView,
-  ProjectOfferView,
-  ProjectsView,
-  RefactorView,
-  ResearchNodeView,
-  ResearchView,
   ResourceView,
-  RewriteView,
-  RunModifierView,
   SettingsNotation,
   SettingsView,
-  StatsRowView,
-  StatsView,
   ToastOptions,
   ToastTone,
   TutorialView,
-  UpgradeRowView,
   VibexCodeLineView,
   VibexView
 } from "./render/view-types";
 
 export { getAppIconPath } from "./render/app-icons";
+export { getMissingAutomationToggleIds } from "./render/agents";
+export { isCommsStructureChanged, shouldSkipCommsUpdate } from "./render/comms";
+export { updateProjectSummaryIncome } from "./render/projects";
+export { updateEditableSettingValue } from "./render/settings";
 export type {
   ActiveBuildView,
   AchievementCardView,
@@ -81,11 +87,13 @@ export type {
   ExitPreviewView,
   ExitView,
   FullGameView,
+  GameOverView,
   GeneratorBuyQuantity,
   GeneratorRowView,
   HardwareRowView,
   InsightNodeView,
   IterationPreviewView,
+  LazyTooltip,
   ModelView,
   OfflineView,
   ParadoxItemView,
@@ -94,6 +102,12 @@ export type {
   ProjectOfferView,
   ProjectsView,
   PromptClickView,
+  RoadmapActivityView,
+  RoadmapIncidentResponseView,
+  RoadmapIncidentView,
+  RoadmapPriorityView,
+  RoadmapRunStyleView,
+  RoadmapView,
   RefactorView,
   ResearchNodeView,
   ResearchView,
@@ -101,6 +115,7 @@ export type {
   RewritePreviewView,
   RewriteView,
   RunModifierView,
+  SaveDiagnosticsView,
   SettingsView,
   ShellUiView,
   StatsRowView,
@@ -117,10 +132,12 @@ export type {
 
 interface ResourceCounterNodes {
   readonly root: HTMLElement;
+  tooltip: LazyTooltip;
   readonly value: Text;
 }
 
 interface ResourceCounterSet {
+  readonly bank: ResourceCounterNodes;
   readonly compute: ResourceCounterNodes;
   readonly hype: ResourceCounterNodes;
   readonly loc: ResourceCounterNodes;
@@ -137,256 +154,10 @@ interface ModelNodes {
   readonly value: Text;
 }
 
-interface ComputeBreakdownNodes {
-  readonly cap: Text;
-  readonly list: HTMLElement;
-  readonly remaining: Text;
-  readonly used: Text;
-}
-
-interface ComputeRowNodes {
-  readonly name: Text;
-  readonly root: HTMLElement;
-  readonly used: Text;
-}
-
-interface GeneratorRowNodes {
-  readonly buy1: HTMLButtonElement;
-  readonly buy10: HTMLButtonElement;
-  readonly buyMax: HTMLButtonElement;
-  readonly cost1: Text;
-  readonly cost10: Text;
-  readonly milestone: Text;
-  readonly milestoneBar: HTMLElement;
-  readonly name: Text;
-  readonly owned: Text;
-  readonly rate: Text;
-  readonly root: HTMLElement;
-}
-
-interface HardwareRowNodes {
-  readonly buy: HTMLButtonElement;
-  readonly cap: Text;
-  readonly cost: Text;
-  readonly level: Text;
-  readonly power: Text;
-  readonly requirement: Text;
-  readonly root: HTMLElement;
-  readonly slot: Text;
-}
-
-interface HardwareAuroraCounterNodes {
-  readonly root: HTMLElement;
-  readonly value: Text;
-}
-
-interface UpgradeRowNodes {
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly effect: Text;
-  readonly root: HTMLElement;
-  readonly state: Text;
-}
-
-interface AutomationToggleNodes {
-  readonly checkbox: HTMLInputElement;
-  readonly detail: Text;
-  readonly root: HTMLElement;
-}
-
-interface ProjectOfferNodes {
-  readonly buildTime: Text;
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly payout: Text;
-  readonly revenue: Text;
-  readonly root: HTMLElement;
-  readonly tag: Text;
-}
-
-interface ActiveBuildNodes {
-  readonly progress: HTMLElement;
-  readonly remaining: Text;
-  readonly root: HTMLElement;
-}
-
-interface ProductNodes {
-  readonly fix: HTMLButtonElement;
-  readonly revenue: Text;
-  readonly root: HTMLElement;
-  readonly status: Text;
-}
-
-interface AuroraNodes {
-  readonly availableServers: Text;
-  readonly costLoc: Text;
-  readonly costMoney: Text;
-  readonly dedicate: HTMLButtonElement;
-  readonly dedicatedServers: Text;
-  readonly fund: HTMLButtonElement;
-  readonly host: HTMLButtonElement;
-  readonly hostedServers: Text;
-  readonly hostingRate: Text;
-  readonly phaseName: Text;
-  readonly progressBar: HTMLElement;
-  readonly progressLabel: Text;
-  readonly readyServers: Text;
-  readonly requiredServers: Text;
-  readonly status: Text;
-  readonly timeRemaining: Text;
-}
-
-interface AuroraNodeNodes {
-  readonly root: HTMLElement;
-  readonly state: Text;
-}
-
-interface RefactorNodes {
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly debt: Text;
-  readonly effect: Text;
-}
-
-interface ResearchNodeNodes {
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly effect: Text;
-  readonly root: HTMLElement;
-  readonly state: Text;
-}
-
-interface InsightNodeNodes {
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly effect: Text;
-  readonly root: HTMLElement;
-  readonly state: Text;
-}
-
-interface EquityPerkNodes {
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly effect: Text;
-  readonly root: HTMLElement;
-  readonly state: Text;
-}
-
-interface RunModifierNodes {
-  readonly button: HTMLButtonElement;
-  readonly description: Text;
-  readonly root: HTMLElement;
-}
-
-interface ParadoxItemNodes {
-  readonly button: HTMLButtonElement;
-  readonly cost: Text;
-  readonly effect: Text;
-  readonly root: HTMLElement;
-  readonly state: Text;
-}
-
-interface ParadoxNodes {
-  readonly button: HTMLButtonElement;
-  readonly currentIteration: Text;
-  readonly currentMultiplier: Text;
-  readonly currentParadox: Text;
-  readonly hold: Text;
-  readonly locRate: Text;
-  readonly nextIteration: Text;
-  readonly paradoxAfter: Text;
-  readonly paradoxGain: Text;
-  readonly root: HTMLElement;
-  readonly ruleSlots: Text;
-  readonly softcapThreshold: Text;
-  readonly targetMultiplier: Text;
-  readonly theme: Text;
-}
-
-interface StatsRowNodes {
-  readonly value: Text;
-}
-
-interface StatsNodes {
-  readonly empty: HTMLElement;
-  readonly path: SVGPathElement;
-  readonly svg: SVGSVGElement;
-}
-
-interface AchievementCardNodes {
-  readonly category: Text;
-  readonly description: Text;
-  readonly root: HTMLElement;
-  readonly status: Text;
-  readonly title: Text;
-}
-
-interface AchievementsNodes {
-  readonly bonus: Text;
-  readonly grid: HTMLElement;
-  readonly unlocked: Text;
-}
-
-interface ResearchSummaryNodes {
-  readonly rp: Text;
-}
-
-interface RewriteNodes {
-  readonly afterInsight: Text;
-  readonly boot: HTMLElement;
-  readonly bootOverlay: HTMLElement;
-  readonly button: HTMLButtonElement;
-  readonly currentMultiplier: Text;
-  readonly gain: Text;
-  readonly insight: Text;
-  readonly lostAgents: Text;
-  readonly lostHardware: Text;
-  readonly lostLoc: Text;
-  readonly lostMoney: Text;
-  readonly lostProducts: Text;
-  readonly lostUpgrades: Text;
-  readonly requiredInsight: Text;
-  readonly speedup: Text;
-  readonly startEra: Text;
-  readonly startGenerators: Text;
-  readonly startMoney: Text;
-  readonly targetMultiplier: Text;
-}
-
-interface ExitNodes {
-  readonly button: HTMLButtonElement;
-  readonly currentEquity: Text;
-  readonly currentMultiplier: Text;
-  readonly equityAfter: Text;
-  readonly gain: Text;
-  readonly requiredInsight: Text;
-  readonly rewardMultiplier: Text;
-  readonly targetMultiplier: Text;
-  readonly totalInsightEarned: Text;
-}
-
-interface ProjectSummaryNodes {
-  readonly income: Text;
-}
-
-interface SettingsNodes {
-  readonly autosaveS: HTMLInputElement;
-  readonly downloadVibexModel: HTMLButtonElement;
-  readonly doNotDisturb: HTMLInputElement;
-  readonly glitch: HTMLInputElement;
-  readonly localAiProgress: Text;
-  readonly localAiStatus: Text;
-  readonly notation: HTMLSelectElement;
-  readonly reducedFx: HTMLInputElement;
-  readonly skipIntro: HTMLInputElement;
-  readonly sound: HTMLInputElement;
-  readonly vibexLocalAi: HTMLInputElement;
-  readonly volume: HTMLInputElement;
-}
-
 interface BootNodes {
   currentLang: string;
   readonly credits: HTMLElement;
+  readonly destroy: () => void;
   readonly langButton: HTMLButtonElement;
   readonly langLabel: Text;
   readonly root: HTMLElement;
@@ -396,6 +167,7 @@ interface BootNodes {
 }
 
 interface BootSettingsNodes {
+  readonly destroy: () => void;
   readonly langValue: Text;
   readonly root: HTMLElement;
 }
@@ -405,6 +177,7 @@ type BootVisualTheme = "crt" | "violet" | "amber";
 
 interface DesktopNodes {
   currentScene: SceneId;
+  readonly destroy: () => void;
   readonly iconNodes: Record<AppId, DesktopIconNodes>;
   readonly root: HTMLElement;
   readonly taskbarNodes: TaskbarNodes;
@@ -412,6 +185,11 @@ interface DesktopNodes {
   readonly windowNodes: Record<AppId, WindowNodes>;
   readonly windowsLayer: HTMLElement;
   currentWindows: Record<AppId, WindowState>;
+}
+
+interface WindowBoundsCache {
+  readonly bounds: WindowBounds;
+  readonly layer: HTMLElement;
 }
 
 interface DesktopIconNodes {
@@ -433,6 +211,8 @@ interface TaskbarItemNodes {
 interface WindowNodes {
   readonly content: HTMLElement;
   hideTimer: number | undefined;
+  lastFrame: WindowFrame | undefined;
+  lastZ: number | undefined;
   readonly root: HTMLElement;
   readonly title: Text;
   wasVisible: boolean;
@@ -449,10 +229,6 @@ interface TutorialNodes {
   readonly title: Text;
 }
 
-interface FullGameNodes {
-  readonly root: HTMLElement;
-}
-
 interface OfflineNodes {
   readonly duration: Text;
   readonly hype: Text;
@@ -461,28 +237,14 @@ interface OfflineNodes {
   readonly root: HTMLElement;
 }
 
-interface CommsNodes {
-  readonly badge: HTMLElement;
-  readonly channel: CommsChannel;
-  currentView: CommsView | undefined;
-  readonly empty: HTMLElement;
-  lastEntryId: string;
-  readonly list: HTMLElement;
-  readonly messages: Map<string, CommsMessageNodes>;
-  messageCount: number;
-  readonly root: HTMLElement;
-}
-
 interface EndingModalNodes {
   readonly root: HTMLElement;
   signature: string;
 }
 
-interface CommsMessageNodes {
-  readonly choices: HTMLElement;
-  readonly lines: readonly Text[];
+interface GameOverNodes {
   readonly root: HTMLElement;
-  readonly selected: Text;
+  signature: string;
 }
 
 interface TerminalViewNodes {
@@ -494,6 +256,7 @@ interface TerminalViewNodes {
   readonly input: HTMLTextAreaElement;
   readonly logRoot: HTMLElement;
   readonly prompt: HTMLButtonElement;
+  responseToken: number;
   readonly root: HTMLElement;
   readonly showParticle: (value: string) => void;
 }
@@ -543,33 +306,9 @@ const terminalThemeClasses = [
   "terminal--theme-void"
 ] as const;
 
-const generatorRows = new Map<string, GeneratorRowNodes>();
-const computeRows = new Map<string, ComputeRowNodes>();
-const hardwareRows = new Map<string, HardwareRowNodes>();
-const upgradeRows = new Map<string, UpgradeRowNodes>();
-const automationToggles = new Map<string, AutomationToggleNodes>();
-const projectOffers = new Map<string, ProjectOfferNodes>();
-const activeBuilds = new Map<string, ActiveBuildNodes>();
-const products = new Map<string, ProductNodes>();
-const auroraNodeRows = new Map<string, AuroraNodeNodes>();
-const researchNodes = new Map<string, ResearchNodeNodes>();
-const insightNodes = new Map<string, InsightNodeNodes>();
-const equityPerks = new Map<string, EquityPerkNodes>();
-const runModifiers = new Map<string, RunModifierNodes>();
-const paradoxItems = new Map<string, ParadoxItemNodes>();
-const statsRows = new Map<string, StatsRowNodes>();
-const achievementCards = new Map<string, AchievementCardNodes>();
 let modelNodes: ModelNodes | undefined;
-let exitNodes: ExitNodes | undefined;
-let paradoxNodes: ParadoxNodes | undefined;
-let statsNodes: StatsNodes | undefined;
-let achievementsNodes: AchievementsNodes | undefined;
-let computeBreakdownNodes: ComputeBreakdownNodes | undefined;
-let settingsNodes: SettingsNodes | undefined;
-let fullGameNodes: FullGameNodes | undefined;
 let offlineNodes: OfflineNodes | undefined;
-let auroraNodes: AuroraNodes | undefined;
-let hardwareAuroraCounterNodes: HardwareAuroraCounterNodes | undefined;
+let cachedWindowBounds: WindowBoundsCache | undefined;
 
 export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActions): AppShell {
   resetRenderCaches();
@@ -585,19 +324,23 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
   const desktop = createDesktop(view, counters, screens, vibex, vibexModel, comms, actions);
   const boot = createBootScene(view, actions);
   const ending = createEndingModal(view.ending, actions);
+  const gameOver = createGameOverModal(view.gameOver, actions);
   const toasts = createToasts();
-  shell.append(boot.root, desktop.root, toasts.root, offline, ending.root);
+  shell.append(boot.root, desktop.root, toasts.root, offline, ending.root, gameOver.root);
   const keydownHandler = (event: KeyboardEvent): void => {
     handleShortcut(event, desktop, vibex.terminal, actions);
   };
   window.addEventListener("keydown", keydownHandler);
 
   root.replaceChildren(shell);
+  invalidateWindowBoundsCache();
   updateAppearance(shell, vibex.terminal.root, view.appearance);
 
   return {
     destroy(): void {
       window.removeEventListener("keydown", keydownHandler);
+      desktop.destroy();
+      boot.destroy();
     },
 
     updateDevFloor(nextView: DevFloorView): void {
@@ -633,6 +376,10 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
         updateProjects(nextView.projects, screens, actions);
       }
 
+      if (isAppVisible(nextView.ui.windows, "roadmap")) {
+        updateRoadmap(screens.roadmap, nextView.roadmap, actions);
+      }
+
       if (isAppVisible(nextView.ui.windows, "aurora")) {
         updateAurora(nextView.aurora);
       }
@@ -661,6 +408,7 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
       updateVisibleCommsApps(comms, nextView, actions);
       updateOffline(nextView.offline);
       updateEndingModal(ending, nextView.ending, actions);
+      updateGameOverModal(gameOver, nextView.gameOver, actions);
     },
 
     updateFrameAlpha(alpha: number): void {
@@ -678,33 +426,17 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
 }
 
 function resetRenderCaches(): void {
-  generatorRows.clear();
-  computeRows.clear();
-  hardwareRows.clear();
-  upgradeRows.clear();
-  automationToggles.clear();
-  projectOffers.clear();
-  activeBuilds.clear();
-  products.clear();
-  auroraNodeRows.clear();
-  researchNodes.clear();
-  insightNodes.clear();
-  equityPerks.clear();
-  runModifiers.clear();
-  paradoxItems.clear();
-  statsRows.clear();
-  achievementCards.clear();
+  resetAgentsRenderCache();
+  resetAuroraRenderCache();
+  resetHardwareUpgradeRenderCache();
+  resetProjectsRenderCache();
+  resetRoadmapRenderCache();
+  resetResearchRenderCache();
+  resetRewriteRenderCache();
+  resetStatsAchievementRenderCaches();
   modelNodes = undefined;
-  exitNodes = undefined;
-  paradoxNodes = undefined;
-  statsNodes = undefined;
-  achievementsNodes = undefined;
-  computeBreakdownNodes = undefined;
-  settingsNodes = undefined;
-  fullGameNodes = undefined;
+  resetSettingsRenderCache();
   offlineNodes = undefined;
-  auroraNodes = undefined;
-  hardwareAuroraCounterNodes = undefined;
 }
 
 function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
@@ -810,16 +542,25 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
       finish();
     }
   });
-  window.addEventListener("keydown", (event) => {
+  const escapeHandler = (event: KeyboardEvent): void => {
     if (event.key === "Escape" && transitionTimer !== undefined) {
       event.preventDefault();
       finish();
     }
-  });
+  };
+  window.addEventListener("keydown", escapeHandler);
 
   const nodes: BootNodes = {
     credits,
     currentLang: view.settings.lang,
+    destroy: () => {
+      window.removeEventListener("keydown", escapeHandler);
+      bootSettings.destroy();
+      if (transitionTimer !== undefined) {
+        window.clearTimeout(transitionTimer);
+        transitionTimer = undefined;
+      }
+    },
     langButton,
     langLabel,
     root,
@@ -875,6 +616,10 @@ function createBootStickyNotes(): HTMLElement {
 
 function updateBootScene(nodes: BootNodes, view: DevFloorView): void {
   nodes.root.hidden = view.ui.scene !== "boot";
+  if (nodes.root.hidden) {
+    return;
+  }
+
   nodes.currentLang = view.settings.lang;
   setText(nodes.startLabel, t("ui.boot.start"));
   setText(nodes.langLabel, t("ui.boot.languageValue", { lang: view.settings.lang.toUpperCase() }));
@@ -920,6 +665,7 @@ function createBootPanel(titleKey: string, content: HTMLElement): HTMLElement {
 
 function createBootSettings(view: SettingsView, actions: AppActions): BootSettingsNodes {
   const root = el("div", { className: "boot-settings" });
+  const teardowns: Array<() => void> = [];
   root.dataset.theme = "crt";
   const subtitle = el("p", { className: "boot-settings__subtitle" });
   subtitle.append(text(t("ui.boot.settings.subtitle")));
@@ -933,7 +679,7 @@ function createBootSettings(view: SettingsView, actions: AppActions): BootSettin
   const panels = {
     audio: createBootSettingsAudioPanel(view, actions),
     gameplay: createBootSettingsGameplayPanel(view, actions),
-    video: createBootSettingsVideoPanel(view, actions, root)
+    video: createBootSettingsVideoPanel(view, actions, root, teardowns)
   } satisfies Record<BootSettingsTab, HTMLElement>;
   const footer = el("div", { className: "boot-settings__footer" });
   const reset = createBootSettingsAction("ui.boot.settings.reset");
@@ -987,6 +733,11 @@ function createBootSettings(view: SettingsView, actions: AppActions): BootSettin
     panels.gameplay.querySelector<HTMLElement>("[data-boot-lang-value]")?.firstChild;
 
   return {
+    destroy: () => {
+      for (const teardown of teardowns) {
+        teardown();
+      }
+    },
     langValue:
       langValue === null || langValue === undefined
         ? text(view.lang.toUpperCase())
@@ -998,7 +749,8 @@ function createBootSettings(view: SettingsView, actions: AppActions): BootSettin
 function createBootSettingsVideoPanel(
   view: SettingsView,
   actions: AppActions,
-  settingsRoot: HTMLElement
+  settingsRoot: HTMLElement,
+  teardowns: Array<() => void>
 ): HTMLElement {
   const panel = createBootSettingsPanel("video", "ui.boot.settings.panel.video");
   const appearance = createBootSettingsPanel("appearance", "ui.boot.settings.panel.appearance");
@@ -1029,8 +781,12 @@ function createBootSettingsVideoPanel(
       setFullscreenUi(isBrowserFullscreen());
     });
   };
-  document.addEventListener("fullscreenchange", () => {
+  const fullscreenChangeHandler = (): void => {
     setFullscreenUi(isBrowserFullscreen());
+  };
+  document.addEventListener("fullscreenchange", fullscreenChangeHandler);
+  teardowns.push(() => {
+    document.removeEventListener("fullscreenchange", fullscreenChangeHandler);
   });
   fullscreenOff.classList.add("boot-settings__pill--active");
   fullscreenOff.addEventListener("click", () => {
@@ -1495,12 +1251,14 @@ function createDesktop(
   const wallpaper = el("div", { className: "desktop__wallpaper" });
   const icons = createDesktopIcons(actions);
   const windowsLayer = el("section", { className: "desktop__windows" });
+  const destroyBoundsInvalidation = connectWindowBoundsInvalidation(windowsLayer);
   const notes = createStickyNotes(counters);
   const taskbar = createTaskbar(actions);
   const tutorial = createTutorialOverlay(view.tutorial, actions);
   const desktop: DesktopNodes = {
     currentScene: view.ui.scene,
     currentWindows: view.ui.windows,
+    destroy: destroyBoundsInvalidation,
     iconNodes: icons.nodes,
     root,
     taskbarNodes: taskbar,
@@ -1663,6 +1421,7 @@ function createStickyNotes(counters: ResourceCounterSet): HTMLElement {
   notes.append(
     createStickyNote("sticky-note--money", [
       createResourceCounter("ui.resource.money", counters.money),
+      createResourceCounter("ui.resource.bank", counters.bank),
       createResourceCounter("ui.notes.moneyRate", counters.moneyRate)
     ]),
     createStickyNote("sticky-note--loc", [
@@ -1712,6 +1471,8 @@ function getWindowContent(
       return screens.upgrades;
     case "projects":
       return screens.projects;
+    case "roadmap":
+      return screens.roadmap;
     case "aurora":
       return screens.aurora;
     case "research":
@@ -1812,7 +1573,15 @@ function createWindow(
   });
 
   root.append(titlebar, body, resize);
-  return { content: body, hideTimer: undefined, root, title, wasVisible: false };
+  return {
+    content: body,
+    hideTimer: undefined,
+    lastFrame: undefined,
+    lastZ: undefined,
+    root,
+    title,
+    wasVisible: false
+  };
 }
 
 function createWindowControl(
@@ -1876,7 +1645,7 @@ function updateDesktopWindows(nodes: DesktopNodes, view: DevFloorView): void {
     node.root.classList.toggle("desktop-window--active", visible && windowState.z === activeZ);
 
     if (visible && !isWindowPointerActive(node.root)) {
-      applyWindowFrame(node.root, getRenderedWindowFrame(windowState, bounds), windowState.z);
+      applyWindowFrame(node, getRenderedWindowFrame(windowState, bounds), windowState.z);
     }
 
     node.wasVisible = visible;
@@ -2154,11 +1923,30 @@ function releasePointer(target: HTMLElement | undefined, pointerId: number): voi
   }
 }
 
-function applyWindowFrame(root: HTMLElement, frame: WindowFrame, z: number): void {
+function applyWindowFrame(target: HTMLElement | WindowNodes, frame: WindowFrame, z: number): void {
+  const root = target instanceof HTMLElement ? target : target.root;
+
+  if (!(target instanceof HTMLElement)) {
+    if (
+      target.lastZ === z &&
+      target.lastFrame !== undefined &&
+      sameWindowFrame(target.lastFrame, frame)
+    ) {
+      return;
+    }
+
+    target.lastFrame = { ...frame };
+    target.lastZ = z;
+  }
+
   root.style.transform = `translate3d(${frame.x.toFixed(0)}px, ${frame.y.toFixed(0)}px, 0)`;
   root.style.width = `${frame.w.toFixed(0)}px`;
   root.style.height = `${frame.h.toFixed(0)}px`;
   root.style.zIndex = String(z);
+}
+
+function sameWindowFrame(left: WindowFrame, right: WindowFrame): boolean {
+  return left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h;
 }
 
 function isWindowPointerActive(root: HTMLElement): boolean {
@@ -2177,14 +1965,47 @@ function getRenderedWindowFrame(windowState: WindowState, bounds: WindowBounds):
   return { h: copy.h, w: copy.w, x: copy.x, y: copy.y };
 }
 
+function connectWindowBoundsInvalidation(layer: HTMLElement): () => void {
+  invalidateWindowBoundsCache(layer);
+  const invalidate = (): void => {
+    invalidateWindowBoundsCache(layer);
+  };
+  let observer: ResizeObserver | undefined;
+
+  if (typeof ResizeObserver !== "undefined") {
+    observer = new ResizeObserver(invalidate);
+    observer.observe(layer);
+  }
+
+  window.addEventListener("resize", invalidate);
+
+  return () => {
+    observer?.disconnect();
+    window.removeEventListener("resize", invalidate);
+    invalidateWindowBoundsCache(layer);
+  };
+}
+
+function invalidateWindowBoundsCache(layer?: HTMLElement): void {
+  if (layer === undefined || cachedWindowBounds?.layer === layer) {
+    cachedWindowBounds = undefined;
+  }
+}
+
 function getDesktopBounds(layer: HTMLElement): WindowBounds {
+  if (cachedWindowBounds?.layer === layer) {
+    return cachedWindowBounds.bounds;
+  }
+
   const rect = layer.getBoundingClientRect();
   const fallbackWidth = window.innerWidth || 1280;
   const fallbackHeight = Math.max(1, (window.innerHeight || 800) - 112);
-  return {
+  const bounds = {
     height: Math.max(1, rect.height || fallbackHeight),
     width: Math.max(1, rect.width || fallbackWidth)
   };
+  cachedWindowBounds = { bounds, layer };
+  return bounds;
 }
 
 function getViewportWindowBounds(): WindowBounds {
@@ -2213,7 +2034,11 @@ function prefersReducedMotion(): boolean {
 }
 
 function createResourceCounters(resources: ResourceView): ResourceCounterSet {
+  const bank = createResourceCounterNodes(resources.bank, resources.bankTooltip);
+  bank.root.hidden = !resources.bankVisible;
+
   return {
+    bank,
     compute: createResourceCounterNodes(resources.compute),
     hype: createResourceCounterNodes(resources.hype),
     loc: createResourceCounterNodes(resources.loc),
@@ -2224,21 +2049,43 @@ function createResourceCounters(resources: ResourceView): ResourceCounterSet {
   };
 }
 
-function createResourceCounterNodes(value: string, title = ""): ResourceCounterNodes {
-  const root = el("div", { className: "resource-counter", title });
-  return { root, value: text(value) };
+function createResourceCounterNodes(
+  value: string,
+  tooltip: LazyTooltip = ""
+): ResourceCounterNodes {
+  const root = el("div", { className: "resource-counter" });
+  const nodes: ResourceCounterNodes = { root, tooltip, value: text(value) };
+  root.addEventListener("mouseenter", () => {
+    if (typeof nodes.tooltip === "function") {
+      root.title = nodes.tooltip();
+    }
+  });
+  setResourceCounterTooltip(nodes, tooltip);
+  return nodes;
 }
 
 function updateResourceCounters(counters: ResourceCounterSet, resources: ResourceView): void {
+  counters.bank.root.hidden = !resources.bankVisible;
+  setResourceCounterTooltip(counters.bank, resources.bankTooltip);
+  setText(counters.bank.value, resources.bank);
   setText(counters.compute.value, resources.compute);
   setText(counters.hype.value, resources.hype);
   setText(counters.loc.value, resources.loc);
   setText(counters.locRate.value, resources.locRate);
-  counters.locRate.root.title = resources.locRateTooltip;
+  setResourceCounterTooltip(counters.locRate, resources.locRateTooltip);
   setText(counters.money.value, resources.money);
   setText(counters.moneyRate.value, resources.moneyRate);
-  counters.moneyRate.root.title = resources.moneyRateTooltip;
+  setResourceCounterTooltip(counters.moneyRate, resources.moneyRateTooltip);
   setText(counters.rp.value, resources.rp);
+}
+
+function setResourceCounterTooltip(nodes: ResourceCounterNodes, tooltip: LazyTooltip): void {
+  nodes.tooltip = tooltip;
+  if (typeof tooltip === "string") {
+    nodes.root.title = tooltip;
+  } else {
+    nodes.root.removeAttribute("title");
+  }
 }
 
 function updateModel(view: ModelView): void {
@@ -2280,6 +2127,7 @@ function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
   const hardwareScreen = createHardwareScreen(view.hardware, view.aurora, actions);
   const upgradesScreen = createUpgradesScreen(view.upgrades, actions);
   const projectsScreen = createProjectsScreen(view.projects, actions);
+  const roadmapScreen = createRoadmapScreen(view.roadmap, actions);
   const auroraScreen = createAuroraScreen(view.aurora, actions);
   const researchScreen = createResearchScreen(view.research, actions);
   const rewriteScreen = createRewriteScreen(view.rewrite, actions);
@@ -2292,6 +2140,7 @@ function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
     aurora: auroraScreen,
     hardware: hardwareScreen,
     projects: projectsScreen,
+    roadmap: roadmapScreen,
     research: researchScreen,
     rewrite: rewriteScreen,
     settings: settingsScreen,
@@ -2306,6 +2155,7 @@ interface ScreenNodes {
   readonly aurora: HTMLElement;
   readonly hardware: HTMLElement;
   readonly projects: HTMLElement;
+  readonly roadmap: HTMLElement;
   readonly research: HTMLElement;
   readonly rewrite: HTMLElement;
   readonly settings: HTMLElement;
@@ -2336,880 +2186,6 @@ function updateAppearance(shell: HTMLElement, terminal: HTMLElement, view: Appea
   if (view.glitch) {
     terminal.classList.add("terminal--theme-glitch");
   }
-}
-
-function createAgentsScreen(view: DevFloorView, actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.agents")));
-
-  const fullGame = createFullGamePanel(view.fullGame, actions);
-  const compute = createComputeBreakdown(view.compute);
-  const agentList = el("section", { className: "agent-list" });
-  const header = el("div", { className: "agent-list__header" });
-  header.append(
-    createColumnLabel("ui.devfloor.agent"),
-    createColumnLabel("ui.devfloor.owned"),
-    createColumnLabel("ui.devfloor.rate"),
-    createColumnLabel("ui.devfloor.cost"),
-    createColumnLabel("ui.devfloor.milestone"),
-    createColumnLabel("ui.devfloor.buy")
-  );
-
-  agentList.append(header);
-
-  for (const generator of view.generators) {
-    agentList.append(createGeneratorRow(generator, actions));
-  }
-
-  const automationTitle = el("h2", { className: "section-title" });
-  automationTitle.append(text(t("ui.devfloor.automation")));
-  const automationList = el("section", { className: "automation-list" });
-
-  for (const rule of view.automation) {
-    automationList.append(createAutomationToggle(rule, actions));
-  }
-
-  screen.append(title, fullGame, compute, agentList, automationTitle, automationList);
-  return screen;
-}
-
-function createHardwareScreen(
-  view: readonly HardwareRowView[],
-  aurora: AuroraView,
-  actions: AppActions
-): HTMLElement {
-  const screen = el("section", { className: "main-screen hardware-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.hardware")));
-  const auroraCounter = createHardwareAuroraCounter(aurora);
-  const pcRows = view.filter((hardware) => hardware.phase === "pc");
-  const serverRows = view.filter((hardware) => hardware.phase === "server");
-  const pcSection = createHardwareSection("pc", pcRows, actions);
-  const serverSection = createHardwareSection("server", serverRows, actions);
-  serverSection.hidden = serverRows.length === 0;
-
-  screen.append(title, auroraCounter, pcSection, serverSection);
-  return screen;
-}
-
-function createHardwareAuroraCounter(view: AuroraView): HTMLElement {
-  const root = el("div", { className: "hardware-aurora-counter" });
-  const label = el("span", { className: "project-meta__label" });
-  label.append(text(t("ui.hardware.auroraReady")));
-  const value = text(view.readyServers);
-  const output = el("strong", { className: "project-meta__value" });
-  output.append(value);
-  root.append(label, output);
-  hardwareAuroraCounterNodes = { root, value };
-  updateHardwareAuroraCounter(view);
-  return root;
-}
-
-function createHardwareSection(
-  phase: HardwareRowView["phase"],
-  rows: readonly HardwareRowView[],
-  actions: AppActions
-): HTMLElement {
-  const section = el("section", { className: "hardware-section" });
-  section.dataset.phase = phase;
-  const title = el("h2", { className: "section-title hardware-section__title" });
-  title.append(text(t(phase === "pc" ? "ui.hardware.pcTitle" : "ui.hardware.serverTitle")));
-  const list = el("section", { className: "hardware-list" });
-  list.dataset.phase = phase;
-
-  for (const row of rows) {
-    list.append(createHardwareRow(row, actions));
-  }
-
-  section.append(title, list);
-  return section;
-}
-
-function createUpgradesScreen(view: readonly UpgradeRowView[], actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen upgrades-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.upgrades")));
-  const upgradeList = el("section", { className: "upgrade-list" });
-
-  for (const upgrade of view) {
-    upgradeList.append(createUpgradeRow(upgrade, actions));
-  }
-
-  screen.append(title, upgradeList);
-  return screen;
-}
-
-function createComputeBreakdown(view: ComputeBreakdownView): HTMLElement {
-  const section = el("section", { className: "compute-breakdown" });
-  const title = el("h2", { className: "section-title" });
-  title.append(text(t("ui.agents.compute")));
-  const summary = el("div", { className: "compute-breakdown__summary" });
-  const used = text(view.used);
-  const cap = text(view.cap);
-  const remaining = text(view.remaining);
-  summary.append(
-    createComputeMetric("ui.agents.computeUsed", used),
-    createComputeMetric("ui.agents.computeCap", cap),
-    createComputeMetric("ui.agents.computeRemaining", remaining)
-  );
-
-  const list = el("section", { className: "compute-breakdown__list" });
-  for (const row of view.rows) {
-    list.append(createComputeRow(row));
-  }
-
-  computeBreakdownNodes = { cap, list, remaining, used };
-  section.append(title, summary, list);
-  return section;
-}
-
-function createComputeMetric(labelKey: string, value: Text): HTMLElement {
-  const metric = el("span", { className: "compute-breakdown__metric" });
-  const label = el("span", { className: "compute-breakdown__label" });
-  label.append(text(t(labelKey)));
-  const number = el("strong", { className: "compute-breakdown__value" });
-  number.append(value);
-  metric.append(label, number);
-  return metric;
-}
-
-function createComputeRow(view: ComputeRowView): HTMLElement {
-  const root = el("div", { className: "compute-breakdown__row" });
-  const name = text(view.name);
-  const used = text(view.used);
-  const nameNode = el("span", { className: "compute-breakdown__agent" });
-  const usedNode = el("strong", { className: "compute-breakdown__used" });
-  nameNode.append(name);
-  usedNode.append(used);
-  root.append(nameNode, usedNode);
-  computeRows.set(view.id, { name, root, used });
-  return root;
-}
-
-function createFullGamePanel(view: FullGameView, actions: AppActions): HTMLElement {
-  const root = el("section", { className: "full-game-panel" });
-  const title = el("h2", { className: "full-game-panel__title" });
-  title.append(text(t("ui.demo.fullGameTitle")));
-  const copy = el("p", { className: "full-game-panel__copy" });
-  copy.append(text(t("ui.demo.fullGameCopy")));
-  const exportArea = el("textarea", { className: "full-game-panel__textarea" });
-  exportArea.readOnly = true;
-  exportArea.placeholder = t("ui.demo.exportPlaceholder");
-  const exportButton = createSettingsButton("ui.demo.exportSave", () => {
-    exportArea.value = actions.exportSave();
-    exportArea.select();
-  });
-
-  root.append(title, copy, exportArea, exportButton);
-  fullGameNodes = { root };
-  updateFullGame(view);
-  return root;
-}
-
-function createProjectsScreen(view: ProjectsView, actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.projects")));
-
-  const summary = el("div", { className: "project-summary" });
-  summary.append(createSummaryItem("ui.projects.income", view.incomeRate));
-
-  const refactor = createRefactorPanel(view.refactor, actions);
-  const board = el("section", { className: "project-board" });
-
-  for (const offer of view.offers) {
-    board.append(createProjectOffer(offer, actions));
-  }
-
-  const activeTitle = el("h2", { className: "section-title" });
-  activeTitle.append(text(t("ui.projects.active")));
-  const activeList = el("section", { className: "active-build-list" });
-
-  for (const build of view.activeBuilds) {
-    activeList.append(createActiveBuild(build));
-  }
-
-  const portfolioTitle = el("h2", { className: "section-title" });
-  portfolioTitle.append(text(t("ui.projects.portfolio")));
-  const portfolioList = el("section", { className: "portfolio-list" });
-
-  for (const product of view.portfolio) {
-    portfolioList.append(createProduct(product, actions));
-  }
-
-  screen.append(
-    title,
-    summary,
-    refactor,
-    board,
-    activeTitle,
-    activeList,
-    portfolioTitle,
-    portfolioList
-  );
-  return screen;
-}
-
-function createAuroraScreen(view: AuroraView, actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen aurora-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.aurora")));
-
-  const progressLabel = text(view.progressLabel);
-  const progressBar = el("div", { className: "aurora-progress__bar" });
-  const progressFill = el("div", { className: "aurora-progress__fill" });
-  progressFill.style.transform = `scaleX(${view.progress.toFixed(3)})`;
-  progressBar.append(progressFill);
-  const progress = el("section", { className: "aurora-progress" });
-  progress.append(progressLabel, progressBar);
-
-  const phaseName = text(view.phaseName);
-  const status = text(view.statusLabel);
-  const costLoc = text(view.costLoc);
-  const costMoney = text(view.costMoney);
-  const timeRemaining = text(view.timeRemaining);
-  const requiredServers = text(view.requiredServers);
-  const availableServers = text(view.availableServers);
-  const readyServers = text(view.readyServers);
-  const dedicatedServers = text(view.dedicatedServers);
-  const hostedServers = text(view.hostedServers);
-  const hostingRate = text(view.hostingRate);
-
-  const summary = el("section", { className: "aurora-summary" });
-  summary.append(
-    createProjectMeta("ui.aurora.phase", phaseName),
-    createProjectMeta("ui.aurora.status", status),
-    createProjectMeta("ui.aurora.costLoc", costLoc),
-    createProjectMeta("ui.aurora.costMoney", costMoney),
-    createProjectMeta("ui.aurora.time", timeRemaining),
-    createProjectMeta("ui.aurora.requiredServers", requiredServers),
-    createProjectMeta("ui.aurora.availableServers", availableServers),
-    createProjectMeta("ui.aurora.readyServers", readyServers),
-    createProjectMeta("ui.aurora.dedicatedServers", dedicatedServers),
-    createProjectMeta("ui.aurora.hostedServers", hostedServers),
-    createProjectMeta("ui.aurora.hostingRate", hostingRate)
-  );
-
-  const actionsRow = el("div", { className: "aurora-actions" });
-  const fund = createProjectButton("ui.aurora.fund", actions.fundAuroraPhase);
-  const dedicate = createProjectButton("ui.aurora.dedicateServer", actions.dedicateAuroraServer);
-  const host = createProjectButton("ui.aurora.rentHost", actions.rentAuroraHost);
-  actionsRow.append(fund, dedicate, host);
-
-  const graphTitle = el("h2", { className: "section-title" });
-  graphTitle.append(text(t("ui.aurora.graph")));
-  const graph = el("section", { className: "aurora-graph" });
-  for (const node of view.nodes) {
-    graph.append(createAuroraNode(node));
-  }
-
-  auroraNodes = {
-    availableServers,
-    costLoc,
-    costMoney,
-    dedicate,
-    dedicatedServers,
-    fund,
-    host,
-    hostedServers,
-    hostingRate,
-    phaseName,
-    progressBar: progressFill,
-    progressLabel,
-    readyServers,
-    requiredServers,
-    status,
-    timeRemaining
-  };
-  updateAurora(view);
-
-  screen.append(title, progress, summary, actionsRow, graphTitle, graph);
-  return screen;
-}
-
-function createResearchScreen(view: ResearchView, actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen research-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.research")));
-
-  const summary = el("div", { className: "research-summary" });
-  summary.append(createSummaryBadge("ui.research.rp", view.rp));
-
-  const tree = el("section", { className: "research-tree" });
-  tree.append(createResearchConnections());
-
-  for (const branch of ["throughput", "quality", "automation"]) {
-    const column = el("section", { className: `research-branch research-branch--${branch}` });
-    const branchTitle = el("h2", { className: "research-branch__title" });
-    branchTitle.append(text(t(`ui.research.branch.${branch}`)));
-    column.append(branchTitle);
-
-    for (const node of view.nodes.filter((entry) => entry.branch === branch)) {
-      column.append(createResearchNode(node, actions));
-    }
-
-    tree.append(column);
-  }
-
-  screen.append(title, summary, tree);
-  return screen;
-}
-
-function createRewriteScreen(view: RewriteView, actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen rewrite-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.rewrite")));
-
-  const bootOverlay = createRewriteBootOverlay();
-  const forecast = el("section", { className: "rewrite-forecast" });
-  const boot = el("p", { className: "rewrite-boot" });
-  boot.append(text(t("ui.rewrite.booting")));
-  const insight = text(view.insight);
-  const gain = text(view.preview.gain);
-  const requiredInsight = text(view.preview.requiredInsight);
-  const afterInsight = text(view.preview.afterInsight);
-  const currentMultiplier = text(view.preview.currentMultiplier);
-  const targetMultiplier = text(view.preview.targetMultiplier);
-  const speedup = text(view.preview.speedup);
-  const startMoney = text(view.preview.startMoney);
-  const startEra = text(view.preview.startEra);
-  const startGenerators = text(view.preview.startGenerators);
-  const button = createProjectButton("ui.rewrite.action", actions.rewrite);
-
-  forecast.append(
-    boot,
-    createRewriteMeta("ui.rewrite.insight", insight),
-    createRewriteMeta("ui.rewrite.gain", gain),
-    createRewriteMeta("ui.rewrite.required", requiredInsight),
-    createRewriteMeta("ui.rewrite.after", afterInsight),
-    createRewriteMeta("ui.rewrite.currentMult", currentMultiplier),
-    createRewriteMeta("ui.rewrite.nextMult", targetMultiplier),
-    createRewriteMeta("ui.rewrite.speedup", speedup),
-    createRewriteMeta("ui.rewrite.startMoney", startMoney),
-    createRewriteMeta("ui.rewrite.startEra", startEra),
-    createRewriteMeta("ui.rewrite.startGenerators", startGenerators),
-    button
-  );
-
-  const lossesTitle = el("h2", { className: "section-title" });
-  lossesTitle.append(text(t("ui.rewrite.losses")));
-  const losses = el("section", { className: "rewrite-losses" });
-  const lostLoc = text(view.preview.lostLoc);
-  const lostMoney = text(view.preview.lostMoney);
-  const lostAgents = text(view.preview.lostAgents);
-  const lostHardware = text(view.preview.lostHardware);
-  const lostProducts = text(view.preview.lostProducts);
-  const lostUpgrades = text(view.preview.lostUpgrades);
-  losses.append(
-    createRewriteMeta("ui.resource.loc", lostLoc),
-    createRewriteMeta("ui.resource.money", lostMoney),
-    createRewriteMeta("ui.devfloor.agent", lostAgents),
-    createRewriteMeta("ui.devfloor.hardware", lostHardware),
-    createRewriteMeta("ui.projects.portfolio", lostProducts),
-    createRewriteMeta("ui.devfloor.upgrades", lostUpgrades)
-  );
-
-  const treeTitle = el("h2", { className: "section-title" });
-  treeTitle.append(text(t("ui.rewrite.insightTree")));
-  const tree = el("section", { className: "insight-tree" });
-
-  for (const branch of ["velocity", "capital", "craft", "core"]) {
-    const column = el("section", { className: `insight-branch insight-branch--${branch}` });
-    const branchTitle = el("h3", { className: "insight-branch__title" });
-    branchTitle.append(text(t(`ui.insight.branch.${branch}`)));
-    column.append(branchTitle);
-
-    for (const node of view.nodes.filter((entry) => entry.branch === branch)) {
-      column.append(createInsightNode(node, actions));
-    }
-
-    tree.append(column);
-  }
-
-  const exitSection = createExitSection(view.exit, actions);
-  const paradoxSection = createParadoxSection(view.paradox, actions);
-
-  rewriteNodes = {
-    afterInsight,
-    boot,
-    bootOverlay,
-    button,
-    currentMultiplier,
-    gain,
-    insight,
-    lostAgents,
-    lostHardware,
-    lostLoc,
-    lostMoney,
-    lostProducts,
-    lostUpgrades,
-    requiredInsight,
-    speedup,
-    startEra,
-    startGenerators,
-    startMoney,
-    targetMultiplier
-  };
-  updateRewrite(view);
-
-  screen.append(
-    title,
-    bootOverlay,
-    forecast,
-    lossesTitle,
-    losses,
-    treeTitle,
-    tree,
-    exitSection,
-    paradoxSection
-  );
-  return screen;
-}
-
-function createRewriteBootOverlay(): HTMLElement {
-  const overlay = el("section", { className: "rewrite-boot-overlay" });
-  overlay.hidden = true;
-  overlay.setAttribute("aria-live", "polite");
-
-  const cascade = el("div", { className: "rewrite-boot-overlay__cascade" });
-  for (let index = 1; index <= 6; index += 1) {
-    const line = el("span", { className: "rewrite-boot-overlay__line" });
-    line.append(text(t(`ui.rewrite.bootLine${index}`)));
-    cascade.append(line);
-  }
-
-  const consoleNode = el("div", { className: "rewrite-boot-overlay__console" });
-  const title = el("h2", { className: "rewrite-boot-overlay__title" });
-  title.append(text(t("ui.rewrite.bootTitle")));
-  const command = el("p", { className: "rewrite-boot-overlay__command" });
-  command.append(text(t("ui.rewrite.bootCommand")));
-  const cursor = el("span", { className: "rewrite-boot-overlay__cursor" });
-  cursor.append(text(t("ui.rewrite.bootCursor")));
-  command.append(cursor);
-  const skip = createSettingsButton("ui.rewrite.skipBoot", () => {
-    overlay.dataset.skipped = "1";
-    overlay.hidden = true;
-  });
-  skip.classList.add("rewrite-boot-overlay__skip");
-  consoleNode.append(title, command, skip);
-  overlay.append(cascade, consoleNode);
-  return overlay;
-}
-
-function createExitSection(view: ExitView, actions: AppActions): HTMLElement {
-  const section = el("section", { className: "exit-section" });
-  const title = el("h2", { className: "section-title" });
-  title.append(text(t("ui.exit.title")));
-
-  const forecast = el("section", { className: "rewrite-forecast exit-forecast" });
-  const currentEquity = text(view.preview.currentEquity);
-  const gain = text(view.preview.gain);
-  const requiredInsight = text(view.preview.requiredInsight);
-  const totalInsightEarned = text(view.preview.totalInsightEarned);
-  const equityAfter = text(view.preview.equityAfter);
-  const currentMultiplier = text(view.preview.currentMultiplier);
-  const targetMultiplier = text(view.preview.targetMultiplier);
-  const rewardMultiplier = text(view.preview.rewardMultiplier);
-  const button = createProjectButton("ui.exit.action", actions.exit);
-
-  forecast.append(
-    createRewriteMeta("ui.exit.equity", currentEquity),
-    createRewriteMeta("ui.exit.gain", gain),
-    createRewriteMeta("ui.exit.required", requiredInsight),
-    createRewriteMeta("ui.exit.earnedInsight", totalInsightEarned),
-    createRewriteMeta("ui.exit.after", equityAfter),
-    createRewriteMeta("ui.exit.currentMult", currentMultiplier),
-    createRewriteMeta("ui.exit.nextMult", targetMultiplier),
-    createRewriteMeta("ui.exit.rewardMult", rewardMultiplier),
-    button
-  );
-
-  const perksTitle = el("h3", { className: "section-title" });
-  perksTitle.append(text(t("ui.exit.perks")));
-  const perks = el("section", { className: "equity-perk-list" });
-  for (const perk of view.perks) {
-    perks.append(createEquityPerk(perk, actions));
-  }
-
-  const modifiersTitle = el("h3", { className: "section-title" });
-  modifiersTitle.append(text(t("ui.exit.runModifiers")));
-  const modifiers = el("section", { className: "run-modifier-list" });
-  for (const modifier of view.runModifiers) {
-    modifiers.append(createRunModifier(modifier, actions));
-  }
-
-  exitNodes = {
-    button,
-    currentEquity,
-    currentMultiplier,
-    equityAfter,
-    gain,
-    requiredInsight,
-    rewardMultiplier,
-    targetMultiplier,
-    totalInsightEarned
-  };
-
-  section.append(title, forecast, perksTitle, perks, modifiersTitle, modifiers);
-  return section;
-}
-
-function createParadoxSection(view: ParadoxView, actions: AppActions): HTMLElement {
-  const section = el("section", { className: "paradox-section" });
-  section.hidden = !view.unlocked;
-  const title = el("h2", { className: "section-title" });
-  title.append(text(t("ui.paradox.title")));
-
-  const forecast = el("section", { className: "rewrite-forecast paradox-forecast" });
-  const currentIteration = text(view.preview.currentIteration);
-  const nextIteration = text(view.preview.nextIteration);
-  const locRate = text(view.preview.locRate);
-  const softcapThreshold = text(view.preview.softcapThreshold);
-  const hold = text(view.preview.hold);
-  const currentParadox = text(view.preview.currentParadox);
-  const paradoxGain = text(view.preview.paradoxGain);
-  const paradoxAfter = text(view.preview.paradoxAfter);
-  const currentMultiplier = text(view.preview.currentMultiplier);
-  const targetMultiplier = text(view.preview.targetMultiplier);
-  const button = createProjectButton("ui.paradox.action", actions.iterate);
-
-  forecast.append(
-    createRewriteMeta("ui.paradox.iteration", currentIteration),
-    createRewriteMeta("ui.paradox.nextIteration", nextIteration),
-    createRewriteMeta("ui.paradox.locRate", locRate),
-    createRewriteMeta("ui.paradox.threshold", softcapThreshold),
-    createRewriteMeta("ui.paradox.hold", hold),
-    createRewriteMeta("ui.paradox.paradox", currentParadox),
-    createRewriteMeta("ui.paradox.gain", paradoxGain),
-    createRewriteMeta("ui.paradox.after", paradoxAfter),
-    createRewriteMeta("ui.paradox.currentMult", currentMultiplier),
-    createRewriteMeta("ui.paradox.nextMult", targetMultiplier),
-    button
-  );
-
-  const meta = el("section", { className: "rewrite-losses paradox-meta" });
-  const ruleSlots = text(view.ruleSlots);
-  const theme = text(view.theme);
-  meta.append(
-    createRewriteMeta("ui.paradox.ruleSlots", ruleSlots),
-    createRewriteMeta("ui.paradox.theme", theme)
-  );
-
-  const shopTitle = el("h3", { className: "section-title" });
-  shopTitle.append(text(t("ui.paradox.shop")));
-  const shop = el("section", { className: "paradox-item-list" });
-  for (const item of view.items) {
-    shop.append(createParadoxItem(item, actions));
-  }
-
-  paradoxNodes = {
-    button,
-    currentIteration,
-    currentMultiplier,
-    currentParadox,
-    hold,
-    locRate,
-    nextIteration,
-    paradoxAfter,
-    paradoxGain,
-    root: section,
-    ruleSlots,
-    softcapThreshold,
-    targetMultiplier,
-    theme
-  };
-
-  section.append(title, forecast, meta, shopTitle, shop);
-  return section;
-}
-
-function createStatsScreen(view: StatsView): HTMLElement {
-  const screen = el("section", { className: "main-screen stats-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.stats")));
-
-  const sparkline = createStatsSparkline(view);
-  const sections = el("section", { className: "stats-sections" });
-  sections.append(
-    createStatsSection("ui.stats.lifetime", view.lifetimeRows),
-    createStatsSection("ui.stats.run", view.runRows),
-    createStatsSection("ui.stats.records", view.recordsRows)
-  );
-
-  screen.append(title, sparkline, sections);
-  updateStats(view);
-  return screen;
-}
-
-function createStatsSparkline(view: StatsView): HTMLElement {
-  const panel = el("section", { className: "stats-sparkline" });
-  const title = el("h2", { className: "section-title" });
-  title.append(text(t("ui.stats.sparkline")));
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", "stats-sparkline__svg");
-  svg.setAttribute("viewBox", "0 0 300 80");
-  svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", view.sparklineLabel);
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("class", "stats-sparkline__path");
-  svg.append(path);
-  const empty = el("p", { className: "stats-sparkline__empty" });
-  empty.append(text(t("ui.stats.sparklineEmpty")));
-  panel.append(title, svg, empty);
-  statsNodes = { empty, path, svg };
-  return panel;
-}
-
-function createStatsSection(titleKey: string, rows: readonly StatsRowView[]): HTMLElement {
-  const section = el("section", { className: "stats-section" });
-  const title = el("h2", { className: "section-title" });
-  title.append(text(t(titleKey)));
-  const list = el("div", { className: "stats-list" });
-
-  for (const row of rows) {
-    list.append(createStatsRow(row));
-  }
-
-  section.append(title, list);
-  return section;
-}
-
-function createStatsRow(row: StatsRowView): HTMLElement {
-  const root = el("div", { className: "stats-row" });
-  const label = el("span", { className: "stats-row__label" });
-  label.append(text(row.label));
-  const value = text(row.value);
-  const valueNode = el("strong", { className: "stats-row__value" });
-  valueNode.append(value);
-  root.append(label, valueNode);
-  statsRows.set(row.id, { value });
-  return root;
-}
-
-function createAchievementsScreen(view: AchievementsView): HTMLElement {
-  const screen = el("section", { className: "main-screen achievements-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.achievements")));
-
-  const summary = el("section", { className: "achievement-summary" });
-  const unlocked = text(view.unlocked);
-  const bonus = text(view.bonus);
-  summary.append(
-    createAchievementSummaryItem("ui.achievements.unlocked", unlocked),
-    createAchievementSummaryItem("ui.achievements.bonus", bonus)
-  );
-
-  const grid = el("section", { className: "achievement-grid" });
-  for (const card of view.cards) {
-    grid.append(createAchievementCard(card));
-  }
-
-  achievementsNodes = { bonus, grid, unlocked };
-  screen.append(title, summary, grid);
-  updateAchievements(view, { achievements: screen });
-  return screen;
-}
-
-function createAchievementSummaryItem(labelKey: string, value: Text): HTMLElement {
-  const item = el("div", { className: "achievement-summary__item" });
-  const label = el("span", { className: "project-meta__label" });
-  label.append(text(t(labelKey)));
-  const output = el("strong", { className: "project-meta__value" });
-  output.append(value);
-  item.append(label, output);
-  return item;
-}
-
-function createAchievementCard(view: AchievementCardView): HTMLElement {
-  const root = el("article", { className: "achievement-card" });
-  const category = text(view.category);
-  const categoryNode = el("span", { className: "achievement-card__category" });
-  categoryNode.append(category);
-  const title = text(view.name);
-  const titleNode = el("h2", { className: "achievement-card__title" });
-  titleNode.append(title);
-  const description = text(view.description);
-  const descriptionNode = el("p", { className: "achievement-card__description" });
-  descriptionNode.append(description);
-  const status = text(view.status);
-  const statusNode = el("span", { className: "achievement-card__status" });
-  statusNode.append(status);
-  root.append(categoryNode, titleNode, descriptionNode, statusNode);
-  achievementCards.set(view.id, { category, description, root, status, title });
-  updateAchievementCard(view);
-  return root;
-}
-
-function createSettingsScreen(view: SettingsView, actions: AppActions): HTMLElement {
-  const screen = el("section", { className: "main-screen settings-screen" });
-  const title = el("h1", { className: "main-view__title" });
-  title.append(text(t("ui.app.settings")));
-
-  const langValue = el("span", { className: "settings-control__value" });
-  langValue.append(text(t("ui.boot.languageValue", { lang: view.lang.toUpperCase() })));
-
-  const notation = el("select", { className: "settings-control__field" });
-  notation.append(
-    createOption("sci", "ui.settings.notationSci"),
-    createOption("suffix", "ui.settings.notationSuffix")
-  );
-  notation.value = view.notation;
-  notation.addEventListener("change", () => {
-    actions.changeNotation(notation.value === "suffix" ? "suffix" : "sci");
-  });
-
-  const autosaveS = el("input", { className: "settings-control__field" });
-  autosaveS.type = "number";
-  autosaveS.value = view.autosaveS;
-  autosaveS.defaultValue = view.autosaveS;
-  autosaveS.addEventListener("change", () => {
-    const seconds = Number(autosaveS.value);
-
-    if (Number.isFinite(seconds) && seconds > 0) {
-      actions.changeAutosaveS(seconds);
-    } else {
-      autosaveS.value = autosaveS.defaultValue;
-    }
-  });
-
-  const sound = el("input", { className: "settings-control__checkbox" });
-  sound.type = "checkbox";
-  sound.checked = view.sound;
-  sound.addEventListener("change", () => {
-    actions.changeSound(sound.checked);
-  });
-
-  const doNotDisturb = el("input", { className: "settings-control__checkbox" });
-  doNotDisturb.type = "checkbox";
-  doNotDisturb.checked = view.doNotDisturb;
-  doNotDisturb.addEventListener("change", () => {
-    actions.changeDoNotDisturb(doNotDisturb.checked);
-  });
-
-  const volume = el("input", { className: "settings-control__field" });
-  volume.type = "range";
-  volume.min = "0";
-  volume.max = "1";
-  volume.step = "0.01";
-  volume.value = view.volume;
-  volume.defaultValue = view.volume;
-  volume.addEventListener("input", () => {
-    const value = Number(volume.value);
-
-    if (Number.isFinite(value)) {
-      actions.changeVolume(value);
-    }
-  });
-
-  const reducedFx = el("input", { className: "settings-control__checkbox" });
-  reducedFx.type = "checkbox";
-  reducedFx.checked = view.reducedFx;
-  reducedFx.addEventListener("change", () => {
-    actions.changeReducedFx(reducedFx.checked);
-  });
-
-  const glitch = el("input", { className: "settings-control__checkbox" });
-  glitch.type = "checkbox";
-  glitch.checked = view.glitch;
-  glitch.addEventListener("change", () => {
-    actions.changeGlitch(glitch.checked);
-  });
-
-  const skipIntro = el("input", { className: "settings-control__checkbox" });
-  skipIntro.type = "checkbox";
-  skipIntro.checked = view.skipIntro;
-  skipIntro.addEventListener("change", () => {
-    actions.changeSkipIntro(skipIntro.checked);
-  });
-
-  const vibexLocalAi = el("input", { className: "settings-control__checkbox" });
-  vibexLocalAi.type = "checkbox";
-  vibexLocalAi.checked = view.vibexLocalAi;
-  vibexLocalAi.addEventListener("change", () => {
-    actions.changeVibexLocalAi(vibexLocalAi.checked);
-  });
-
-  const localAiStatus = text(view.localAiStatus);
-  const localAiStatusValue = el("span", { className: "settings-control__value" });
-  localAiStatusValue.append(localAiStatus);
-
-  const localAiProgress = text(
-    t("ui.settings.vibexModelMeta", {
-      progress: view.localAiProgress,
-      size: view.localAiModelSize
-    })
-  );
-  const localAiProgressValue = el("span", { className: "settings-control__value" });
-  localAiProgressValue.append(localAiProgress);
-
-  const downloadVibexModel = createSettingsButton("ui.settings.vibexDownloadModel", () => {
-    actions.downloadVibexModel();
-  });
-  downloadVibexModel.disabled = !view.localAiCanDownload;
-
-  const licenseNote = el("p", { className: "settings-note" });
-  licenseNote.append(text(t("ui.settings.vibexLicense")));
-
-  const wipeCheck = el("input", { className: "settings-control__checkbox" });
-  wipeCheck.type = "checkbox";
-  const wipeButton = createSettingsButton("ui.settings.wipe", () => {
-    if (wipeCheck.checked) {
-      actions.wipeSave();
-      wipeCheck.checked = false;
-    }
-  });
-  const resetWindowsButton = createSettingsButton("ui.settings.resetWindows", () => {
-    actions.resetWindowLayout();
-  });
-  const replayTutorialButton = createSettingsButton("ui.settings.replayTutorial", () => {
-    actions.replayTutorial();
-  });
-  const quitButton = createSettingsButton("ui.settings.quitToTitle", () => {
-    actions.quitToTitle();
-  });
-
-  const controls = el("section", { className: "settings-list" });
-  controls.append(
-    createSettingsControl("ui.settings.language", langValue),
-    createSettingsControl("ui.settings.notation", notation),
-    createSettingsControl("ui.settings.autosave", autosaveS),
-    createSettingsControl("ui.settings.sound", sound),
-    createSettingsControl("ui.settings.doNotDisturb", doNotDisturb),
-    createSettingsControl("ui.settings.volume", volume),
-    createSettingsControl("ui.settings.reducedFx", reducedFx),
-    createSettingsControl("ui.settings.glitch", glitch),
-    createSettingsControl("ui.settings.skipIntro", skipIntro),
-    createSettingsControl("ui.settings.vibexLocalAi", vibexLocalAi),
-    createSettingsControl("ui.settings.vibexAiStatus", localAiStatusValue),
-    createSettingsControl("ui.settings.vibexModel", localAiProgressValue),
-    createSettingsControl("ui.settings.vibexDownload", downloadVibexModel),
-    createSettingsControl("ui.settings.wipeConfirm", wipeCheck)
-  );
-
-  const actionsPanel = el("section", { className: "settings-actions" });
-  const actionsTitle = el("h2", { className: "section-title" });
-  actionsTitle.append(text(t("ui.settings.gameControls")));
-  const actionsRow = el("div", { className: "settings-actions__buttons" });
-  actionsRow.append(resetWindowsButton, replayTutorialButton, quitButton, wipeButton);
-  actionsPanel.append(actionsTitle, actionsRow);
-
-  settingsNodes = {
-    autosaveS,
-    downloadVibexModel,
-    doNotDisturb,
-    glitch,
-    localAiProgress,
-    localAiStatus,
-    notation,
-    reducedFx,
-    skipIntro,
-    sound,
-    vibexLocalAi,
-    volume
-  };
-  screen.append(title, controls, licenseNote, actionsPanel);
-  return screen;
 }
 
 function createOfflineModal(view: OfflineView, actions: AppActions): HTMLElement {
@@ -3395,18 +2371,8 @@ function createTerminal(view: VibexView, actions: AppActions): TerminalViewNodes
   frameTrack.append(flowBar);
   const particles = createPromptParticles();
 
-  prompt.addEventListener("click", () => {
-    runVibexSend(actions, {
-      addLog: log.addLog,
-      assistantPrompt: cannedPromptText,
-      assistantResponse: cannedResponseText,
-      input,
-      showParticle: particles.show
-    });
-  });
-
   terminal.append(header, canned, input, flowRow, frameTrack, prompt, particles.root);
-  const nodes = {
+  const nodes: TerminalViewNodes = {
     addLog: log.addLog,
     cannedPrompt: cannedPromptText,
     cannedResponse: cannedResponseText,
@@ -3415,30 +2381,29 @@ function createTerminal(view: VibexView, actions: AppActions): TerminalViewNodes
     input,
     logRoot: log.root,
     prompt,
+    responseToken: 0,
     root: terminal,
     showParticle: particles.show
   };
+  prompt.addEventListener("click", () => {
+    runVibexSend(actions, nodes);
+  });
   return nodes;
 }
 
-function runVibexSend(
-  actions: AppActions,
-  nodes: {
-    readonly addLog: (message: string, options?: TerminalLogOptions) => Text;
-    readonly assistantPrompt: Text;
-    readonly assistantResponse: Text;
-    readonly input: HTMLTextAreaElement;
-    readonly showParticle: (value: string) => void;
-  }
-): void {
+function runVibexSend(actions: AppActions, nodes: TerminalViewNodes): void {
   const result = actions.sendVibexPrompt(nodes.input.value, "manual");
+  nodes.responseToken += 1;
+  const responseToken = nodes.responseToken;
   nodes.input.value = "";
-  setText(nodes.assistantPrompt, result.prompt);
-  setText(nodes.assistantResponse, result.response);
+  setText(nodes.cannedPrompt, result.prompt);
+  setText(nodes.cannedResponse, result.response);
 
   if (result.pendingResponse !== undefined) {
     void result.pendingResponse.then((response) => {
-      setText(nodes.assistantResponse, response);
+      if (responseToken === nodes.responseToken) {
+        setText(nodes.cannedResponse, response);
+      }
     });
   }
 
@@ -3483,13 +2448,20 @@ function handleShortcut(
     return;
   }
 
-  if (event.altKey || event.ctrlKey || event.metaKey || isEditableShortcutTarget(event.target)) {
+  if (
+    !event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    event.key === "Escape" &&
+    offlineNodes !== undefined &&
+    !offlineNodes.root.hidden
+  ) {
+    event.preventDefault();
+    actions.dismissOffline();
     return;
   }
 
-  if (event.key === "Escape" && offlineNodes !== undefined && !offlineNodes.root.hidden) {
-    event.preventDefault();
-    actions.dismissOffline();
+  if (event.altKey || event.ctrlKey || event.metaKey || isEditableShortcutTarget(event.target)) {
     return;
   }
 
@@ -3513,7 +2485,7 @@ function handleShortcut(
     return;
   }
 
-  if (event.key >= "1" && event.key <= "7") {
+  if (event.key >= "1" && event.key <= "8") {
     const appId = getShortcutApp(event.key);
 
     if (appId !== undefined) {
@@ -3766,44 +2738,6 @@ function createPromptParticles(): {
   };
 }
 
-function createCommsPanels(view: CommsView, actions: AppActions): Record<CommsChannel, CommsNodes> {
-  return {
-    chat: createCommsPanel("chat", view, actions),
-    mail: createCommsPanel("mail", view, actions),
-    feed: createCommsPanel("feed", view, actions)
-  };
-}
-
-function createCommsPanel(channel: CommsChannel, view: CommsView, actions: AppActions): CommsNodes {
-  const panel = el("aside", { className: "comms" });
-  const header = el("div", { className: "comms__header" });
-  const title = el("h2", { className: "comms__title" });
-  title.append(text(t(`ui.app.${channel}`)));
-
-  const badge = el("span", { className: "comms__badge" });
-  header.append(title, badge);
-
-  const list = el("section", { className: "comms__list" });
-  const empty = el("p", { className: "comms__empty" });
-  empty.append(text(t("ui.comms.empty")));
-
-  panel.append(header, list, empty);
-
-  const nodes = {
-    root: panel,
-    badge,
-    channel,
-    currentView: undefined,
-    empty,
-    lastEntryId: "",
-    list,
-    messages: new Map<string, CommsMessageNodes>(),
-    messageCount: 0
-  };
-  updateComms(nodes, view, actions);
-  return nodes;
-}
-
 function createEndingModal(view: EndingModalView, actions: AppActions): EndingModalNodes {
   const root = el("section", { className: "ending-modal" });
   const nodes = { root, signature: "" };
@@ -3811,181 +2745,11 @@ function createEndingModal(view: EndingModalView, actions: AppActions): EndingMo
   return nodes;
 }
 
-function updateComms(nodes: CommsNodes, view: CommsView, actions: AppActions): void {
-  if (shouldSkipCommsUpdate(nodes.currentView, nodes.channel, view, nodes.channel)) {
-    return;
-  }
-
-  nodes.currentView = view;
-  nodes.root.classList.toggle("comms--quiet", view.quiet);
-  const unreadCount = view.unreadByChannel[nodes.channel];
-  nodes.badge.hidden = unreadCount === 0;
-  setTextContent(nodes.badge, t("ui.comms.unread", { count: unreadCount }));
-  const messages = getCommsMessagesForChannel(view, nodes.channel);
-
-  if (isCommsStructureChanged(messages, nodes.messageCount, nodes.lastEntryId)) {
-    syncCommsMessageNodes(nodes, messages, actions);
-  }
-
-  for (const message of messages) {
-    const messageNodes = nodes.messages.get(message.entryId);
-
-    if (messageNodes === undefined) {
-      continue;
-    }
-
-    updateCommsMessage(messageNodes, message, actions, view.quiet);
-  }
-
-  nodes.empty.hidden = messages.length > 0;
-}
-
-function syncCommsMessageNodes(
-  nodes: CommsNodes,
-  messages: readonly CommsMessageView[],
-  actions: AppActions
-): void {
-  const previousLastEntryId = messages[nodes.messageCount - 1]?.entryId ?? "";
-  const canAppend = nodes.messageCount === 0 || previousLastEntryId === nodes.lastEntryId;
-
-  if (messages.length < nodes.messageCount || !canAppend) {
-    nodes.messages.clear();
-    nodes.list.replaceChildren();
-    nodes.messageCount = 0;
-  }
-
-  for (let index = nodes.messageCount; index < messages.length; index += 1) {
-    const message = messages[index];
-
-    if (message !== undefined) {
-      nodes.list.append(createCommsMessage(message, actions, nodes.messages));
-    }
-  }
-
-  nodes.messageCount = messages.length;
-  nodes.lastEntryId = getLastEntryId(messages);
-}
-
-function createCommsMessage(
-  message: CommsMessageView,
-  actions: AppActions,
-  messages: Map<string, CommsMessageNodes>
-): HTMLElement {
-  const root = el("article", {
-    ariaLabel: t("ui.comms.messageAria", {
-      channel: t(`ui.comms.${message.channel}`),
-      speaker: message.speaker
-    }),
-    className: "comms-message"
-  });
-  const header = el("div", { className: "comms-message__header" });
-  const speaker = el("strong", { className: "comms-message__speaker" });
-  speaker.append(text(message.speaker));
-  const channel = el("span", { className: "comms-message__channel" });
-  channel.append(text(t(`ui.comms.${message.channel}`)));
-  header.append(speaker, channel);
-
-  const body = el("div", { className: "comms-message__body" });
-  const lines = message.lines.map((line) => {
-    const lineNode = el("p", { className: "comms-message__line" });
-    const lineText = text(line);
-    lineNode.append(lineText);
-    body.append(lineNode);
-    return lineText;
-  });
-
-  const choices = el("div", { className: "comms-message__choices" });
-  const selected = text("");
-  const selectedNode = el("p", { className: "comms-message__selected" });
-  selectedNode.append(selected);
-
-  root.append(header, body, choices, selectedNode);
-  const nodes = { root, choices, lines, selected };
-  messages.set(message.entryId, nodes);
-  updateCommsMessage(nodes, message, actions, false);
-  return root;
-}
-
-function updateCommsMessage(
-  nodes: CommsMessageNodes,
-  message: CommsMessageView,
-  actions: AppActions,
-  quiet: boolean
-): void {
-  nodes.root.classList.toggle("comms-message--unread", message.unread);
-  nodes.root.classList.toggle("comms-message--typing", message.unread && !quiet);
-  nodes.choices.hidden = message.choices.length === 0 || !message.pendingChoice;
-
-  const choiceSignature = getCommsChoiceSignature(message);
-  if (nodes.choices.dataset.signature !== choiceSignature) {
-    nodes.choices.dataset.signature = choiceSignature;
-    nodes.choices.replaceChildren(
-      ...message.choices.map((choice) => createCommsChoiceButton(message, choice, actions))
-    );
-  }
-
-  const selected = message.choices.find((choice) => choice.selected);
-  setText(
-    nodes.selected,
-    selected === undefined ? "" : t("ui.comms.choiceSelected", { choice: selected.label })
-  );
-}
-
-function createCommsChoiceButton(
-  message: CommsMessageView,
-  choice: CommsChoiceView,
-  actions: AppActions
-): HTMLButtonElement {
-  const button = el("button", { className: "comms-message__choice", title: choice.label });
-  button.type = "button";
-  button.disabled = !message.pendingChoice;
-  button.append(text(choice.label));
-  button.addEventListener("click", () => {
-    actions.chooseStoryChoice(message.eventId, choice.id);
-  });
-  return button;
-}
-
-function getCommsChoiceSignature(message: CommsMessageView): string {
-  if (message.choices.length === 0) {
-    return message.pendingChoice ? "1:" : "0:";
-  }
-
-  let signature = message.pendingChoice ? "1:" : "0:";
-
-  for (const choice of message.choices) {
-    signature += `${choice.id},`;
-  }
-
-  return signature;
-}
-
-export function shouldSkipCommsUpdate(
-  currentView: CommsView | undefined,
-  currentChannel: CommsChannel,
-  nextView: CommsView,
-  nextChannel: CommsChannel
-): boolean {
-  return currentView === nextView && currentChannel === nextChannel;
-}
-
-export function isCommsStructureChanged(
-  messages: readonly Pick<CommsMessageView, "entryId">[],
-  messageCount: number,
-  lastEntryId: string
-): boolean {
-  return messages.length !== messageCount || getLastEntryId(messages) !== lastEntryId;
-}
-
-function getLastEntryId(messages: readonly Pick<CommsMessageView, "entryId">[]): string {
-  return messages[messages.length - 1]?.entryId ?? "";
-}
-
-function getCommsMessagesForChannel(
-  view: CommsView,
-  channel: CommsChannel
-): readonly CommsMessageView[] {
-  return view.messages.filter((message) => message.channel === channel);
+function createGameOverModal(view: GameOverView, actions: AppActions): GameOverNodes {
+  const root = el("section", { className: "ending-modal game-over-modal" });
+  const nodes = { root, signature: "" };
+  updateGameOverModal(nodes, view, actions);
+  return nodes;
 }
 
 function setTextContent(node: HTMLElement, value: string): void {
@@ -4003,725 +2767,6 @@ function createResourceCounter(labelKey: string, counter: ResourceCounterNodes):
 
   counter.root.append(label, currentValue);
   return counter.root;
-}
-
-function createGeneratorRow(view: GeneratorRowView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "agent-row" });
-  root.dataset.generatorId = view.id;
-  const name = el("strong", { className: "agent-row__name" });
-  const nameText = text(view.name);
-  name.append(nameText);
-
-  const owned = text(view.owned);
-  const rate = text(view.rate);
-  const cost1 = text(view.cost1);
-  const cost10 = text(view.cost10);
-  const milestone = text(view.milestoneLabel);
-  const milestoneTrack = el("div", { className: "agent-row__milestone-track" });
-  const milestoneBar = el("div", { className: "agent-row__milestone-bar" });
-  milestoneTrack.append(milestoneBar);
-
-  const buy1 = createBuyButton("ui.devfloor.buy1", () => actions.buyGenerator(view.id, 1));
-  const buy10 = createBuyButton("ui.devfloor.buy10", () => actions.buyGenerator(view.id, 10));
-  const buyMax = createBuyButton("ui.devfloor.buyMax", () => actions.buyGenerator(view.id, "max"));
-
-  root.append(
-    name,
-    createValueCell(owned),
-    createValueCell(rate),
-    createCostCell(cost1, cost10),
-    createMilestoneCell(milestone, milestoneTrack),
-    createButtonCell(buy1, buy10, buyMax)
-  );
-
-  generatorRows.set(view.id, {
-    buy1,
-    buy10,
-    buyMax,
-    cost1,
-    cost10,
-    milestone,
-    milestoneBar,
-    name: nameText,
-    owned,
-    rate,
-    root
-  });
-  updateGeneratorRow(view);
-
-  return root;
-}
-
-function createHardwareRow(view: HardwareRowView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "hardware-row" });
-  const name = el("strong", { className: "hardware-row__name" });
-  name.append(text(view.name));
-  const slot = text(view.slotLabel);
-  const level = text(view.levelLabel);
-  const cost = text(view.cost);
-  const capText = text(view.capAdd);
-  const powerText = text(view.powerCost);
-  const requirementText = text(view.psuRequirement);
-  const detail = el("span", { className: "hardware-row__detail" });
-  const cap = el("span", { className: "hardware-row__cap" });
-  const power = el("span", { className: "hardware-row__power" });
-  const requirement = el("span", { className: "hardware-row__requirement" });
-  cap.append(capText);
-  power.append(powerText);
-  requirement.append(requirementText);
-  detail.append(cap, power, requirement);
-  const buy = createBuyButton("ui.devfloor.buy1", () => actions.buyHardware(view.id));
-
-  root.append(
-    name,
-    createValueCell(slot),
-    createValueCell(level),
-    createValueCell(cost),
-    detail,
-    buy
-  );
-  hardwareRows.set(view.id, {
-    buy,
-    cap: capText,
-    cost,
-    level,
-    power: powerText,
-    requirement: requirementText,
-    root,
-    slot
-  });
-  updateHardwareRow(view);
-  return root;
-}
-
-function createUpgradeRow(view: UpgradeRowView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "upgrade-row" });
-  root.dataset.upgradeId = view.id;
-  const name = el("strong", { className: "upgrade-row__name" });
-  name.append(text(view.name));
-  const effect = text(view.effect);
-  const cost = text(view.cost);
-  const state = text(view.stateLabel);
-  const button = createBuyButton("ui.devfloor.buy", () => actions.buyUpgrade(view.id));
-
-  root.append(name, createValueCell(effect), createValueCell(cost), createValueCell(state), button);
-  upgradeRows.set(view.id, { button, cost, effect, root, state });
-  updateUpgradeRow(view);
-  return root;
-}
-
-function createAutomationToggle(view: AutomationToggleView, actions: AppActions): HTMLElement {
-  const root = el("label", { className: "automation-toggle" });
-  const checkbox = el("input", { className: "automation-toggle__checkbox" });
-  checkbox.type = "checkbox";
-  checkbox.addEventListener("change", () => {
-    actions.toggleAutomation(view.id, checkbox.checked);
-  });
-
-  const copy = el("span", { className: "automation-toggle__copy" });
-  const label = el("strong", { className: "automation-toggle__label" });
-  label.append(text(view.label));
-  const detail = text(view.detail);
-  const detailNode = el("span", { className: "automation-toggle__detail" });
-  detailNode.append(detail);
-  copy.append(label, detailNode);
-  root.append(checkbox, copy);
-  automationToggles.set(view.id, { checkbox, detail, root });
-  updateAutomationToggle(view);
-  return root;
-}
-
-function createProjectOffer(view: ProjectOfferView, actions: AppActions): HTMLElement {
-  const root = el("article", { className: "project-card" });
-  const name = el("h2", { className: "project-card__title" });
-  name.append(text(view.name));
-  const tag = text(view.tag);
-  const cost = text(view.cost);
-  const payout = text(view.payout);
-  const revenue = text(view.revenue);
-  const buildTime = text(view.buildTime);
-  const button = createProjectButton("ui.projects.build", () => actions.startProject(view.id));
-
-  root.append(
-    name,
-    createProjectMeta("ui.projects.tag", tag),
-    createProjectMeta("ui.projects.cost", cost),
-    createProjectMeta("ui.projects.payout", payout),
-    createProjectMeta("ui.projects.revenue", revenue),
-    createProjectMeta("ui.projects.time", buildTime),
-    button
-  );
-
-  projectOffers.set(view.id, {
-    buildTime,
-    button,
-    cost,
-    payout,
-    revenue,
-    root,
-    tag
-  });
-  updateProjectOffer(view);
-  return root;
-}
-
-function createActiveBuild(view: ActiveBuildView): HTMLElement {
-  const root = el("div", { className: "active-build" });
-  const name = el("strong", { className: "active-build__name" });
-  name.append(text(view.name));
-  const remaining = text(view.remaining);
-  const track = el("div", { className: "active-build__track" });
-  const progress = el("div", { className: "active-build__bar" });
-  track.append(progress);
-  root.append(name, createValueCell(remaining), track);
-  activeBuilds.set(view.id, { progress, remaining, root });
-  updateActiveBuild(view);
-  return root;
-}
-
-function createProduct(view: ProductView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "product-row" });
-  root.dataset.productId = view.id;
-  const name = el("strong", { className: "product-row__name" });
-  name.append(text(view.name));
-  const revenue = text(view.revenue);
-  const status = text(view.status);
-  const fix = createProjectButton("ui.projects.fixBug", () => actions.fixBug(view.id));
-  root.append(name, createValueCell(revenue), createValueCell(status), fix);
-  products.set(view.id, { fix, revenue, root, status });
-  updateProduct(view);
-  return root;
-}
-
-function createRefactorPanel(view: RefactorView, actions: AppActions): HTMLElement {
-  const root = el("section", { className: "refactor-panel" });
-  const title = el("h2", { className: "refactor-panel__title" });
-  title.append(text(t("ui.projects.refactor")));
-  const debt = text(view.debt);
-  const cost = text(view.cost);
-  const effect = text(view.effect);
-  const buildTime = text(view.buildTime);
-  const button = createProjectButton("ui.projects.refactorAction", actions.startRefactor);
-
-  root.append(
-    title,
-    createProjectMeta("ui.projects.debt", debt),
-    createProjectMeta("ui.projects.cost", cost),
-    createProjectMeta("ui.projects.effect", effect),
-    createProjectMeta("ui.projects.time", buildTime),
-    button
-  );
-
-  refactorNodes = { button, cost, debt, effect };
-  updateRefactor(view);
-  return root;
-}
-
-function createAuroraNode(view: AuroraNodeView): HTMLElement {
-  const root = el("article", { className: "aurora-node" });
-  root.dataset.state = view.state;
-  const name = el("strong", { className: "aurora-node__name" });
-  name.append(text(view.name));
-  const stateText = text(t(`ui.aurora.nodeState.${view.state}`));
-  const state = el("span", { className: "aurora-node__state" });
-  state.append(stateText);
-  root.append(name, state);
-  auroraNodeRows.set(view.id, { root, state: stateText });
-  return root;
-}
-
-function createResearchNode(view: ResearchNodeView, actions: AppActions): HTMLElement {
-  const root = el("article", { className: "research-node" });
-  const title = el("h3", { className: "research-node__title" });
-  title.append(text(view.name));
-  const effect = text(view.effect);
-  const cost = text(view.cost);
-  const state = text(view.stateLabel);
-  const button = createProjectButton("ui.research.buy", () => actions.buyResearch(view.id));
-
-  root.append(
-    title,
-    createProjectMeta("ui.research.effect", effect),
-    createProjectMeta("ui.research.cost", cost),
-    createProjectMeta("ui.research.state", state),
-    button
-  );
-  researchNodes.set(view.id, { button, cost, effect, root, state });
-  updateResearchNode(view);
-  return root;
-}
-
-function createInsightNode(view: InsightNodeView, actions: AppActions): HTMLElement {
-  const root = el("article", { className: "insight-node" });
-  const title = el("h3", { className: "insight-node__title" });
-  title.append(text(view.name));
-  const effect = text(view.effect);
-  const cost = text(view.cost);
-  const state = text(view.stateLabel);
-  const button = createProjectButton("ui.insight.buy", () => actions.buyInsightNode(view.id));
-
-  root.append(
-    title,
-    createProjectMeta("ui.research.effect", effect),
-    createProjectMeta("ui.research.cost", cost),
-    createProjectMeta("ui.research.state", state),
-    button
-  );
-  insightNodes.set(view.id, { button, cost, effect, root, state });
-  updateInsightNode(view);
-  return root;
-}
-
-function createEquityPerk(view: EquityPerkView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "upgrade-row equity-perk-row" });
-  const name = el("strong", { className: "upgrade-row__name" });
-  name.append(text(view.name));
-  const effect = text(view.effect);
-  const cost = text(view.cost);
-  const state = text(view.stateLabel);
-  const button = createBuyButton("ui.exit.buyPerk", () => actions.buyEquityPerk(view.id));
-
-  root.append(name, createValueCell(effect), createValueCell(cost), createValueCell(state), button);
-  equityPerks.set(view.id, { button, cost, effect, root, state });
-  updateEquityPerk(view);
-  return root;
-}
-
-function createRunModifier(view: RunModifierView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "run-modifier-row" });
-  const name = el("strong", { className: "run-modifier-row__name" });
-  name.append(text(view.name));
-  const description = text(view.description);
-  const button = createBuyButton("ui.exit.selectModifier", () =>
-    actions.selectRunModifier(view.id)
-  );
-
-  root.append(name, createValueCell(description), button);
-  runModifiers.set(view.id, { button, description, root });
-  updateRunModifier(view);
-  return root;
-}
-
-function createParadoxItem(view: ParadoxItemView, actions: AppActions): HTMLElement {
-  const root = el("div", { className: "upgrade-row paradox-item-row" });
-  const name = el("strong", { className: "upgrade-row__name" });
-  name.append(text(view.name));
-  const effect = text(view.effect);
-  const cost = text(view.cost);
-  const state = text(view.stateLabel);
-  const button = createBuyButton("ui.paradox.buyItem", () => actions.buyParadoxItem(view.id));
-
-  root.append(name, createValueCell(effect), createValueCell(cost), createValueCell(state), button);
-  paradoxItems.set(view.id, { button, cost, effect, root, state });
-  updateParadoxItem(view);
-  return root;
-}
-
-let refactorNodes: RefactorNodes | undefined;
-let projectSummaryNodes: ProjectSummaryNodes | undefined;
-let researchSummaryNodes: ResearchSummaryNodes | undefined;
-let rewriteNodes: RewriteNodes | undefined;
-
-function syncGeneratorRows(
-  views: readonly GeneratorRowView[],
-  screen: HTMLElement,
-  actions: AppActions
-): void {
-  const list = screen.querySelector<HTMLElement>(".agent-list");
-  const visibleIds = new Set(views.map((view) => view.id));
-
-  if (list !== null) {
-    for (const view of views) {
-      if (!generatorRows.has(view.id)) {
-        list.append(createGeneratorRow(view, actions));
-      }
-    }
-  }
-
-  for (const view of views) {
-    updateGeneratorRow(view);
-  }
-
-  for (const [id, row] of generatorRows) {
-    row.root.hidden = !visibleIds.has(id);
-  }
-}
-
-function updateGeneratorRow(view: GeneratorRowView): void {
-  const row = generatorRows.get(view.id);
-
-  if (row === undefined) {
-    return;
-  }
-
-  row.root.classList.toggle("agent-row--locked", view.locked);
-  setText(row.name, view.name);
-  setText(row.owned, view.owned);
-  setText(row.rate, view.rate);
-  setText(row.cost1, view.cost1);
-  setText(row.cost10, view.cost10);
-  setText(row.milestone, view.milestoneLabel);
-  row.milestoneBar.style.transform = `scaleX(${view.milestoneProgress.toFixed(3)})`;
-  updateButton(row.buy1, view.canBuy1, view.buy1Title);
-  updateButton(row.buy10, view.canBuy10, view.buy10Title);
-  updateButton(row.buyMax, view.canBuyMax, view.buyMaxTitle);
-}
-
-function updateComputeBreakdown(view: ComputeBreakdownView): void {
-  if (computeBreakdownNodes === undefined) {
-    return;
-  }
-
-  setText(computeBreakdownNodes.used, view.used);
-  setText(computeBreakdownNodes.cap, view.cap);
-  setText(computeBreakdownNodes.remaining, view.remaining);
-
-  const visibleIds = new Set<string>();
-  for (const row of view.rows) {
-    visibleIds.add(row.id);
-    let nodes = computeRows.get(row.id);
-
-    if (nodes === undefined) {
-      computeBreakdownNodes.list.append(createComputeRow(row));
-      nodes = computeRows.get(row.id);
-    }
-
-    if (nodes !== undefined) {
-      nodes.root.hidden = false;
-      setText(nodes.name, row.name);
-      setText(nodes.used, row.used);
-    }
-  }
-
-  for (const [id, nodes] of computeRows) {
-    nodes.root.hidden = !visibleIds.has(id);
-  }
-}
-
-function syncHardwareRows(
-  views: readonly HardwareRowView[],
-  screen: HTMLElement,
-  actions: AppActions
-): void {
-  const visibleIds = new Set(views.map((view) => view.id));
-  const phases: readonly HardwareRowView["phase"][] = ["pc", "server"];
-
-  for (const phase of phases) {
-    const phaseRows = views.filter((view) => view.phase === phase);
-    const section = screen.querySelector<HTMLElement>(`.hardware-section[data-phase="${phase}"]`);
-    const list = screen.querySelector<HTMLElement>(`.hardware-list[data-phase="${phase}"]`);
-
-    if (section !== null) {
-      section.hidden = phase === "server" && phaseRows.length === 0;
-    }
-
-    if (list === null) {
-      continue;
-    }
-
-    for (const view of phaseRows) {
-      if (!hardwareRows.has(view.id)) {
-        list.append(createHardwareRow(view, actions));
-      }
-    }
-  }
-
-  for (const view of views) {
-    updateHardwareRow(view);
-  }
-
-  for (const [id, nodes] of hardwareRows) {
-    nodes.root.hidden = !visibleIds.has(id);
-  }
-}
-
-function updateHardwareRow(view: HardwareRowView): void {
-  const row = hardwareRows.get(view.id);
-
-  if (row === undefined) {
-    return;
-  }
-
-  row.root.dataset.phase = view.phase;
-  row.root.dataset.slot = view.slot;
-  row.root.classList.toggle("hardware-row--active", view.active);
-  row.root.classList.toggle("hardware-row--enclosure", view.isEnclosure);
-  setText(row.slot, view.slotLabel);
-  setText(row.level, view.levelLabel);
-  setText(row.cost, view.cost);
-  setText(row.cap, view.capAdd);
-  setText(row.power, view.powerCost);
-  setText(row.requirement, view.psuRequirement);
-  if (row.requirement.parentElement !== null) {
-    row.requirement.parentElement.hidden = view.psuRequirement === "";
-  }
-  row.root.classList.toggle("hardware-row--blocked", view.psuRequirement !== "");
-  row.buy.disabled = !view.canBuy;
-}
-
-function updateHardwareAuroraCounter(view: AuroraView): void {
-  if (hardwareAuroraCounterNodes === undefined) {
-    return;
-  }
-
-  hardwareAuroraCounterNodes.root.hidden = !view.unlocked || view.readyServerCount <= 0;
-  setText(hardwareAuroraCounterNodes.value, view.readyServers);
-}
-
-function syncUpgradeRows(
-  views: readonly UpgradeRowView[],
-  screen: HTMLElement,
-  actions: AppActions
-): void {
-  const list = screen.querySelector<HTMLElement>(".upgrade-list");
-
-  if (list === null) {
-    return;
-  }
-
-  const visibleIds = new Set(views.map((view) => view.id));
-
-  for (const view of views) {
-    const row = upgradeRows.get(view.id);
-    if (row === undefined) {
-      list.append(createUpgradeRow(view, actions));
-    } else {
-      updateUpgradeRow(view);
-    }
-  }
-
-  for (const [id, row] of upgradeRows) {
-    row.root.hidden = !visibleIds.has(id);
-  }
-}
-
-function updateUpgradeRow(view: UpgradeRowView): void {
-  const row = upgradeRows.get(view.id);
-
-  if (row === undefined) {
-    return;
-  }
-
-  setText(row.effect, view.effect);
-  setText(row.cost, view.cost);
-  setText(row.state, view.stateLabel);
-  row.root.dataset.state = view.state;
-  row.button.disabled = !view.canBuy;
-}
-
-function syncAutomationToggles(
-  views: readonly AutomationToggleView[],
-  screen: HTMLElement,
-  actions: AppActions
-): void {
-  const list = screen.querySelector<HTMLElement>(".automation-list");
-
-  if (list !== null) {
-    const missingIds = new Set(getMissingAutomationToggleIds(views, automationToggles.keys()));
-
-    for (const view of views) {
-      if (missingIds.has(view.id)) {
-        list.append(createAutomationToggle(view, actions));
-      }
-    }
-  }
-
-  for (const view of views) {
-    updateAutomationToggle(view);
-  }
-}
-
-export function getMissingAutomationToggleIds(
-  views: readonly Pick<AutomationToggleView, "id">[],
-  existingIds: Iterable<string>
-): string[] {
-  const existing = new Set(existingIds);
-  return views.filter((view) => !existing.has(view.id)).map((view) => view.id);
-}
-
-function updateAutomationToggle(view: AutomationToggleView): void {
-  const nodes = automationToggles.get(view.id);
-
-  if (nodes === undefined) {
-    return;
-  }
-
-  setText(nodes.detail, view.detail);
-  nodes.checkbox.disabled = view.disabled;
-  nodes.root.classList.toggle("automation-toggle--locked", view.disabled);
-
-  if (document.activeElement !== nodes.checkbox) {
-    nodes.checkbox.checked = view.enabled;
-  }
-}
-
-function updateProjects(
-  view: ProjectsView,
-  screens: { readonly projects: HTMLElement },
-  actions: AppActions
-): void {
-  updateProjectSummary(view);
-  updateRefactor(view.refactor);
-  updateProjectOffers(view.offers);
-  syncActiveBuilds(view.activeBuilds, screens.projects);
-  syncProducts(view.portfolio, screens.projects, actions);
-}
-
-function updateAurora(view: AuroraView): void {
-  if (auroraNodes === undefined) {
-    return;
-  }
-
-  setText(auroraNodes.progressLabel, view.progressLabel);
-  auroraNodes.progressBar.style.transform = `scaleX(${view.progress.toFixed(3)})`;
-  setText(auroraNodes.phaseName, view.phaseName);
-  setText(auroraNodes.status, view.statusLabel);
-  setText(auroraNodes.costLoc, view.costLoc);
-  setText(auroraNodes.costMoney, view.costMoney);
-  setText(auroraNodes.timeRemaining, view.timeRemaining);
-  setText(auroraNodes.requiredServers, view.requiredServers);
-  setText(auroraNodes.availableServers, view.availableServers);
-  setText(auroraNodes.readyServers, view.readyServers);
-  setText(auroraNodes.dedicatedServers, view.dedicatedServers);
-  setText(auroraNodes.hostedServers, view.hostedServers);
-  setText(auroraNodes.hostingRate, view.hostingRate);
-  auroraNodes.fund.disabled = !view.canFund;
-  auroraNodes.dedicate.disabled = !view.canDedicate;
-  auroraNodes.host.disabled = !view.canHost;
-
-  for (const node of view.nodes) {
-    const row = auroraNodeRows.get(node.id);
-    if (row === undefined) {
-      continue;
-    }
-
-    row.root.dataset.state = node.state;
-    setText(row.state, t(`ui.aurora.nodeState.${node.state}`));
-  }
-}
-
-function updateSettings(view: SettingsView): void {
-  if (settingsNodes === undefined) {
-    return;
-  }
-
-  const activeElement = document.activeElement;
-  updateEditableSettingValue(
-    settingsNodes.autosaveS,
-    view.autosaveS,
-    activeElement === settingsNodes.autosaveS
-  );
-
-  if (activeElement !== settingsNodes.notation) {
-    settingsNodes.notation.value = view.notation;
-  }
-
-  if (activeElement !== settingsNodes.sound) {
-    settingsNodes.sound.checked = view.sound;
-  }
-
-  if (activeElement !== settingsNodes.doNotDisturb) {
-    settingsNodes.doNotDisturb.checked = view.doNotDisturb;
-  }
-
-  if (activeElement !== settingsNodes.glitch) {
-    settingsNodes.glitch.checked = view.glitch;
-  }
-
-  if (activeElement !== settingsNodes.skipIntro) {
-    settingsNodes.skipIntro.checked = view.skipIntro;
-  }
-
-  if (activeElement !== settingsNodes.vibexLocalAi) {
-    settingsNodes.vibexLocalAi.checked = view.vibexLocalAi;
-  }
-
-  setText(settingsNodes.localAiStatus, view.localAiStatus);
-  setText(
-    settingsNodes.localAiProgress,
-    t("ui.settings.vibexModelMeta", {
-      progress: view.localAiProgress,
-      size: view.localAiModelSize
-    })
-  );
-  settingsNodes.downloadVibexModel.disabled = !view.localAiCanDownload;
-
-  updateEditableSettingValue(
-    settingsNodes.volume,
-    view.volume,
-    activeElement === settingsNodes.volume
-  );
-
-  if (activeElement !== settingsNodes.reducedFx) {
-    settingsNodes.reducedFx.checked = view.reducedFx;
-  }
-}
-
-function updateFullGame(view: FullGameView): void {
-  if (fullGameNodes === undefined) {
-    return;
-  }
-
-  fullGameNodes.root.hidden = !view.visible;
-}
-
-function updateStats(view: StatsView): void {
-  for (const row of [...view.lifetimeRows, ...view.runRows, ...view.recordsRows]) {
-    const nodes = statsRows.get(row.id);
-
-    if (nodes !== undefined) {
-      setText(nodes.value, row.value);
-    }
-  }
-
-  if (statsNodes === undefined) {
-    return;
-  }
-
-  statsNodes.svg.toggleAttribute("hidden", view.sparklineEmpty);
-  statsNodes.empty.hidden = !view.sparklineEmpty;
-  statsNodes.svg.setAttribute("aria-label", view.sparklineLabel);
-  statsNodes.path.setAttribute("d", view.sparklinePath);
-}
-
-function updateAchievements(
-  view: AchievementsView,
-  screens: { readonly achievements: HTMLElement }
-): void {
-  if (achievementsNodes !== undefined) {
-    setText(achievementsNodes.unlocked, view.unlocked);
-    setText(achievementsNodes.bonus, view.bonus);
-
-    for (const card of view.cards) {
-      if (!achievementCards.has(card.id)) {
-        achievementsNodes.grid.append(createAchievementCard(card));
-      }
-    }
-  }
-
-  for (const card of view.cards) {
-    updateAchievementCard(card);
-  }
-
-  screens.achievements.classList.toggle(
-    "achievements-screen--complete",
-    view.cards.every((card) => card.unlocked)
-  );
-}
-
-function updateAchievementCard(view: AchievementCardView): void {
-  const nodes = achievementCards.get(view.id);
-
-  if (nodes === undefined) {
-    return;
-  }
-
-  nodes.root.classList.toggle("achievement-card--unlocked", view.unlocked);
-  nodes.root.classList.toggle("achievement-card--locked", !view.unlocked);
-  setText(nodes.category, view.category);
-  setText(nodes.title, view.name);
-  setText(nodes.description, view.description);
-  setText(nodes.status, view.status);
 }
 
 function updateOffline(view: OfflineView): void {
@@ -4786,6 +2831,60 @@ function updateEndingModal(
   nodes.signature = signature;
 }
 
+function updateGameOverModal(nodes: GameOverNodes, view: GameOverView, actions: AppActions): void {
+  nodes.root.hidden = !view.visible;
+
+  if (!view.visible) {
+    if (nodes.signature !== "hidden") {
+      nodes.root.replaceChildren();
+      nodes.signature = "hidden";
+    }
+    return;
+  }
+
+  const signature = getGameOverSignature(view);
+  if (nodes.signature === signature) {
+    return;
+  }
+
+  const dialog = el("div", { className: "ending-modal__dialog game-over-modal__dialog" });
+  const title = el("h2", { className: "ending-modal__title" });
+  title.append(text(t("ui.bankruptcy.title")));
+  const copy = el("div", { className: "ending-modal__copy" });
+  for (const line of view.lines) {
+    const paragraph = el("p", { className: "ending-modal__line" });
+    paragraph.append(text(line));
+    copy.append(paragraph);
+  }
+
+  const overdraft = text(view.overdraft);
+  const exportArea = el("textarea", { className: "settings-save__textarea" });
+  exportArea.readOnly = true;
+  exportArea.placeholder = t("ui.bankruptcy.exportPlaceholder");
+  const exportButton = createSettingsButton("ui.bankruptcy.exportSave", () => {
+    exportArea.value = actions.exportSave();
+    exportArea.select();
+  });
+  const quitButton = createSettingsButton("ui.bankruptcy.quitToTitle", actions.quitToTitle);
+  const wipeButton = createSettingsButton("ui.bankruptcy.wipeSave", actions.wipeSave);
+  const choices = el("div", { className: "ending-modal__choices game-over-modal__choices" });
+  choices.append(exportButton, quitButton, wipeButton);
+
+  dialog.append(
+    title,
+    copy,
+    createProjectMeta("ui.bankruptcy.overdraft", overdraft),
+    exportArea,
+    choices
+  );
+  nodes.root.replaceChildren(dialog);
+  nodes.signature = signature;
+}
+
+function getGameOverSignature(view: GameOverView): string {
+  return [view.overdraft, ...view.lines].join("|");
+}
+
 function getEndingModalSignature(view: EndingModalView): string {
   return [
     view.eventId,
@@ -4796,358 +2895,9 @@ function getEndingModalSignature(view: EndingModalView): string {
   ].join("|");
 }
 
-function updateResearch(view: ResearchView): void {
-  if (researchSummaryNodes !== undefined) {
-    setText(researchSummaryNodes.rp, view.rp);
-  }
-
-  for (const node of view.nodes) {
-    updateResearchNode(node);
-  }
-}
-
-function updateResearchNode(view: ResearchNodeView): void {
-  const node = researchNodes.get(view.id);
-
-  if (node === undefined) {
-    return;
-  }
-
-  setText(node.effect, view.effect);
-  setText(node.cost, view.cost);
-  setText(node.state, view.stateLabel);
-  node.root.dataset.state = view.state;
-  node.button.disabled = !view.canBuy;
-}
-
-function updateRewrite(view: RewriteView): void {
-  if (rewriteNodes === undefined) {
-    return;
-  }
-
-  setText(rewriteNodes.insight, view.insight);
-  setText(rewriteNodes.gain, view.preview.gain);
-  setText(rewriteNodes.requiredInsight, view.preview.requiredInsight);
-  setText(rewriteNodes.afterInsight, view.preview.afterInsight);
-  setText(rewriteNodes.currentMultiplier, view.preview.currentMultiplier);
-  setText(rewriteNodes.targetMultiplier, view.preview.targetMultiplier);
-  setText(rewriteNodes.speedup, view.preview.speedup);
-  setText(rewriteNodes.startMoney, view.preview.startMoney);
-  setText(rewriteNodes.startEra, view.preview.startEra);
-  setText(rewriteNodes.startGenerators, view.preview.startGenerators);
-  setText(rewriteNodes.lostLoc, view.preview.lostLoc);
-  setText(rewriteNodes.lostMoney, view.preview.lostMoney);
-  setText(rewriteNodes.lostAgents, view.preview.lostAgents);
-  setText(rewriteNodes.lostHardware, view.preview.lostHardware);
-  setText(rewriteNodes.lostProducts, view.preview.lostProducts);
-  setText(rewriteNodes.lostUpgrades, view.preview.lostUpgrades);
-  rewriteNodes.boot.hidden = !view.preview.booting;
-  if (view.preview.booting) {
-    rewriteNodes.bootOverlay.hidden = rewriteNodes.bootOverlay.dataset.skipped === "1";
-  } else {
-    rewriteNodes.bootOverlay.hidden = true;
-    delete rewriteNodes.bootOverlay.dataset.skipped;
-  }
-  rewriteNodes.button.disabled = !view.preview.canRewrite;
-
-  for (const node of view.nodes) {
-    updateInsightNode(node);
-  }
-
-  updateExit(view.exit);
-  updateParadox(view.paradox);
-}
-
-function updateInsightNode(view: InsightNodeView): void {
-  const node = insightNodes.get(view.id);
-
-  if (node === undefined) {
-    return;
-  }
-
-  setText(node.effect, view.effect);
-  setText(node.cost, view.cost);
-  setText(node.state, view.stateLabel);
-  node.root.dataset.state = view.state;
-  node.button.disabled = !view.canBuy;
-}
-
-function updateExit(view: ExitView): void {
-  if (exitNodes !== undefined) {
-    setText(exitNodes.currentEquity, view.preview.currentEquity);
-    setText(exitNodes.gain, view.preview.gain);
-    setText(exitNodes.requiredInsight, view.preview.requiredInsight);
-    setText(exitNodes.totalInsightEarned, view.preview.totalInsightEarned);
-    setText(exitNodes.equityAfter, view.preview.equityAfter);
-    setText(exitNodes.currentMultiplier, view.preview.currentMultiplier);
-    setText(exitNodes.targetMultiplier, view.preview.targetMultiplier);
-    setText(exitNodes.rewardMultiplier, view.preview.rewardMultiplier);
-    exitNodes.button.disabled = !view.preview.canExit;
-  }
-
-  for (const perk of view.perks) {
-    updateEquityPerk(perk);
-  }
-
-  for (const modifier of view.runModifiers) {
-    updateRunModifier(modifier);
-  }
-}
-
-function updateEquityPerk(view: EquityPerkView): void {
-  const node = equityPerks.get(view.id);
-
-  if (node === undefined) {
-    return;
-  }
-
-  setText(node.effect, view.effect);
-  setText(node.cost, view.cost);
-  setText(node.state, view.stateLabel);
-  node.root.dataset.state = view.state;
-  node.button.disabled = !view.canBuy;
-}
-
-function updateRunModifier(view: RunModifierView): void {
-  const node = runModifiers.get(view.id);
-
-  if (node === undefined) {
-    return;
-  }
-
-  setText(node.description, view.description);
-  node.root.classList.toggle("run-modifier-row--active", view.active);
-  node.root.classList.toggle("run-modifier-row--selected", view.selected);
-  node.root.classList.toggle("run-modifier-row--locked", !view.unlocked);
-  node.button.disabled = !view.unlocked || view.selected;
-  node.button.textContent = t(
-    view.selected ? "ui.exit.selectedModifier" : "ui.exit.selectModifier"
-  );
-}
-
-function updateParadox(view: ParadoxView): void {
-  if (paradoxNodes !== undefined) {
-    paradoxNodes.root.hidden = !view.unlocked;
-    setText(paradoxNodes.currentIteration, view.preview.currentIteration);
-    setText(paradoxNodes.nextIteration, view.preview.nextIteration);
-    setText(paradoxNodes.locRate, view.preview.locRate);
-    setText(paradoxNodes.softcapThreshold, view.preview.softcapThreshold);
-    setText(paradoxNodes.hold, view.preview.hold);
-    setText(paradoxNodes.currentParadox, view.preview.currentParadox);
-    setText(paradoxNodes.paradoxGain, view.preview.paradoxGain);
-    setText(paradoxNodes.paradoxAfter, view.preview.paradoxAfter);
-    setText(paradoxNodes.currentMultiplier, view.preview.currentMultiplier);
-    setText(paradoxNodes.targetMultiplier, view.preview.targetMultiplier);
-    setText(paradoxNodes.ruleSlots, view.ruleSlots);
-    setText(paradoxNodes.theme, view.theme);
-    paradoxNodes.button.disabled = !view.preview.canIterate;
-  }
-
-  for (const item of view.items) {
-    updateParadoxItem(item);
-  }
-}
-
-function updateParadoxItem(view: ParadoxItemView): void {
-  const node = paradoxItems.get(view.id);
-
-  if (node === undefined) {
-    return;
-  }
-
-  setText(node.effect, view.effect);
-  setText(node.cost, view.cost);
-  setText(node.state, view.stateLabel);
-  node.root.dataset.state = view.state;
-  node.button.disabled = !view.canBuy;
-}
-
-export function updateProjectSummaryIncome(income: { data: string }, view: ProjectsView): void {
-  if (income.data !== view.incomeRate) {
-    income.data = view.incomeRate;
-  }
-}
-
-export function updateEditableSettingValue(
-  control: { defaultValue: string; value: string },
-  value: string,
-  focused: boolean
-): void {
-  if (focused) {
-    return;
-  }
-
-  if (control.value !== value) {
-    control.value = value;
-  }
-
-  if (control.defaultValue !== value) {
-    control.defaultValue = value;
-  }
-}
-
-function updateProjectSummary(view: ProjectsView): void {
-  if (projectSummaryNodes === undefined) {
-    return;
-  }
-
-  updateProjectSummaryIncome(projectSummaryNodes.income, view);
-}
-
-function updateProjectOffers(views: readonly ProjectOfferView[]): void {
-  for (const view of views) {
-    updateProjectOffer(view);
-  }
-}
-
-function updateProjectOffer(view: ProjectOfferView): void {
-  const row = projectOffers.get(view.id);
-
-  if (row === undefined) {
-    return;
-  }
-
-  setText(row.tag, view.tag);
-  setText(row.cost, view.cost);
-  setText(row.payout, view.payout);
-  setText(row.revenue, view.revenue);
-  setText(row.buildTime, view.buildTime);
-  row.button.disabled = !view.canStart;
-}
-
-function syncActiveBuilds(views: readonly ActiveBuildView[], screen: HTMLElement): void {
-  const list = screen.querySelector<HTMLElement>(".active-build-list");
-
-  if (list === null) {
-    return;
-  }
-
-  for (const [id, nodes] of activeBuilds) {
-    if (!views.some((view) => view.id === id)) {
-      nodes.root.remove();
-      activeBuilds.delete(id);
-    }
-  }
-
-  for (const view of views) {
-    const nodes = activeBuilds.get(view.id);
-    if (nodes === undefined) {
-      list.append(createActiveBuild(view));
-    } else {
-      updateActiveBuild(view);
-    }
-  }
-}
-
-function updateActiveBuild(view: ActiveBuildView): void {
-  const nodes = activeBuilds.get(view.id);
-
-  if (nodes === undefined) {
-    return;
-  }
-
-  setText(nodes.remaining, view.remaining);
-  nodes.progress.style.transform = `scaleX(${view.progress.toFixed(3)})`;
-}
-
-function syncProducts(
-  views: readonly ProductView[],
-  screen: HTMLElement,
-  actions: AppActions
-): void {
-  const list = screen.querySelector<HTMLElement>(".portfolio-list");
-
-  if (list === null) {
-    return;
-  }
-
-  const visibleIds = new Set(views.map((view) => view.id));
-
-  for (const view of views) {
-    const nodes = products.get(view.id);
-    if (nodes === undefined) {
-      list.append(createProduct(view, actions));
-    } else {
-      updateProduct(view);
-    }
-  }
-
-  for (const [id, nodes] of products) {
-    nodes.root.hidden = !visibleIds.has(id);
-  }
-}
-
-function updateProduct(view: ProductView): void {
-  const nodes = products.get(view.id);
-
-  if (nodes === undefined) {
-    return;
-  }
-
-  setText(nodes.revenue, view.revenue);
-  setText(nodes.status, view.status);
-  nodes.fix.disabled = !view.canFix;
-}
-
-function updateRefactor(view: RefactorView): void {
-  if (refactorNodes === undefined) {
-    return;
-  }
-
-  setText(refactorNodes.debt, view.debt);
-  setText(refactorNodes.cost, view.cost);
-  setText(refactorNodes.effect, view.effect);
-  refactorNodes.button.disabled = !view.canStart;
-}
-
-function createColumnLabel(labelKey: string): HTMLElement {
-  const label = el("span", { className: "agent-list__label" });
-  label.append(text(t(labelKey)));
-  return label;
-}
-
-function createValueCell(value: Text): HTMLElement {
-  const cell = el("span", { className: "agent-row__value" });
-  cell.append(value);
-  return cell;
-}
-
-function createCostCell(cost1: Text, cost10: Text): HTMLElement {
-  const cell = el("span", { className: "agent-row__cost" });
-  const separator = el("span", { className: "agent-row__cost-separator" });
-  separator.append(text(t("ui.devfloor.costSeparator")));
-  cell.append(cost1, separator, cost10);
-  return cell;
-}
-
-function createMilestoneCell(label: Text, track: HTMLElement): HTMLElement {
-  const cell = el("span", { className: "agent-row__milestone" });
-  const labelNode = el("span", { className: "agent-row__milestone-label" });
-  labelNode.append(label);
-  cell.append(labelNode, track);
-  return cell;
-}
-
-function createButtonCell(...buttons: HTMLButtonElement[]): HTMLElement {
-  const cell = el("span", { className: "agent-row__buttons" });
-  cell.append(...buttons);
-  return cell;
-}
-
 function createBuyButton(labelKey: string, onClick: () => void): HTMLButtonElement {
   const button = el("button", {
     className: "agent-row__button",
-    title: t(labelKey)
-  });
-  button.type = "button";
-  button.append(text(t(labelKey)));
-  button.addEventListener("click", onClick);
-  return button;
-}
-
-function createProjectButton(labelKey: string, onClick: () => void): HTMLButtonElement {
-  const button = el("button", {
-    className: "project-card__button",
     title: t(labelKey)
   });
   button.type = "button";
@@ -5175,78 +2925,4 @@ function createProjectMeta(labelKey: string, value: Text): HTMLElement {
   output.append(value);
   row.append(label, output);
   return row;
-}
-
-function createRewriteMeta(labelKey: string, value: Text): HTMLElement {
-  const row = el("div", { className: "rewrite-meta" });
-  const label = el("span", { className: "project-meta__label" });
-  label.append(text(t(labelKey)));
-  const output = el("strong", { className: "project-meta__value" });
-  output.append(value);
-  row.append(label, output);
-  return row;
-}
-
-function createSettingsControl(labelKey: string, control: HTMLElement): HTMLElement {
-  const row = el("label", { className: "settings-control" });
-  const label = el("span", { className: "settings-control__label" });
-  label.append(text(t(labelKey)));
-  row.append(label, control);
-  return row;
-}
-
-function createOption(value: SettingsNotation, labelKey: string): HTMLOptionElement {
-  const option = document.createElement("option");
-  option.value = value;
-  option.append(text(t(labelKey)));
-  return option;
-}
-
-function createSummaryItem(labelKey: string, value: string): HTMLElement {
-  const item = el("div", { className: "project-summary__item" });
-  const label = el("span", { className: "project-meta__label" });
-  label.append(text(t(labelKey)));
-  const output = el("strong", { className: "project-meta__value" });
-  const valueNode = text(value);
-  output.append(valueNode);
-  item.append(label, output);
-  projectSummaryNodes = { income: valueNode };
-  return item;
-}
-
-function createSummaryBadge(labelKey: string, value: string): HTMLElement {
-  const item = el("div", { className: "research-summary__item" });
-  const label = el("span", { className: "project-meta__label" });
-  label.append(text(t(labelKey)));
-  const output = el("strong", { className: "project-meta__value" });
-  const valueNode = text(value);
-  output.append(valueNode);
-  item.append(label, output);
-  researchSummaryNodes = { rp: valueNode };
-  return item;
-}
-
-function createResearchConnections(): SVGSVGElement {
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", "research-tree__connections");
-  svg.setAttribute("viewBox", "0 0 300 1000");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("focusable", "false");
-
-  for (const x of [50, 150, 250]) {
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", String(x));
-    line.setAttribute("x2", String(x));
-    line.setAttribute("y1", "68");
-    line.setAttribute("y2", "948");
-    line.setAttribute("class", "research-tree__line");
-    svg.append(line);
-  }
-
-  return svg;
-}
-
-function updateButton(button: HTMLButtonElement, enabled: boolean, title: string): void {
-  button.disabled = !enabled;
-  button.title = title;
 }

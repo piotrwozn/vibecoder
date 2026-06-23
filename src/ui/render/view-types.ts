@@ -1,3 +1,4 @@
+import type { IncidentResponseId, RunStyleId, SprintPriority } from "../../core/state";
 import type { AppId, SceneId, TutorialStep, WindowFrame, WindowState } from "../../core/ui-state";
 import type { WindowBounds } from "../wm/window-manager";
 import type { ResearchView, RewriteView } from "./prestige-view-types";
@@ -66,16 +67,20 @@ export interface ScreenLink {
 
 export type CommsChannel = "chat" | "mail" | "feed";
 export type SettingsNotation = "sci" | "suffix";
+export type LazyTooltip = string | (() => string);
 
 export interface ResourceView {
+  readonly bank: string;
+  readonly bankTooltip: LazyTooltip;
+  readonly bankVisible: boolean;
   readonly compute: string;
   readonly hype: string;
   readonly loc: string;
   readonly locRate: string;
-  readonly locRateTooltip: string;
+  readonly locRateTooltip: LazyTooltip;
   readonly money: string;
   readonly moneyRate: string;
-  readonly moneyRateTooltip: string;
+  readonly moneyRateTooltip: LazyTooltip;
   readonly rp: string;
 }
 
@@ -158,6 +163,7 @@ export interface ProjectOfferView {
   readonly canStart: boolean;
   readonly cost: string;
   readonly id: string;
+  readonly level: string;
   readonly name: string;
   readonly payout: string;
   readonly revenue: string;
@@ -174,6 +180,7 @@ export interface ActiveBuildView {
 export interface ProductView {
   readonly canFix: boolean;
   readonly id: string;
+  readonly level: string;
   readonly name: string;
   readonly revenue: string;
   readonly status: string;
@@ -190,9 +197,61 @@ export interface RefactorView {
 export interface ProjectsView {
   readonly activeBuilds: readonly ActiveBuildView[];
   readonly incomeRate: string;
+  readonly nextUnlock: string;
   readonly offers: readonly ProjectOfferView[];
   readonly portfolio: readonly ProductView[];
   readonly refactor: RefactorView;
+}
+
+export interface RoadmapPriorityView {
+  readonly active: boolean;
+  readonly description: string;
+  readonly disabled: boolean;
+  readonly id: SprintPriority;
+  readonly label: string;
+}
+
+export interface RoadmapIncidentResponseView {
+  readonly cost: string;
+  readonly description: string;
+  readonly disabled: boolean;
+  readonly id: IncidentResponseId;
+  readonly label: string;
+}
+
+export interface RoadmapIncidentView {
+  readonly description: string;
+  readonly id: string;
+  readonly label: string;
+  readonly responses: readonly RoadmapIncidentResponseView[];
+  readonly severity: string;
+  readonly timeRemaining: string;
+}
+
+export interface RoadmapRunStyleView {
+  readonly cost: string;
+  readonly description: string;
+  readonly id: RunStyleId;
+  readonly label: string;
+  readonly selected: boolean;
+  readonly unlocked: boolean;
+}
+
+export interface RoadmapActivityView {
+  readonly detail: string;
+  readonly id: string;
+  readonly label: string;
+  readonly tone: "alert" | "info" | "success";
+}
+
+export interface RoadmapView {
+  readonly activeSprint: string;
+  readonly activity: readonly RoadmapActivityView[];
+  readonly cooldown: string;
+  readonly incidents: readonly RoadmapIncidentView[];
+  readonly priorities: readonly RoadmapPriorityView[];
+  readonly runStyles: readonly RoadmapRunStyleView[];
+  readonly sprintRemaining: string;
 }
 
 export interface AuroraNodeView {
@@ -206,6 +265,7 @@ export interface AuroraView {
   readonly canDedicate: boolean;
   readonly canFund: boolean;
   readonly canHost: boolean;
+  readonly canReleaseHost: boolean;
   readonly completed: boolean;
   readonly costLoc: string;
   readonly costMoney: string;
@@ -276,6 +336,15 @@ export interface SettingsView {
   readonly sound: boolean;
   readonly vibexLocalAi: boolean;
   readonly volume: string;
+  readonly save: SaveDiagnosticsView;
+}
+
+export interface SaveDiagnosticsView {
+  readonly backupCount: string;
+  readonly edition: string;
+  readonly lastAutosave: string;
+  readonly status: string;
+  readonly version: string;
 }
 
 export interface OfflineView {
@@ -329,6 +398,12 @@ export interface EndingModalView {
   readonly visible: boolean;
 }
 
+export interface GameOverView {
+  readonly lines: readonly string[];
+  readonly overdraft: string;
+  readonly visible: boolean;
+}
+
 export interface ShellUiView {
   readonly bootSeen: boolean;
   readonly scene: SceneId;
@@ -347,11 +422,13 @@ export interface DevFloorView {
   readonly flowMeter: string;
   readonly flowProgress: number;
   readonly fullGame: FullGameView;
+  readonly gameOver: GameOverView;
   readonly generators: readonly GeneratorRowView[];
   readonly hardware: readonly HardwareRowView[];
   readonly model: ModelView;
   readonly offline: OfflineView;
   readonly projects: ProjectsView;
+  readonly roadmap: RoadmapView;
   readonly research: ResearchView;
   readonly rewrite: RewriteView;
   readonly resources: ResourceView;
@@ -404,10 +481,14 @@ export interface AppActions {
   resetWindowLayout(): void;
   replayTutorial(): void;
   resizeApp(appId: AppId, frame: WindowFrame, bounds: WindowBounds): void;
+  resolveIncident(id: string, response: IncidentResponseId): void;
+  selectRunStyle(id: RunStyleId): void;
+  selectSprintPriority(id: SprintPriority): void;
   selectRunModifier(id: string | undefined): void;
   startDesktop(): void;
   fundAuroraPhase(): void;
   rentAuroraHost(): void;
+  releaseAuroraHost(): void;
   startProject(id: string): void;
   startRefactor(): void;
   toggleAutomation(id: string, enabled: boolean): void;

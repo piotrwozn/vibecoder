@@ -38,6 +38,7 @@ export interface LoopControls {
 
 export const TICK_MS = 1000 / C.TICK_HZ;
 export const OFFLINE_CATCH_UP_MS = 2000;
+export const OFFLINE_THRESHOLD_MS = 30_000;
 
 export function createLoopStepper(
   tick: TickHandler,
@@ -53,7 +54,18 @@ export function createLoopStepper(
     },
 
     step(elapsedMs: number): LoopStepResult {
-      if (elapsedMs > OFFLINE_CATCH_UP_MS && catchUp !== undefined) {
+      if (!Number.isFinite(elapsedMs) || elapsedMs <= 0) {
+        const alpha = accumulatorMs / TICK_MS;
+        measure(metrics?.frame, metrics?.now, () => render(alpha));
+
+        return {
+          accumulatorMs,
+          alpha,
+          ticks: 0
+        };
+      }
+
+      if (elapsedMs > OFFLINE_THRESHOLD_MS && catchUp !== undefined) {
         catchUp(elapsedMs);
         accumulatorMs = 0;
         measure(metrics?.frame, metrics?.now, () => render(0));
@@ -121,9 +133,14 @@ export function startLoop(options: StartLoopOptions): LoopControls {
       return;
     }
 
-    stepper.step(frameMs - lastMs);
-    lastMs = frameMs;
-    requestFrame(frame);
+    try {
+      stepper.step(frameMs - lastMs);
+    } catch (error) {
+      console.error("game loop frame failed", error);
+    } finally {
+      lastMs = frameMs;
+      requestFrame(frame);
+    }
   };
 
   requestFrame(frame);

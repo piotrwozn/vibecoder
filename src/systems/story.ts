@@ -7,11 +7,15 @@ import { ACT2_EVENTS } from "../data/story/act2";
 import { ACT3_EVENTS } from "../data/story/act3";
 import { ACT4_EVENTS } from "../data/story/act4";
 import { ACT5_EVENTS } from "../data/story/act5";
+import { BANK_EVENTS } from "../data/story/bank";
+import { DECISION_EVENTS } from "../data/story/decisions";
+import { ENDGAME_EVENTS } from "../data/story/endgame";
 import { ECHO_EVENTS } from "../data/story/echoes";
 import type { StoryChannel, StoryEffect, StoryEvent } from "../data/story/types";
 import { isDemoLocked } from "./demo";
 import { addHype } from "./hype";
 import type { DerivedCache } from "./production";
+import { addNonNegativeBig, addNonNegativeNumber } from "./resources";
 import { checkCondition } from "./unlocks";
 
 export type StoryReadChannel = StoryChannel | "archive";
@@ -27,6 +31,11 @@ const STORY_CHECK_INTERVAL_S = 1;
 const READ_FLAG_PREFIX = "story.read.";
 const SNOOZE_STAT_PREFIX = "story.snoozeUntil.";
 const ACT_ENTERED_AT_PREFIX = "story.actEnteredAt.";
+const ENDING_ACHIEVEMENT_FLAGS = [
+  "achievement.ending_merge",
+  "achievement.ending_unplug",
+  "achievement.ending_fork"
+] as const;
 
 export const STORY_EVENTS: readonly StoryEvent[] = [
   ...ACT0_EVENTS,
@@ -35,6 +44,9 @@ export const STORY_EVENTS: readonly StoryEvent[] = [
   ...ACT3_EVENTS,
   ...ACT4_EVENTS,
   ...ACT5_EVENTS,
+  ...BANK_EVENTS,
+  ...DECISION_EVENTS,
+  ...ENDGAME_EVENTS,
   ...ECHO_EVENTS
 ] as const;
 
@@ -97,14 +109,14 @@ export function markStoryInboxRead(
 ): boolean {
   let changed = false;
 
-  state.story.inbox.forEach((entry, index) => {
+  state.story.inbox.forEach((entry) => {
     const event = getStoryEvent(entry.eventId);
 
     if (event === undefined || !matchesReadChannel(event.channel, channel)) {
       return;
     }
 
-    const flag = getReadFlag(entry, index);
+    const flag = getReadFlag(entry);
     if (!state.story.flags.has(flag)) {
       state.story.flags.add(flag);
       changed = true;
@@ -120,13 +132,13 @@ export function getUnreadStoryCount(
 ): number {
   let unread = 0;
 
-  state.story.inbox.forEach((entry, index) => {
+  state.story.inbox.forEach((entry) => {
     const event = getStoryEvent(entry.eventId);
 
     if (
       event !== undefined &&
       matchesReadChannel(event.channel, channel) &&
-      !state.story.flags.has(getReadFlag(entry, index))
+      !state.story.flags.has(getReadFlag(entry))
     ) {
       unread += 1;
     }
@@ -140,7 +152,8 @@ export function isStoryInboxEntryUnread(
   entry: InboxEntry,
   index: number
 ): boolean {
-  return !state.story.flags.has(getReadFlag(entry, index));
+  void index;
+  return !state.story.flags.has(getReadFlag(entry));
 }
 
 export function getStoryEvent(id: string): StoryEvent | undefined {
@@ -175,6 +188,13 @@ function isStoryEventReady(state: GameState, event: StoryEvent): boolean {
     return false;
   }
 
+  if (
+    event.id === "a5_12_final_choice" &&
+    ENDING_ACHIEVEMENT_FLAGS.every((flag) => state.story.flags.has(flag))
+  ) {
+    return false;
+  }
+
   if (isChoicePending(state, event)) {
     return false;
   }
@@ -206,7 +226,7 @@ function enqueueStoryEvent(
     delete state.stats[getSnoozeStatKey(event.id)];
   }
 
-  state.story.inbox.push({ eventId: event.id });
+  upsertInboxEntry(state, event.id);
   state.story.seen.add(event.id);
   applyStoryEffects(state, event, event.effects ?? [], cache, bus);
   bus?.emit("story:message", { eventId: event.id });
@@ -244,8 +264,13 @@ function applyStoryEffect(
       applyResourceGrant(state, effect.resource, effect.amount, bus);
       break;
     case "grantRp":
-      state.res.rp += effect.amount;
-      bus?.emit("res:changed", "rp");
+      {
+        const nextRp = addNonNegativeNumber(state.res.rp, effect.amount);
+        if (nextRp !== state.res.rp) {
+          state.res.rp = nextRp;
+          bus?.emit("res:changed", "rp");
+        }
+      }
       break;
     case "hypeAdd":
       addHype(state, effect.amount, cache, bus);
@@ -285,9 +310,10 @@ function applyResourceGrant(
   switch (resource) {
     case "money": {
       const grant = Big.from(amount);
-      Big.addIn(state.res.money, grant);
-      Big.addIn(state.lifetime.money, grant);
-      bus?.emit("res:changed", "money");
+      if (addNonNegativeBig(state.res.money, grant)) {
+        addNonNegativeBig(state.lifetime.money, grant);
+        bus?.emit("res:changed", "money");
+      }
       break;
     }
   }
@@ -306,8 +332,36 @@ export function getActEnteredAtStatKey(act: number): string {
   return `${ACT_ENTERED_AT_PREFIX}${act}`;
 }
 
-function getReadFlag(entry: InboxEntry, index: number): string {
-  return `${READ_FLAG_PREFIX}${index}.${entry.eventId}`;
+function getReadFlag(entry: InboxEntry): string {
+  return `${READ_FLAG_PREFIX}${entry.id}`;
+}
+
+function upsertInboxEntry(state: GameState, eventId: string): void {
+  const existingIndex = state.story.inbox.findIndex((entry) => entry.eventId === eventId);
+
+  if (existingIndex >= 0) {
+    const [entry] = state.story.inbox.splice(existingIndex, 1);
+    if (entry !== undefined) {
+      state.story.flags.delete(getReadFlag(entry));
+      state.story.inbox.push(entry);
+    }
+    return;
+  }
+
+  state.story.inbox.push({ id: createInboxEntryId(state, eventId), eventId });
+}
+
+function createInboxEntryId(state: GameState, eventId: string): string {
+  const usedIds = new Set(state.story.inbox.map((entry) => entry.id));
+  let ordinal = state.story.inbox.length + 1;
+  let id = `${eventId}.${ordinal}`;
+
+  while (usedIds.has(id)) {
+    ordinal += 1;
+    id = `${eventId}.${ordinal}`;
+  }
+
+  return id;
 }
 
 function matchesReadChannel(channel: StoryChannel, readChannel: StoryReadChannel): boolean {

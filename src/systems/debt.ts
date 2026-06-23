@@ -21,11 +21,6 @@ export interface FixBugResult {
   readonly reason?: "missing" | "not-bugged";
 }
 
-export interface IncidentTickResult {
-  readonly active: boolean;
-  readonly triggered: boolean;
-}
-
 export function tickDebt(
   state: GameState,
   cache: DerivedCache,
@@ -72,13 +67,12 @@ export function fixBug(state: GameState, productId: string, bus?: EventBus): Fix
   return { ok: true, productId };
 }
 
-export function tickIncidents(state: GameState): IncidentTickResult {
-  return { active: hasPendingIncident(state), triggered: false };
-}
-
 export function hasPendingIncident(state: GameState): boolean {
-  return INCIDENT_EVENT_IDS.some(
-    (eventId) => state.story.seen.has(eventId) && state.story.choices[eventId] === undefined
+  return (
+    state.incidents.active.length > 0 ||
+    INCIDENT_EVENT_IDS.some(
+      (eventId) => state.story.seen.has(eventId) && state.story.choices[eventId] === undefined
+    )
   );
 }
 

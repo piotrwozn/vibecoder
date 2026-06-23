@@ -287,5 +287,3 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     previousId: "g_omega_fragment"
   }
 ] as const;
-
-export const E1_GENERATORS = GENERATORS.filter((generator) => generator.era === 1);

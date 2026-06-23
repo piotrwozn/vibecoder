@@ -115,10 +115,6 @@ export function getVibexCodeFrame(state: VibexCodeState, committed = false): Vib
   };
 }
 
-export function getVibexFileIds(): readonly string[] {
-  return VIBEX_CODE_FILES.map((file) => file.id);
-}
-
 export function getVibexFileLabelKey(state: VibexCodeState, fileIndex: number): string {
   const batch = Math.floor(state.sequence / VIBEX_SENDS_PER_COMMIT);
   const labelIndex = (batch * VIBEX_CODE_FILES.length + fileIndex) % VIBEX_FILE_LABEL_KEYS.length;

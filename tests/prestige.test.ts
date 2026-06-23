@@ -5,18 +5,29 @@ import { deserializeGameState, serializeGameState } from "../src/core/save";
 import { createDefaultGameState } from "../src/core/state";
 import { PRESTIGE } from "../src/data/constants";
 import { GENERATORS } from "../src/data/generators";
+import { BUILD_MOMENTUM_DECAY_ACCUM_STAT, BUILD_MOMENTUM_STAT } from "../src/data/momentum";
 import { getBugSpawnedAtStatKey } from "../src/systems/debt";
 import {
   buyInsightNode,
   calculateAvailableInsightGain,
+  calculateEquityMultiplier,
+  calculateInsightMultiplier,
+  calculateParadoxMultiplier,
   calculateRewriteRequirement,
   calculateTotalInsightPotential,
+  createExitPreview,
+  createIterationPreview,
   createRewritePreview,
   getInsightTree,
   getInsightNodeState,
   isRewriteBooting,
   performRewrite
 } from "../src/systems/prestige";
+import {
+  calculateEquityMultiplierBig,
+  calculateInsightMultiplierBig,
+  calculateParadoxMultiplierBig
+} from "../src/systems/prestige-math";
 import {
   createDerivedCache,
   getGeneratorCost,
@@ -67,6 +78,7 @@ describe("M8 prestige REWRITE", () => {
     state.projects.portfolio.push({
       id: "p_llama_todo.1",
       bugged: true,
+      level: 1,
       projectId: "p_llama_todo",
       revenue: Big.fromNumber(0.1),
       shippedAtS: 10
@@ -122,6 +134,49 @@ describe("M8 prestige REWRITE", () => {
     expect(isRewriteBooting(state)).toBe(true);
   });
 
+  it("resets stale run state during REWRITE while preserving the intentional rewrite momentum gain", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.lifetime.locSinceExit = getInsightGainThreshold(PRESTIGE.REWRITE_MIN_FIRST);
+    state.bank.defaulted = true;
+    state.bank.overdraft = Big.fromNumber(9_000);
+    state.bank.warningsIssued = 2;
+    state.roadmap.active = "growth";
+    state.roadmap.endsAtS = 999;
+    state.incidents.active.push({
+      id: "incident.test",
+      severity: 1,
+      startedAtS: 1,
+      type: "outage",
+      untilS: 60
+    });
+    state.stats[BUILD_MOMENTUM_STAT] = 50;
+    state.stats[BUILD_MOMENTUM_DECAY_ACCUM_STAT] = 8;
+    state.stats["prestige.iterationHoldS"] = 600;
+
+    expect(performRewrite(state, cache).ok).toBe(true);
+
+    expect(state.bank.defaulted).toBe(false);
+    expect(state.bank.overdraft.eq0()).toBe(true);
+    expect(state.bank.warningsIssued).toBe(0);
+    expect(state.roadmap.active).toBeUndefined();
+    expect(state.roadmap.endsAtS).toBe(0);
+    expect(state.incidents.active).toHaveLength(0);
+    expect(state.stats[BUILD_MOMENTUM_STAT]).toBe(1);
+    expect(state.stats[BUILD_MOMENTUM_DECAY_ACCUM_STAT]).toBeUndefined();
+    expect(state.stats["prestige.iterationHoldS"]).toBeUndefined();
+  });
+
+  it("applies war chest only to flat REWRITE start money, not current-money ratios", () => {
+    const state = createDefaultGameState();
+    state.res.money = Big.fromNumber(1_000_000);
+    state.owned.insightNodes.add("i_c1");
+    state.owned.insightNodes.add("i_c4");
+    state.owned.equityPerks.add("q_war_chest");
+
+    expect(createRewritePreview(state).startMoney.toNumber()).toBeCloseTo(60_000);
+  });
+
   it("buys Insight nodes in order and applies their DerivedCache effects", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
@@ -149,6 +204,35 @@ describe("M8 prestige REWRITE", () => {
     expect(cache.generatorEntries.g_autocomplete?.cost1.toNumber()).toBeCloseTo(
       getGeneratorCost(autocomplete, 10, 1, 0.85).toNumber()
     );
+  });
+
+  it("uses the shared Big-space prestige multiplier math for deep previews", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.res.insight = Big.from("1e500");
+    state.res.equity = 1e100;
+    state.res.paradox = 1e100;
+    state.owned.paradoxItems.add("x_paradox_engine");
+
+    recomputeDerivedCache(state, cache);
+
+    const insight = calculateInsightMultiplier(state.res.insight);
+    const equity = calculateEquityMultiplier(state);
+    const paradox = calculateParadoxMultiplier(state);
+    const combined = Big.mul(
+      Big.mul(
+        calculateInsightMultiplierBig(state.res.insight),
+        calculateEquityMultiplierBig(state)
+      ),
+      calculateParadoxMultiplierBig(state)
+    );
+
+    expect(cache.multipliers.prestigeBig.toString()).toBe(combined.toString());
+    expect(cache.multipliers.prestige).toBe(Number.MAX_VALUE);
+    expect(Number.isFinite(createRewritePreview(state).currentMultiplier)).toBe(true);
+    expect(createRewritePreview(state).currentMultiplier).toBe(insight);
+    expect(createExitPreview(state).currentMultiplier).toBe(equity);
+    expect(createIterationPreview(state, cache).currentMultiplier).toBe(paradox);
   });
 
   it("blocks REWRITE below the first and repeat thresholds", () => {

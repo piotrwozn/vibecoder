@@ -5,6 +5,7 @@ import { UPGRADES, getUpgrade, type UpgradeDefinition } from "../data/upgrades";
 import { isDemoLocked } from "./demo";
 import { calculateIterationCostMultiplier } from "./iteration";
 import { recomputeDerivedCache, type DerivedCache } from "./production";
+import { canSpendBig, spendBig } from "./resources";
 import { checkCondition } from "./unlocks";
 
 export interface BuyUpgradeResult {
@@ -46,11 +47,11 @@ export function buyUpgrade(
     return { cost, id, ok: false, reason: "locked" };
   }
 
-  if (state.res.money.lt(cost)) {
+  if (!canSpendBig(state.res.money, cost)) {
     return { cost, id, ok: false, reason: "unaffordable" };
   }
 
-  Big.subIn(state.res.money, cost);
+  spendBig(state.res.money, cost);
   state.owned.upgrades.add(id);
   recomputeDerivedCache(state, cache);
   bus?.emit("res:changed", "money");
@@ -70,7 +71,9 @@ export function getUpgradeState(state: GameState, upgrade: UpgradeDefinition): U
     return "locked";
   }
 
-  return state.res.money.gte(getUpgradeCost(state, upgrade)) ? "available" : "unaffordable";
+  return canSpendBig(state.res.money, getUpgradeCost(state, upgrade))
+    ? "available"
+    : "unaffordable";
 }
 
 export function getVisibleUpgrades(state: GameState): readonly UpgradeDefinition[] {
@@ -79,6 +82,6 @@ export function getVisibleUpgrades(state: GameState): readonly UpgradeDefinition
   );
 }
 
-export function isUpgradeUnlocked(state: GameState, upgrade: UpgradeDefinition): boolean {
+function isUpgradeUnlocked(state: GameState, upgrade: UpgradeDefinition): boolean {
   return !isDemoLocked(state, upgrade) && checkCondition(state, upgrade.unlock);
 }

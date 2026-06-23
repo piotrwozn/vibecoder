@@ -6,6 +6,7 @@ type I18nParams = Record<string, string | number>;
 type LocaleLoader = () => Promise<{ default: LocaleMessages }>;
 
 const fallbackMessages: LocaleMessages = en;
+const TEMPLATE_PARAM_RE = /\{([a-zA-Z0-9_]+)\}/g;
 
 let messages: LocaleMessages = fallbackMessages;
 
@@ -36,7 +37,11 @@ export function t(key: string, params: I18nParams = {}): string {
     return key;
   }
 
-  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match: string, paramName: string) => {
+  if (!template.includes("{")) {
+    return template;
+  }
+
+  return template.replace(TEMPLATE_PARAM_RE, (match: string, paramName: string) => {
     const value = params[paramName];
     return value === undefined ? match : String(value);
   });
@@ -44,18 +49,4 @@ export function t(key: string, params: I18nParams = {}): string {
 
 export function hasMessage(key: string): boolean {
   return messages[key] !== undefined || fallbackMessages[key] !== undefined;
-}
-
-export function plural(n: number, forms: readonly [string, string, string]): string {
-  const abs = Math.abs(n);
-
-  if (abs === 1) {
-    return forms[0];
-  }
-
-  if (abs >= 2 && abs <= 4) {
-    return forms[1];
-  }
-
-  return forms[2];
 }

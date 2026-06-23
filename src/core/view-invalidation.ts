@@ -12,6 +12,11 @@ export interface ViewInvalidation {
   markVisibleChanged(changed: boolean): void;
 }
 
+export interface ViewInvalidationHandlers {
+  recomputeCache(): void;
+  updateView(): void;
+}
+
 export function createViewInvalidation(initialViewDirty = true): ViewInvalidation {
   let cacheDirty = false;
   let viewDirty = initialViewDirty;
@@ -42,6 +47,22 @@ export function createViewInvalidation(initialViewDirty = true): ViewInvalidatio
       }
     }
   };
+}
+
+export function flushViewInvalidation(
+  invalidation: ViewInvalidation,
+  handlers: ViewInvalidationHandlers
+): ViewInvalidationFlags {
+  const dirty = invalidation.consume();
+  if (dirty.cache) {
+    handlers.recomputeCache();
+  }
+
+  if (dirty.view) {
+    handlers.updateView();
+  }
+
+  return dirty;
 }
 
 export function markResourceEvent(

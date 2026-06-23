@@ -135,7 +135,14 @@ export const ACT4_EVENTS: readonly StoryEvent[] = [
     id: "a4_14_omega_training",
     act: 4,
     demoLocked: true,
-    trigger: { all: [{ seen: "a4_13_omen_forecast" }, { era: 8 }] },
+    trigger: {
+      all: [
+        { seen: "a4_13_omen_forecast" },
+        { era: 8 },
+        { rewritesGte: 8 },
+        { insightNodesGte: 24 }
+      ]
+    },
     channel: "system",
     speaker: "omen",
     textKey: "story.a4_14_omega_training",

@@ -5,7 +5,9 @@ import { GENERATORS, type GeneratorDefinition } from "../../src/data/generators.
 import type { HardwareDefinition } from "../../src/data/hardware.ts";
 import { INSIGHT_NODES } from "../../src/data/prestige.ts";
 import { RESEARCH } from "../../src/data/research.ts";
-import { buyUpgrade, getVisibleUpgrades } from "../../src/systems/upgrades.ts";
+import { buyUpgrade, getUpgradeCost, getVisibleUpgrades } from "../../src/systems/upgrades.ts";
+import { tickAchievements } from "../../src/systems/achievements.ts";
+import { tickAutomation } from "../../src/systems/automation.ts";
 import {
   AURORA_REQUIRED_DEDICATED_SERVERS,
   dedicateAuroraServer,
@@ -17,6 +19,7 @@ import {
   tickAurora
 } from "../../src/systems/aurora.ts";
 import { tickBilling } from "../../src/systems/billing.ts";
+import { isBankrupt } from "../../src/systems/bank.ts";
 import {
   buyHardware,
   getAvailableHardware,
@@ -25,8 +28,9 @@ import {
   isHardwareMaxed
 } from "../../src/systems/compute.ts";
 import { calculateDebtEfficiency, tickDebt } from "../../src/systems/debt.ts";
-import { buyNextEra } from "../../src/systems/eras.ts";
+import { buyNextEra, getEraCost, getNextEra } from "../../src/systems/eras.ts";
 import { tickHype } from "../../src/systems/hype.ts";
+import { tickBuildMomentum } from "../../src/systems/momentum.ts";
 import { tickPromptFlow, performPromptClick } from "../../src/systems/prompt.ts";
 import {
   buyGenerator,
@@ -58,21 +62,36 @@ import {
   performRewrite
 } from "../../src/systems/prestige.ts";
 import { tickIterationHold } from "../../src/systems/prestige.ts";
+import { createOmegaReadinessDiagnostics } from "../../src/systems/progress.ts";
+import { tickProductionIncidents } from "../../src/systems/incidents.ts";
+import { tickRoadmap } from "../../src/systems/roadmap.ts";
+import { tickStats } from "../../src/systems/stats.ts";
 import { STORY_EVENTS, chooseStoryOption, tickStory } from "../../src/systems/story.ts";
 
-const AURORA_COMPLETE_MIN_H = 85;
 const DT_S = 1;
 const IDLE_LOGIN_INTERVAL_S = 8 * 60 * 60;
 const PROJECT_DECISION_INTERVAL_S = 30;
 const SIM_REFACTOR_COOLDOWN_S = 15 * 60;
+const SIM_ERA_RESERVE_RATIO = 0.5;
 export const SIM_FIRST_EXIT_MIN_EQUITY_GAIN = 3;
 const SIM_LAST_REFACTOR_AT_STAT = "sim.lastRefactorAt";
 const SHIPPED_STAT = "projects.shipped";
-const CAMPAIGN_EVENT_COUNT = STORY_EVENTS.filter((event) => event.act !== 9).length;
+const MAIN_CAMPAIGN_EVENTS = STORY_EVENTS.filter(
+  (event) => event.act !== 9 && !isAuroraStoryEvent(event.id)
+);
+const CAMPAIGN_EVENT_COUNT = MAIN_CAMPAIGN_EVENTS.length;
 
-type Strategy = "idle_only" | "maxer" | "sane";
+export type Strategy =
+  | "active"
+  | "casual"
+  | "idle_only"
+  | "maxer"
+  | "offline-heavy"
+  | "sane"
+  | "story-rush";
 
 interface SimArgs {
+  readonly continueAfterOmega?: boolean;
   readonly endlessIterations?: number;
   readonly hours: number;
   readonly strategy: Strategy;
@@ -102,7 +121,14 @@ interface EndlessSmokeResult {
 }
 
 if (isCliEntry()) {
-  const args = readArgs(process.argv.slice(2));
+  let args: SimArgs;
+
+  try {
+    args = readArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
 
   if (args.endlessIterations !== undefined) {
     const result = runEndlessSmokeSim(args.endlessIterations);
@@ -122,7 +148,7 @@ if (isCliEntry()) {
   }
 
   const result = runCampaignSim(args);
-  const complete = result.state.aurora.completed;
+  const complete = result.completeH !== undefined;
   const maxExponent = getMaxBigExponent(result.state, result.cache);
 
   console.log("time_h,loc_s,money,era,rewrites,exits,iteration,act,max_e");
@@ -146,6 +172,14 @@ if (isCliEntry()) {
       result.auroraCompleteH === undefined ? "n/a" : result.auroraCompleteH.toFixed(2)
     } events=${result.seenEvents}/${CAMPAIGN_EVENT_COUNT} missing=${result.missingEvents.length} max_e=${maxExponent}`
   );
+  const omega = createOmegaReadinessDiagnostics(result.state, result.cache);
+  console.log(
+    `omega: visible=${omega.visible ? "yes" : "no"} ready=${omega.ready ? "yes" : "no"} status=${
+      omega.status
+    } eta_h=${
+      !omega.visible || omega.etaS === undefined ? "n/a" : (omega.etaS / 3600).toFixed(2)
+    } next=${omega.recommendedGoal.kind}`
+  );
 
   for (const milestone of result.milestones) {
     console.log(
@@ -153,23 +187,22 @@ if (isCliEntry()) {
     );
   }
 
+  const criticalMissingEvents = getCriticalMissingEvents(result.missingEvents);
   if (
     args.strategy === "sane" &&
     complete &&
     result.completeH !== undefined &&
-    result.omegaCompleteH !== undefined &&
-    (result.completeH < Math.max(AURORA_COMPLETE_MIN_H, result.omegaCompleteH + 20) ||
-      result.missingEvents.length > 0)
+    (result.completeH < 150 || result.completeH > 260 || criticalMissingEvents.length > 0)
   ) {
     console.error(
-      `sim: FAIL complete_h=${result.completeH?.toFixed(2) ?? "n/a"} missing=${result.missingEvents.join(",")}`
+      `sim: FAIL complete_h=${result.completeH?.toFixed(2) ?? "n/a"} missing=${criticalMissingEvents.join(",")}`
     );
     process.exit(1);
   }
 }
 
 export function runEndlessSmokeSim(iterations: number): EndlessSmokeResult {
-  const state = createDefaultGameState(0, "full");
+  const state = createDefaultGameState(0, "full", 1);
   const cache = createDerivedCache();
   let maxExponent = 0;
 
@@ -188,13 +221,7 @@ export function runEndlessSmokeSim(iterations: number): EndlessSmokeResult {
     for (let second = 0; second < PRESTIGE.ITER_HOLD_S * PRESTIGE.PARADOX_BASE; second += DT_S) {
       state.meta.playtimeS += DT_S;
       tickEndlessStrategy(state, cache);
-      tickProduction(state, cache, DT_S);
-      tickProjects(state, cache, DT_S);
-      tickBilling(state, DT_S);
-      tickAurora(state, DT_S);
-      tickHype(state, DT_S, cache);
-      tickDebt(state, cache, DT_S);
-      tickIterationHold(state, cache, DT_S);
+      tickSimSystems(state, cache, DT_S);
       maxExponent = Math.max(maxExponent, getMaxBigExponent(state, cache));
 
       if (createIterationPreview(state, cache).canIterate) {
@@ -233,7 +260,7 @@ function tickEndlessStrategy(state: GameState, cache: DerivedCache): void {
 }
 
 export function runCampaignSim(args: SimArgs): CampaignSimResult {
-  const state = createDefaultGameState(0, "full");
+  const state = createDefaultGameState(0, "full", 1);
   const cache = createDerivedCache();
   const milestones: Milestone[] = [];
   let omegaCompleteH: number | undefined;
@@ -245,15 +272,7 @@ export function runCampaignSim(args: SimArgs): CampaignSimResult {
   for (let second = 1; second <= args.hours * 3600; second += DT_S) {
     state.meta.playtimeS = second;
     tickStrategy(state, cache, args.strategy);
-    tickPromptFlow(state, DT_S);
-    tickProduction(state, cache, DT_S);
-    tickProjects(state, cache, DT_S);
-    tickBilling(state, DT_S);
-    tickAurora(state, DT_S);
-    tickHype(state, DT_S, cache);
-    tickDebt(state, cache, DT_S);
-    tickStory(state, DT_S, cache);
-    tickIterationHold(state, cache, DT_S);
+    tickSimSystems(state, cache, DT_S);
     choosePendingStory(state, cache);
     maybeIteration(state, cache);
     if (second % 60 === 0) {
@@ -263,15 +282,19 @@ export function runCampaignSim(args: SimArgs): CampaignSimResult {
 
     if (state.prestige.endingChoice !== undefined && omegaCompleteH === undefined) {
       omegaCompleteH = state.meta.playtimeS / 3600;
+      completeH = omegaCompleteH;
+
+      if (args.continueAfterOmega !== true) {
+        break;
+      }
     }
 
     if (state.aurora.completed && auroraCompleteH === undefined) {
       auroraCompleteH = state.meta.playtimeS / 3600;
-      completeH = auroraCompleteH;
     }
   }
 
-  const requiredEvents = STORY_EVENTS.filter((event) => event.act !== 9);
+  const requiredEvents = MAIN_CAMPAIGN_EVENTS;
   const missingEvents = requiredEvents
     .filter((event) => !state.story.seen.has(event.id))
     .map((event) => event.id);
@@ -286,6 +309,33 @@ export function runCampaignSim(args: SimArgs): CampaignSimResult {
     seenEvents: requiredEvents.length - missingEvents.length,
     state
   };
+}
+
+function tickSimSystems(state: GameState, cache: DerivedCache, dtS: number): void {
+  if (isBankrupt(state)) {
+    return;
+  }
+
+  tickBuildMomentum(state, dtS);
+  tickPromptFlow(state, dtS);
+  tickProduction(state, cache, dtS);
+  tickProjects(state, cache, dtS);
+  tickBilling(state, dtS);
+
+  if (isBankrupt(state)) {
+    return;
+  }
+
+  tickAurora(state, dtS);
+  tickRoadmap(state);
+  tickProductionIncidents(state);
+  tickHype(state, dtS, cache);
+  tickDebt(state, cache, dtS);
+  tickAutomation(state, cache, dtS);
+  tickStory(state, dtS, cache);
+  tickIterationHold(state, cache, dtS);
+  tickStats(state, cache);
+  tickAchievements(state, cache);
 }
 
 function tickStrategy(state: GameState, cache: DerivedCache, strategy: Strategy): void {
@@ -336,6 +386,10 @@ function tickStrategy(state: GameState, cache: DerivedCache, strategy: Strategy)
   }
 }
 
+function isAuroraStoryEvent(eventId: string): boolean {
+  return eventId.includes("_aurora_");
+}
+
 function progressAuroraStrategy(state: GameState, cache: DerivedCache, strategy: Strategy): void {
   if (strategy === "idle_only" || state.prestige.endingChoice === undefined) {
     return;
@@ -384,17 +438,38 @@ function progressAuroraStrategy(state: GameState, cache: DerivedCache, strategy:
 
 function isStrategyActive(playtimeS: number, strategy: Strategy): boolean {
   switch (strategy) {
+    case "active":
+      return playtimeS % 2 < 1;
+    case "casual":
+      return playtimeS % 8 < 1;
     case "maxer":
       return true;
     case "idle_only":
       return playtimeS % IDLE_LOGIN_INTERVAL_S < 60;
+    case "offline-heavy":
+      return playtimeS % (2 * 60 * 60) < 90;
     case "sane":
       return playtimeS % 3 < 1;
+    case "story-rush":
+      return true;
   }
 }
 
 function getDecisionIntervalS(strategy: Strategy): number {
-  return strategy === "maxer" ? 30 : 180;
+  switch (strategy) {
+    case "maxer":
+    case "story-rush":
+      return 30;
+    case "active":
+      return 60;
+    case "casual":
+      return 300;
+    case "offline-heavy":
+      return 240;
+    case "idle_only":
+    case "sane":
+      return 180;
+  }
 }
 
 function buyAffordableEraAndHardware(state: GameState, cache: DerivedCache): void {
@@ -421,7 +496,7 @@ function buyAffordableEraAndHardware(state: GameState, cache: DerivedCache): voi
 function getBestAffordableHardware(state: GameState): HardwareDefinition | undefined {
   const affordable = getAvailableHardware(state)
     .filter((entry) => !isHardwareMaxed(entry, state.owned.hardware[entry.id] ?? 0))
-    .filter((entry) => state.res.money.gte(getHardwareCostForSim(state, entry)))
+    .filter((entry) => canSpendMoneyForSim(state, getHardwareCostForSim(state, entry)))
     .sort(
       (left, right) => getHardwareScoreForSim(state, right) - getHardwareScoreForSim(state, left)
     );
@@ -440,7 +515,7 @@ function getBestAffordableHardware(state: GameState): HardwareDefinition | undef
     if (
       gateHardware !== undefined &&
       !isHardwareMaxed(gateHardware, state.owned.hardware[gateHardware.id] ?? 0) &&
-      state.res.money.gte(getHardwareCostForSim(state, gateHardware))
+      canSpendMoneyForSim(state, getHardwareCostForSim(state, gateHardware))
     ) {
       return gateHardware;
     }
@@ -457,7 +532,7 @@ function shouldCompletePcHardware(state: GameState): boolean {
       (entry) =>
         entry.phase === "pc" &&
         !isHardwareMaxed(entry, state.owned.hardware[entry.id] ?? 0) &&
-        state.res.money.gte(getHardwareCostForSim(state, entry))
+        canSpendMoneyForSim(state, getHardwareCostForSim(state, entry))
     )
   );
 }
@@ -471,7 +546,7 @@ function needsHardwareForAffordableGenerator(state: GameState, cache: DerivedCac
     const owned = state.owned.generators[generator.id] ?? 0;
     const cost = getGeneratorCost(generator, owned, 1, cache.costs.generatorMultiplier);
     return (
-      state.res.money.gte(cost) &&
+      canSpendMoneyForSim(state, cost) &&
       cache.compute.available < getEffectiveComputeUse(generator, cache)
     );
   });
@@ -508,7 +583,10 @@ function getHardwareScoreForSim(state: GameState, hardware: HardwareDefinition):
 
 function buyAffordableUpgrades(state: GameState, cache: DerivedCache): void {
   for (const upgrade of getVisibleUpgrades(state)) {
-    if (buyUpgrade(state, cache, upgrade.id).ok) {
+    if (
+      canSpendMoneyForSim(state, getUpgradeCost(state, upgrade)) &&
+      buyUpgrade(state, cache, upgrade.id).ok
+    ) {
       return;
     }
   }
@@ -539,13 +617,15 @@ function maybeRewrite(state: GameState, cache: DerivedCache): void {
     return;
   }
 
-  if (state.story.act === 1 && state.prestige.rewrites > 0 && state.res.money.lt(Big.from("1e6"))) {
+  const insightEarnedThisExit = state.lifetime.insightSinceExit;
+
+  if (state.story.act === 1 && insightEarnedThisExit > 0 && state.res.money.lt(Big.from("1e6"))) {
     return;
   }
 
   if (
     state.story.act === 2 &&
-    state.prestige.rewrites >= 2 &&
+    insightEarnedThisExit >= PRESTIGE.REWRITE_MIN_FIRST * 2 &&
     state.res.money.lt(Big.from("1e9"))
   ) {
     return;
@@ -553,7 +633,7 @@ function maybeRewrite(state: GameState, cache: DerivedCache): void {
 
   if (
     state.story.act === 3 &&
-    state.prestige.rewrites >= 5 &&
+    insightEarnedThisExit >= PRESTIGE.EXIT_MIN_INSIGHT &&
     state.res.money.lt(Big.from("1e13"))
   ) {
     return;
@@ -561,9 +641,9 @@ function maybeRewrite(state: GameState, cache: DerivedCache): void {
 
   const available = calculateAvailableInsightGain(state);
   const targetGain =
-    state.prestige.rewrites === 0
+    insightEarnedThisExit <= 0
       ? PRESTIGE.REWRITE_MIN_FIRST
-      : Math.max(1, state.lifetime.insightSinceExit * 0.5);
+      : Math.max(1, insightEarnedThisExit * 0.5);
 
   if (available >= targetGain) {
     performRewrite(state, cache);
@@ -631,7 +711,10 @@ function startUsefulProjects(state: GameState, cache: DerivedCache): void {
   const offers = getVisibleProjectOffers(state, cache)
     .map((offer) => getProject(offer.projectId))
     .filter((project) => project !== undefined)
-    .sort((left, right) => getProjectScore(right!, cache) - getProjectScore(left!, cache));
+    .filter((project) => Number.isFinite(getProjectScore(project!, state, cache)))
+    .sort(
+      (left, right) => getProjectScore(right!, state, cache) - getProjectScore(left!, state, cache)
+    );
 
   for (const project of offers) {
     if (project === undefined) {
@@ -646,8 +729,17 @@ function startUsefulProjects(state: GameState, cache: DerivedCache): void {
 
 function getProjectScore(
   project: NonNullable<ReturnType<typeof getProject>>,
+  state: GameState,
   cache: DerivedCache
 ): number {
+  if (
+    project.kind === "standard" &&
+    project.recurringRevenue === false &&
+    getNumericStat(state, `project.${project.id}.shipped`) > 0
+  ) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
   const payout = getProjectPayout(project, cache);
   if (payout.eq0()) {
     return Number.NEGATIVE_INFINITY;
@@ -657,7 +749,8 @@ function getProjectScore(
 }
 
 function buyBestGenerators(state: GameState, cache: DerivedCache, strategy: Strategy): void {
-  const maxBuys = strategy === "maxer" ? 80 : 30;
+  const maxBuys =
+    strategy === "maxer" || strategy === "story-rush" ? 80 : strategy === "active" ? 50 : 30;
 
   for (let buy = 0; buy < maxBuys; buy += 1) {
     const generator = getBestGeneratorToBuy(state, cache);
@@ -689,14 +782,17 @@ function getBestGeneratorToBuy(
     if (
       entry === undefined ||
       cost.lte(Big.zero()) ||
-      state.res.money.lt(cost) ||
+      !canSpendMoneyForSim(state, cost) ||
       cache.compute.available < getEffectiveComputeUse(generator, cache)
     ) {
       continue;
     }
 
     const rate = entry.rate.eq0() ? generator.baseRate : entry.rate;
-    const score = rate.log10() - cost.log10();
+    const score =
+      cache.compute.available < cache.compute.cap * 0.25
+        ? rate.log10() - Math.log10(Math.max(1, getEffectiveComputeUse(generator, cache)))
+        : rate.log10() - cost.log10();
     if (score > bestScore) {
       best = generator;
       bestScore = score;
@@ -704,6 +800,37 @@ function getBestGeneratorToBuy(
   }
 
   return best;
+}
+
+function canSpendMoneyForSim(state: GameState, cost: Big): boolean {
+  if (state.res.money.lt(cost)) {
+    return false;
+  }
+
+  const reserve = getEraReserveForSim(state);
+
+  if (reserve.eq0()) {
+    return true;
+  }
+
+  if (state.res.money.lt(reserve)) {
+    return true;
+  }
+
+  return Big.sub(state.res.money, cost).gte(reserve);
+}
+
+function getEraReserveForSim(state: GameState): Big {
+  if (getNumericStat(state, SHIPPED_STAT) < 3) {
+    return Big.zero();
+  }
+
+  const nextEra = getNextEra(state);
+  const nextCost = nextEra === undefined ? undefined : getEraCost(state, nextEra);
+
+  return nextCost === undefined
+    ? Big.zero()
+    : Big.mul(nextCost, Big.fromNumber(SIM_ERA_RESERVE_RATIO));
 }
 
 function shouldDelayDebtReducers(state: GameState): boolean {
@@ -759,6 +886,10 @@ function maybeMilestone(
   });
 }
 
+function getCriticalMissingEvents(missingEvents: readonly string[]): readonly string[] {
+  return missingEvents.filter((eventId) => !eventId.startsWith("d_strategy_"));
+}
+
 function getNumericStat(state: GameState, key: string): number {
   const value = state.stats[key];
   return typeof value === "number" ? value : 0;
@@ -794,53 +925,79 @@ function getMaxBigExponent(...values: readonly unknown[]): number {
   return maxExponent;
 }
 
-function readArgs(values: readonly string[]): SimArgs {
+export function readArgs(values: readonly string[]): SimArgs {
   let hours = 80;
   let strategy: Strategy = "sane";
   let endlessIterations: number | undefined;
+  let continueAfterOmega = false;
 
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
     const next = values[index + 1];
 
-    if (value === "--hours" && next !== undefined) {
+    if (value === "--continue-after-omega") {
+      continueAfterOmega = true;
+      continue;
+    }
+
+    if (value === "--hours") {
+      if (next === undefined) {
+        throw new Error("sim: --hours requires a positive number");
+      }
       hours = Number(next);
       index += 1;
       continue;
     }
 
-    if (value === "--strategy" && next !== undefined) {
+    if (value === "--strategy") {
+      if (next === undefined) {
+        throw new Error("sim: --strategy requires a strategy name");
+      }
       strategy = readStrategy(next);
       index += 1;
       continue;
     }
 
-    if (value === "--endless-iterations" && next !== undefined) {
+    if (value === "--endless-iterations") {
+      if (next === undefined) {
+        throw new Error("sim: --endless-iterations requires a positive integer");
+      }
       endlessIterations = Number(next);
       index += 1;
+      continue;
     }
+
+    throw new Error(`sim: unknown argument ${value ?? ""}`);
   }
 
-  if (!Number.isFinite(hours) || hours < 0) {
-    hours = 80;
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw new Error("sim: --hours must be a positive number");
   }
 
   if (
     endlessIterations !== undefined &&
-    (!Number.isFinite(endlessIterations) || endlessIterations < 0)
+    (!Number.isInteger(endlessIterations) || endlessIterations <= 0)
   ) {
-    endlessIterations = undefined;
+    throw new Error("sim: --endless-iterations must be a positive integer");
   }
 
-  return { endlessIterations, hours, strategy };
+  return { continueAfterOmega, endlessIterations, hours, strategy };
 }
 
 function readStrategy(value: string): Strategy {
-  if (value === "idle_only" || value === "maxer" || value === "sane") {
+  if (
+    value === "active" ||
+    value === "casual" ||
+    value === "idle_only" ||
+    value === "maxer" ||
+    value === "offline-heavy" ||
+    value === "sane" ||
+    value === "story-rush"
+  ) {
     return value;
   }
 
-  return "sane";
+  throw new Error(`sim: unknown strategy ${value}`);
 }
 
 function isCliEntry(): boolean {

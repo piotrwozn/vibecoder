@@ -110,6 +110,13 @@ export function checkCondition(state: GameState, condition: Condition): boolean 
   }
 
   if (
+    condition.insightNodesGte !== undefined &&
+    state.owned.insightNodes.size < condition.insightNodesGte
+  ) {
+    return false;
+  }
+
+  if (
     condition.insightSinceExitGte !== undefined &&
     state.lifetime.insightSinceExit < condition.insightSinceExitGte
   ) {
@@ -119,6 +126,13 @@ export function checkCondition(state: GameState, condition: Condition): boolean 
   if (
     condition.productCountGte !== undefined &&
     state.projects.portfolio.length < condition.productCountGte
+  ) {
+    return false;
+  }
+
+  if (
+    condition.projectShipped !== undefined &&
+    getNumericStat(state, `project.${condition.projectShipped}.shipped`) <= 0
   ) {
     return false;
   }

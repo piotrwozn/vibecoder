@@ -2,9 +2,9 @@ import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
 import type { DerivedCache } from "./production";
 
-export const LOC_RATE_SAMPLE_INTERVAL_S = 30;
-export const LOC_RATE_SAMPLE_WINDOW_S = 60 * 60;
-export const LOC_RATE_SAMPLE_CAPACITY = LOC_RATE_SAMPLE_WINDOW_S / LOC_RATE_SAMPLE_INTERVAL_S;
+const LOC_RATE_SAMPLE_INTERVAL_S = 30;
+const LOC_RATE_SAMPLE_WINDOW_S = 60 * 60;
+const LOC_RATE_SAMPLE_CAPACITY = LOC_RATE_SAMPLE_WINDOW_S / LOC_RATE_SAMPLE_INTERVAL_S;
 
 const LOC_RATE_SAMPLE_PREFIX = "stats.locRate.sample.";
 const LOC_RATE_SAMPLE_COUNT_STAT = "stats.locRate.sampleCount";

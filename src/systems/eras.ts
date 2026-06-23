@@ -3,6 +3,7 @@ import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
 import { ERAS, type EraDefinition } from "../data/eras";
 import { isDemoLocked } from "./demo";
+import { canSpendBig, spendBig } from "./resources";
 import { checkCondition } from "./unlocks";
 
 export interface BuyEraResult {
@@ -16,7 +17,7 @@ export function getCurrentEra(state: GameState): EraDefinition {
   return getEra(state.era) ?? ERAS[0]!;
 }
 
-export function getEra(index: number): EraDefinition | undefined {
+function getEra(index: number): EraDefinition | undefined {
   return ERAS.find((era) => era.index === index);
 }
 
@@ -46,7 +47,7 @@ export function canBuyEra(state: GameState, era: EraDefinition | undefined): boo
     return false;
   }
 
-  return state.res.money.gte(getEraCost(state, era) ?? Big.zero());
+  return canSpendBig(state.res.money, getEraCost(state, era) ?? Big.zero());
 }
 
 export function buyNextEra(state: GameState, bus?: EventBus): BuyEraResult {
@@ -66,11 +67,11 @@ export function buyNextEra(state: GameState, bus?: EventBus): BuyEraResult {
     return { cost, era, ok: false, reason: "demoLocked" };
   }
 
-  if (state.res.money.lt(cost)) {
+  if (!canSpendBig(state.res.money, cost)) {
     return { cost, era, ok: false, reason: "unaffordable" };
   }
 
-  Big.subIn(state.res.money, cost);
+  spendBig(state.res.money, cost);
   state.era = era.index;
   bus?.emit("res:changed", "money");
   bus?.emit("era:changed", state.era);

@@ -1,10 +1,22 @@
 import { createDefaultTutorialState, createDefaultUiState } from "./ui-state";
+import { Big } from "./bignum";
 import { C } from "../data/constants";
 import { LEGACY_HARDWARE_ID, OLD_HARDWARE_TIERS } from "../data/hardware";
+import { PROJECT_MAX_LEVEL, PROJECTS } from "../data/projects";
+import { deriveSeed } from "./rng";
 
 type RawSaveObject = Record<string, unknown>;
 
-export const SAVE_VERSION = 8;
+type MigratedProjectProduct = RawSaveObject & {
+  bugged: boolean;
+  id: string;
+  level: number;
+  projectId: string;
+  revenue: unknown;
+  shippedAtS: number;
+};
+
+export const SAVE_VERSION = 13;
 
 export interface MigrationResult {
   readonly raw: RawSaveObject;
@@ -59,7 +71,12 @@ const migrations: readonly Migration[] = [
   migrateM16Hardware,
   migrateTutorialUi,
   migrateAuroraState,
-  migrateLastSimTickMs
+  migrateLastSimTickMs,
+  migrateInboxEntryIds,
+  migrateVibexSeeds,
+  migrateProjectLevels,
+  migrateRoadmapIncidentsAndRunStyle,
+  migrateBankState
 ];
 
 export function migrateRawSave(rawValue: unknown): MigrationResult {
@@ -225,6 +242,225 @@ function migrateLastSimTickMs(raw: RawSaveObject): RawSaveObject {
     },
     v: 8
   };
+}
+
+function migrateInboxEntryIds(raw: RawSaveObject): RawSaveObject {
+  const story = isRecord(raw.story) ? raw.story : {};
+  const inbox = Array.isArray(story.inbox) ? story.inbox : [];
+  const readFlagMigrations = new Map<string, string>();
+  const migratedInbox = inbox.map((entry, index) => {
+    if (!isRecord(entry) || typeof entry.eventId !== "string") {
+      return entry;
+    }
+
+    const id = readInboxEntryId(entry.id, entry.eventId, index);
+    readFlagMigrations.set(`story.read.${index}.${entry.eventId}`, `story.read.${id}`);
+    return {
+      ...entry,
+      id
+    };
+  });
+
+  return {
+    ...raw,
+    story: {
+      ...story,
+      flags: migrateStoryReadFlags(story.flags, readFlagMigrations),
+      inbox: migratedInbox
+    },
+    v: 9
+  };
+}
+
+function readInboxEntryId(value: unknown, eventId: string, index: number): string {
+  return typeof value === "string" && value.length > 0 ? value : `${eventId}.${index + 1}`;
+}
+
+function migrateStoryReadFlags(
+  value: unknown,
+  migrationsByFlag: ReadonlyMap<string, string>
+): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.map((flag) =>
+    typeof flag === "string" ? (migrationsByFlag.get(flag) ?? flag) : flag
+  );
+}
+
+function migrateVibexSeeds(raw: RawSaveObject): RawSaveObject {
+  const vibex = isRecord(raw.vibex) ? raw.vibex : {};
+  const rngSeed = typeof raw.rngSeed === "number" && Number.isFinite(raw.rngSeed) ? raw.rngSeed : 1;
+
+  return {
+    ...raw,
+    vibex: {
+      ...vibex,
+      cannedSeed: readSeed(vibex.cannedSeed, deriveSeed(rngSeed, "vibex.canned")),
+      codeSeed: readSeed(vibex.codeSeed, deriveSeed(rngSeed, "vibex.code"))
+    },
+    v: 10
+  };
+}
+
+function readSeed(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isInteger(value) ? value : fallback;
+}
+
+function migrateProjectLevels(raw: RawSaveObject): RawSaveObject {
+  const projects = isRecord(raw.projects) ? raw.projects : {};
+  const portfolio = Array.isArray(projects.portfolio) ? projects.portfolio : [];
+  const bugRemap = new Map<string, string>();
+  const groups = new Map<string, MigratedProjectProduct>();
+
+  for (const entry of portfolio) {
+    if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.projectId !== "string") {
+      continue;
+    }
+
+    const existing = groups.get(entry.projectId);
+    const entryLevel = readPositiveInteger(entry.level) ?? 1;
+
+    if (existing === undefined) {
+      const entryRevenue = readBig(entry.revenue);
+      const nextEntry: MigratedProjectProduct = {
+        ...entry,
+        bugged: entry.bugged === true,
+        id: entry.id,
+        level: entryLevel,
+        projectId: entry.projectId,
+        revenue: entryRevenue?.toString() ?? entry.revenue,
+        shippedAtS: readFiniteNonNegativeNumber(entry.shippedAtS) ?? 0
+      };
+      groups.set(entry.projectId, nextEntry);
+      bugRemap.set(entry.id, entry.id);
+      continue;
+    }
+
+    existing.level += entryLevel;
+    existing.bugged = existing.bugged === true || entry.bugged === true;
+    existing.revenue = addMigratedRevenue(existing.revenue, entry.revenue);
+    existing.shippedAtS = Math.min(
+      readFiniteNonNegativeNumber(existing.shippedAtS) ?? 0,
+      readFiniteNonNegativeNumber(entry.shippedAtS) ?? 0
+    );
+    bugRemap.set(entry.id, existing.id);
+  }
+
+  const migratedPortfolio = Array.from(groups.values()).map((entry) => ({
+    ...entry,
+    level: Math.min(entry.level, getProjectMaxLevelForId(entry.projectId))
+  }));
+
+  return {
+    ...raw,
+    bugs: migrateProjectLevelBugs(raw.bugs, bugRemap),
+    projects: {
+      ...projects,
+      portfolio: migratedPortfolio
+    },
+    v: 11
+  };
+}
+
+function migrateRoadmapIncidentsAndRunStyle(raw: RawSaveObject): RawSaveObject {
+  return {
+    ...raw,
+    incidents: isRecord(raw.incidents)
+      ? raw.incidents
+      : {
+          active: [],
+          history: [],
+          nextCheckAtS: 0
+        },
+    metaprogression: isRecord(raw.metaprogression) ? raw.metaprogression : {},
+    roadmap: isRecord(raw.roadmap)
+      ? raw.roadmap
+      : {
+          completed: 0,
+          cooldownUntilS: 0,
+          endsAtS: 0,
+          startedAtS: 0
+        },
+    v: 12
+  };
+}
+
+function migrateBankState(raw: RawSaveObject): RawSaveObject {
+  return {
+    ...raw,
+    bank: isRecord(raw.bank)
+      ? raw.bank
+      : {
+          defaulted: false,
+          overdraft: "0e0",
+          warningsIssued: 0
+        },
+    v: 13
+  };
+}
+
+function migrateProjectLevelBugs(value: unknown, remap: ReadonlyMap<string, string>): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  const seen = new Set<string>();
+  const bugs: RawSaveObject[] = [];
+
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.productId !== "string") {
+      continue;
+    }
+
+    const productId = remap.get(entry.productId);
+
+    if (productId === undefined || seen.has(productId)) {
+      continue;
+    }
+
+    seen.add(productId);
+    bugs.push({ productId });
+  }
+
+  return bugs;
+}
+
+function addMigratedRevenue(existing: unknown, next: unknown): unknown {
+  const nextRevenue = readBig(next);
+
+  if (nextRevenue === undefined) {
+    return existing;
+  }
+
+  return Big.add(readBig(existing) ?? Big.zero(), nextRevenue).toString();
+}
+
+function readBig(value: unknown): Big | undefined {
+  try {
+    return Big.from(value as Parameters<typeof Big.from>[0]);
+  } catch {
+    return undefined;
+  }
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function readFiniteNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function getProjectMaxLevelForId(projectId: string): number {
+  const project = PROJECTS.find((entry) => entry.id === projectId);
+
+  if (project === undefined) {
+    return 1;
+  }
+
+  return PROJECT_MAX_LEVEL;
 }
 
 function calculateOldHardwareCap(ownedHardware: RawSaveObject): number {

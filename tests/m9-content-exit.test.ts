@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Big } from "../src/core/bignum";
 import { createDefaultGameState } from "../src/core/state";
-import { C } from "../src/data/constants";
+import { C, OMEGA } from "../src/data/constants";
 import { ERAS } from "../src/data/eras";
 import { GENERATORS } from "../src/data/generators";
 import { HARDWARE } from "../src/data/hardware";
@@ -92,6 +92,7 @@ describe("M9 EXIT prestige", () => {
     state.projects.portfolio.push({
       id: "p_micro_saas.1",
       bugged: true,
+      level: 1,
       projectId: "p_micro_saas",
       revenue: Big.fromNumber(10),
       shippedAtS: 1
@@ -174,6 +175,7 @@ describe("M9 EXIT prestige", () => {
     state.projects.portfolio.push({
       id: "p_micro_saas.1",
       bugged: false,
+      level: 1,
       projectId: "p_micro_saas",
       revenue: Big.fromNumber(100),
       shippedAtS: 0
@@ -225,7 +227,8 @@ describe("M9 finale", () => {
     const state = createDefaultGameState(1_000, "full");
     state.story.act = 5;
     state.era = 10;
-    state.lifetime.loc = Big.from("1e35");
+    state.lifetime.loc = Big.from(OMEGA.LIFETIME_LOC_TARGET);
+    state.stats[`project.${OMEGA.PROJECT_ID}.shipped`] = 1;
 
     state.meta.playtimeS = 1;
     tickStory(state, 1);

@@ -39,6 +39,8 @@ export interface RewritePreviewView {
   readonly lostMoney: string;
   readonly lostProducts: string;
   readonly lostUpgrades: string;
+  readonly nextInsight: string;
+  readonly nextMilestone: string;
   readonly requiredInsight: string;
   readonly speedup: string;
   readonly startEra: string;
@@ -111,6 +113,7 @@ export interface ExitPreviewView {
 }
 
 export interface ExitView {
+  readonly unlocked: boolean;
   readonly perks: readonly EquityPerkView[];
   readonly preview: ExitPreviewView;
   readonly runModifiers: readonly RunModifierView[];

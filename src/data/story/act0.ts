@@ -63,9 +63,6 @@ export const ACT0_EVENTS: readonly StoryEvent[] = [
     channel: "chat",
     speaker: "zora",
     textKey: "story.a0_07_tutorial_done",
-    effects: [
-      { kind: "setFlag", flag: "achievement.hello_world" },
-      { kind: "setAct", act: 1 }
-    ]
+    effects: [{ kind: "setAct", act: 1 }]
   }
 ];

@@ -17,6 +17,10 @@ export function formatBig(value: BigInput, notation: NumberNotation = "sci"): st
   const sign = big.m < 0 ? "-" : "";
   const abs = big.abs();
 
+  if (abs.e < 0) {
+    return `${sign}${formatSignificant(abs.toNumber())}`;
+  }
+
   if (abs.e < 6) {
     const full = formatFull(abs.toNumber());
     return full === "0" ? full : `${sign}${full}`;
@@ -29,11 +33,35 @@ export function formatBig(value: BigInput, notation: NumberNotation = "sci"): st
       return `${sign}${formatFull(abs.toNumber())}`;
     }
 
-    const scaled = abs.m * 10 ** (abs.e - suffix.e);
-    return `${sign}${formatSignificant(scaled)}${suffix.suffix}`;
+    return formatShortSuffix(abs, sign, suffix.e, notation);
   }
 
   return notation === "suffix" ? formatLetterSuffix(abs, sign) : formatScientific(abs, sign);
+}
+
+function formatShortSuffix(
+  value: Big,
+  sign: string,
+  suffixExponent: number,
+  notation: NumberNotation
+): string {
+  let scaled = value.m * 10 ** (value.e - suffixExponent);
+  const rounded = Number(formatSignificant(scaled));
+
+  if (rounded >= 1000) {
+    suffixExponent += EXPONENT_STEP;
+    scaled = rounded / 1000;
+  }
+
+  if (suffixExponent >= LETTER_SUFFIX_START_E) {
+    const carried = new Big(scaled, suffixExponent);
+    return notation === "suffix"
+      ? formatLetterSuffix(carried, sign)
+      : formatScientific(carried, sign);
+  }
+
+  const suffix = SHORT_SUFFIXES.find((entry) => entry.e === suffixExponent);
+  return `${sign}${formatSignificant(scaled)}${suffix?.suffix ?? ""}`;
 }
 
 export function formatTime(seconds: number): string {

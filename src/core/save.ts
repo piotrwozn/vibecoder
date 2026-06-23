@@ -1,20 +1,36 @@
 import type { Platform } from "../platform/platform";
 import { Big, type BigInput } from "./bignum";
+import { GENERATORS } from "../data/generators";
+import { HARDWARE, LEGACY_HARDWARE_ID } from "../data/hardware";
+import { PROJECTS, REFACTOR_PROJECT } from "../data/projects";
 import { FutureSaveVersionError, migrateRawSave, SAVE_VERSION } from "./migrations";
 import {
   createDefaultGameState,
+  createDefaultVibexState,
   type ActiveBuild,
   type ActiveBug,
   type AutomationRule,
   type AuroraState,
   type AuroraStatus,
+  type BankState,
+  type BankWarningLevel,
   type Edition,
   type EndingChoice,
   type GameState,
+  type IncidentResponseId,
   type InboxEntry,
+  type MetaprogressionState,
   type Product,
+  type ProductionIncident,
+  type ProductionIncidentHistoryEntry,
+  type ProductionIncidentsState,
+  type ProductionIncidentType,
   type ProjectOffer,
-  type ProjectPriority
+  type ProjectPriority,
+  type RunStyleId,
+  type SprintPriority,
+  type SprintState,
+  type VibexState
 } from "./state";
 import {
   APP_IDS,
@@ -31,6 +47,12 @@ import {
 
 type RawObject = Record<string, unknown>;
 type StatValue = number | Big;
+
+const PROJECT_IDS = new Set(PROJECTS.map((project) => project.id));
+const ACTIVE_BUILD_PROJECT_IDS = new Set([...PROJECT_IDS, REFACTOR_PROJECT.id]);
+const GENERATOR_IDS = new Set(GENERATORS.map((generator) => generator.id));
+const HARDWARE_IDS = new Set([...HARDWARE.map((hardware) => hardware.id), LEGACY_HARDWARE_ID]);
+const BANK_DEFAULT_OVERDRAFT = Big.fromNumber(10_000);
 
 export interface SaveDecodeOptions {
   readonly edition?: Edition;
@@ -93,6 +115,15 @@ export async function loadGameState(
   try {
     data = await platform.load();
   } catch {
+    const backup = await loadMostRecentBackup(platform, nowMs);
+
+    if (backup !== undefined) {
+      return {
+        ...backup,
+        warnings: ["save load failed", ...backup.warnings]
+      };
+    }
+
     return {
       repaired: true,
       reset: true,
@@ -103,6 +134,12 @@ export async function loadGameState(
   }
 
   if (data === null) {
+    const backup = await loadMostRecentBackup(platform, nowMs);
+
+    if (backup !== undefined) {
+      return backup;
+    }
+
     return {
       repaired: false,
       reset: false,
@@ -119,13 +156,18 @@ export async function loadGameState(
 
   await backupUnreadableSave(platform, data, nowMs);
 
-  if (decoded.resetReason === "newer-version") {
-    return decoded;
-  }
-
   const backup = await loadMostRecentBackup(platform, nowMs);
 
   if (backup !== undefined) {
+    if (decoded.resetReason === "newer-version") {
+      return {
+        ...backup,
+        reset: true,
+        resetReason: "newer-version",
+        warnings: [...decoded.warnings, ...backup.warnings]
+      };
+    }
+
     return backup;
   }
 
@@ -137,12 +179,14 @@ export async function saveGameState(
   state: GameState,
   nowMs = Date.now()
 ): Promise<boolean> {
+  const previousLastSeen = state.meta.lastSeen;
   state.meta.lastSeen = nowMs;
 
   try {
     await platform.save(serializeGameState(state));
     return true;
   } catch {
+    state.meta.lastSeen = previousLastSeen;
     return false;
   }
 }
@@ -240,7 +284,9 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     mark,
     { nonNegative: true }
   );
-  defaults.res.debt = repairBig(res.debt, defaults.res.debt, "res.debt", mark);
+  defaults.res.debt = repairBig(res.debt, defaults.res.debt, "res.debt", mark, {
+    nonNegative: true
+  });
   defaults.res.equity = repairNumber(res.equity, defaults.res.equity, "res.equity", mark, {
     integer: true,
     nonNegative: true
@@ -248,9 +294,15 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   defaults.res.hype = repairNumber(res.hype, defaults.res.hype, "res.hype", mark, {
     nonNegative: true
   });
-  defaults.res.insight = repairBig(res.insight, defaults.res.insight, "res.insight", mark);
-  defaults.res.loc = repairBig(res.loc, defaults.res.loc, "res.loc", mark);
-  defaults.res.money = repairBig(res.money, defaults.res.money, "res.money", mark);
+  defaults.res.insight = repairBig(res.insight, defaults.res.insight, "res.insight", mark, {
+    nonNegative: true
+  });
+  defaults.res.loc = repairBig(res.loc, defaults.res.loc, "res.loc", mark, {
+    nonNegative: true
+  });
+  defaults.res.money = repairBig(res.money, defaults.res.money, "res.money", mark, {
+    nonNegative: true
+  });
   defaults.res.paradox = repairNumber(res.paradox, defaults.res.paradox, "res.paradox", mark, {
     integer: true,
     nonNegative: true
@@ -268,18 +320,22 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     mark,
     { integer: true, nonNegative: true }
   );
-  defaults.lifetime.loc = repairBig(lifetime.loc, defaults.lifetime.loc, "lifetime.loc", mark);
+  defaults.lifetime.loc = repairBig(lifetime.loc, defaults.lifetime.loc, "lifetime.loc", mark, {
+    nonNegative: true
+  });
   defaults.lifetime.locSinceExit = repairBig(
     lifetime.locSinceExit,
     defaults.lifetime.locSinceExit,
     "lifetime.locSinceExit",
-    mark
+    mark,
+    { nonNegative: true }
   );
   defaults.lifetime.money = repairBig(
     lifetime.money,
     defaults.lifetime.money,
     "lifetime.money",
-    mark
+    mark,
+    { nonNegative: true }
   );
 
   const owned = readRecord(raw, "owned", mark);
@@ -287,13 +343,15 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     owned.generators,
     defaults.owned.generators,
     "owned.generators",
-    mark
+    mark,
+    GENERATOR_IDS
   );
   defaults.owned.hardware = repairNumberRecord(
     owned.hardware,
     defaults.owned.hardware,
     "owned.hardware",
-    mark
+    mark,
+    HARDWARE_IDS
   );
   defaults.owned.equityPerks = repairStringSet(
     owned.equityPerks,
@@ -335,10 +393,24 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   );
 
   defaults.aurora = repairAurora(raw.aurora, defaults.aurora, "aurora", mark);
+  defaults.roadmap = repairSprintState(raw.roadmap, defaults.roadmap, "roadmap", mark);
+  defaults.incidents = repairProductionIncidents(
+    raw.incidents,
+    defaults.incidents,
+    "incidents",
+    mark
+  );
+  defaults.metaprogression = repairMetaprogression(
+    raw.metaprogression,
+    defaults.metaprogression,
+    "metaprogression",
+    mark
+  );
+  defaults.bank = repairBank(raw.bank, defaults.bank, "bank", mark);
 
   defaults.era = repairNumber(raw.era, defaults.era, "era", mark, {
     integer: true,
-    nonNegative: true
+    positive: true
   });
 
   const projects = readRecord(raw, "projects", mark);
@@ -358,7 +430,7 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     mark
   );
 
-  defaults.bugs = repairBugs(raw.bugs, "bugs", mark);
+  defaults.bugs = repairBugs(raw.bugs, defaults.projects.portfolio, "bugs", mark);
 
   const flow = readRecord(raw, "flow", mark);
   defaults.flow.activeUntil = repairNumber(
@@ -420,13 +492,18 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   defaults.automation = repairAutomation(raw.automation, "automation", mark);
   defaults.stats = repairStats(raw.stats, "stats", mark);
 
+  defaults.rngSeed = repairNumber(raw.rngSeed, defaults.rngSeed, "rngSeed", mark, {
+    integer: true
+  });
+  defaults.vibex = repairVibex(raw.vibex, createDefaultVibexState(defaults.rngSeed), "vibex", mark);
+
   const settings = readRecord(raw, "settings", mark);
   defaults.settings.autosaveS = repairNumber(
     settings.autosaveS,
     defaults.settings.autosaveS,
     "settings.autosaveS",
     mark,
-    { positive: true }
+    { integer: true, min: 1, positive: true }
   );
   defaults.settings.doNotDisturb = repairBoolean(
     settings.doNotDisturb,
@@ -487,15 +564,32 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   defaults.ui.tutorial = repairTutorial(ui.tutorial, defaults.ui.tutorial, "ui.tutorial", mark);
   defaults.ui.windows = repairWindows(ui.windows, defaults.ui.windows, "ui.windows", mark);
 
-  defaults.rngSeed = repairNumber(raw.rngSeed, defaults.rngSeed, "rngSeed", mark, {
-    integer: true
-  });
-
   return {
     repaired,
     reset: false,
     state: defaults,
     warnings
+  };
+}
+
+function repairVibex(
+  value: unknown,
+  fallback: VibexState,
+  path: string,
+  mark: (path: string) => void
+): VibexState {
+  if (!isRecord(value)) {
+    mark(path);
+    return fallback;
+  }
+
+  return {
+    cannedSeed: repairNumber(value.cannedSeed, fallback.cannedSeed, `${path}.cannedSeed`, mark, {
+      integer: true
+    }),
+    codeSeed: repairNumber(value.codeSeed, fallback.codeSeed, `${path}.codeSeed`, mark, {
+      integer: true
+    })
   };
 }
 
@@ -587,6 +681,7 @@ function readRecord(raw: RawObject, key: string, mark: (path: string) => void): 
 
 interface NumberOptions {
   readonly integer?: boolean;
+  readonly min?: number;
   readonly nonNegative?: boolean;
   readonly positive?: boolean;
 }
@@ -602,6 +697,7 @@ function repairNumber(
     typeof value === "number" &&
     Number.isFinite(value) &&
     (!options.integer || Number.isInteger(value)) &&
+    (options.min === undefined || value >= options.min) &&
     (!options.nonNegative || value >= 0) &&
     (!options.positive || value > 0);
 
@@ -641,9 +737,26 @@ function repairBoolean(
   return fallback;
 }
 
-function repairBig(value: unknown, fallback: Big, path: string, mark: (path: string) => void): Big {
+interface BigOptions {
+  readonly nonNegative?: boolean;
+}
+
+function repairBig(
+  value: unknown,
+  fallback: Big,
+  path: string,
+  mark: (path: string) => void,
+  options: BigOptions = {}
+): Big {
   try {
-    return Big.from(value as BigInput);
+    const repaired = Big.from(value as BigInput);
+
+    if (options.nonNegative && repaired.lt(Big.zero())) {
+      mark(path);
+      return fallback.copy();
+    }
+
+    return repaired;
   } catch {
     mark(path);
     return fallback.copy();
@@ -727,6 +840,52 @@ function repairProjectPriority(
 
   mark("projects.prioritySetting");
   return fallback;
+}
+
+function repairSprintPriority(value: unknown): SprintPriority | undefined {
+  return value === "automation" ||
+    value === "aurora" ||
+    value === "growth" ||
+    value === "research" ||
+    value === "revenue" ||
+    value === "stability"
+    ? value
+    : undefined;
+}
+
+function repairIncidentType(value: unknown): ProductionIncidentType | undefined {
+  return value === "aurora_instability" ||
+    value === "bad_deploy" ||
+    value === "billing_shock" ||
+    value === "outage" ||
+    value === "security_bug" ||
+    value === "vendor_lock_in" ||
+    value === "viral_launch_spike"
+    ? value
+    : undefined;
+}
+
+function repairIncidentResponse(value: unknown): IncidentResponseId | undefined {
+  return value === "accept_debt" ||
+    value === "buy_hardware" ||
+    value === "hotfix" ||
+    value === "pause_growth" ||
+    value === "pay_vendor" ||
+    value === "refactor" ||
+    value === "use_research"
+    ? value
+    : undefined;
+}
+
+function repairRunStyle(value: unknown): RunStyleId | undefined {
+  return value === "aurora_first" ||
+    value === "bootstrapped" ||
+    value === "cursed_enterprise" ||
+    value === "open_source_collective" ||
+    value === "research_lab" ||
+    value === "vc_backed"
+    ? value
+    : undefined;
 }
 
 function repairEndingChoice(value: unknown): EndingChoice | undefined {
@@ -820,11 +979,265 @@ function repairAuroraStatus(
   return fallback;
 }
 
+function repairSprintState(
+  value: unknown,
+  fallback: SprintState,
+  path: string,
+  mark: (path: string) => void
+): SprintState {
+  if (!isRecord(value)) {
+    mark(path);
+    return { ...fallback };
+  }
+
+  const active = repairSprintPriority(value.active);
+  const repaired: SprintState = {
+    completed: repairNumber(value.completed, fallback.completed, `${path}.completed`, mark, {
+      integer: true,
+      nonNegative: true
+    }),
+    cooldownUntilS: repairNumber(
+      value.cooldownUntilS,
+      fallback.cooldownUntilS,
+      `${path}.cooldownUntilS`,
+      mark,
+      { nonNegative: true }
+    ),
+    endsAtS: repairNumber(value.endsAtS, fallback.endsAtS, `${path}.endsAtS`, mark, {
+      nonNegative: true
+    }),
+    startedAtS: repairNumber(value.startedAtS, fallback.startedAtS, `${path}.startedAtS`, mark, {
+      nonNegative: true
+    })
+  };
+
+  if (active !== undefined) {
+    repaired.active = active;
+  } else if (value.active !== undefined) {
+    mark(`${path}.active`);
+  }
+
+  return repaired;
+}
+
+function repairProductionIncidents(
+  value: unknown,
+  fallback: ProductionIncidentsState,
+  path: string,
+  mark: (path: string) => void
+): ProductionIncidentsState {
+  if (!isRecord(value)) {
+    mark(path);
+    return { active: [], history: [], nextCheckAtS: fallback.nextCheckAtS };
+  }
+
+  return {
+    active: repairIncidentList(value.active, `${path}.active`, mark),
+    history: repairIncidentHistory(value.history, `${path}.history`, mark),
+    nextCheckAtS: repairNumber(
+      value.nextCheckAtS,
+      fallback.nextCheckAtS,
+      `${path}.nextCheckAtS`,
+      mark,
+      { nonNegative: true }
+    )
+  };
+}
+
+function repairMetaprogression(
+  value: unknown,
+  fallback: MetaprogressionState,
+  path: string,
+  mark: (path: string) => void
+): MetaprogressionState {
+  if (!isRecord(value)) {
+    mark(path);
+    return { ...fallback };
+  }
+
+  const runStyle = repairRunStyle(value.runStyle);
+  if (runStyle === undefined) {
+    if (value.runStyle !== undefined) {
+      mark(`${path}.runStyle`);
+    }
+    return {};
+  }
+
+  return { runStyle };
+}
+
+function repairBank(
+  value: unknown,
+  fallback: BankState,
+  path: string,
+  mark: (path: string) => void
+): BankState {
+  if (!isRecord(value)) {
+    mark(path);
+    return {
+      defaulted: fallback.defaulted,
+      overdraft: fallback.overdraft.copy(),
+      warningsIssued: fallback.warningsIssued
+    };
+  }
+
+  const warningsIssued = repairBankWarningLevel(
+    value.warningsIssued,
+    fallback.warningsIssued,
+    mark
+  );
+  const bank: BankState = {
+    defaulted: repairBoolean(value.defaulted, fallback.defaulted, `${path}.defaulted`, mark),
+    overdraft: repairBig(value.overdraft, fallback.overdraft, `${path}.overdraft`, mark, {
+      nonNegative: true
+    }),
+    warningsIssued
+  };
+
+  if (bank.overdraft.gte(BANK_DEFAULT_OVERDRAFT) && !bank.defaulted) {
+    mark(`${path}.defaulted`);
+    bank.defaulted = true;
+  }
+
+  if (bank.defaulted && bank.warningsIssued < 2) {
+    mark(`${path}.warningsIssued`);
+    bank.warningsIssued = 2;
+  }
+
+  if (bank.defaulted || value.defaultedAtS !== undefined) {
+    bank.defaultedAtS = repairNumber(
+      value.defaultedAtS,
+      fallback.defaultedAtS ?? 0,
+      `${path}.defaultedAtS`,
+      mark,
+      { nonNegative: true }
+    );
+  }
+
+  if (!bank.defaulted && value.defaultedAtS !== undefined) {
+    mark(`${path}.defaultedAtS`);
+    delete bank.defaultedAtS;
+  }
+
+  return bank;
+}
+
+function repairBankWarningLevel(
+  value: unknown,
+  fallback: BankWarningLevel,
+  mark: (path: string) => void
+): BankWarningLevel {
+  if (value === 0 || value === 1 || value === 2) {
+    return value;
+  }
+
+  mark("bank.warningsIssued");
+  return fallback;
+}
+
+function repairIncidentList(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): ProductionIncident[] {
+  if (!Array.isArray(value)) {
+    mark(path);
+    return [];
+  }
+
+  const repaired: ProductionIncident[] = [];
+
+  for (const entry of value) {
+    const incident = repairIncident(entry, path, mark);
+    if (incident !== undefined) {
+      repaired.push(incident);
+    }
+  }
+
+  return repaired;
+}
+
+function repairIncidentHistory(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): ProductionIncidentHistoryEntry[] {
+  if (!Array.isArray(value)) {
+    mark(path);
+    return [];
+  }
+
+  const repaired: ProductionIncidentHistoryEntry[] = [];
+
+  for (const entry of value) {
+    const incident = repairIncident(entry, path, mark);
+    if (incident?.resolvedAtS !== undefined) {
+      repaired.push({
+        id: incident.id,
+        response: incident.response,
+        resolvedAtS: incident.resolvedAtS,
+        severity: incident.severity,
+        startedAtS: incident.startedAtS,
+        type: incident.type
+      });
+    } else {
+      mark(path);
+    }
+  }
+
+  return repaired;
+}
+
+function repairIncident(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): ProductionIncident | undefined {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    mark(path);
+    return undefined;
+  }
+
+  const type = repairIncidentType(value.type);
+  if (type === undefined) {
+    mark(`${path}.type`);
+    return undefined;
+  }
+
+  const response = repairIncidentResponse(value.response);
+  const incident: ProductionIncident = {
+    id: value.id,
+    severity: repairNumber(value.severity, 1, `${path}.severity`, mark, {
+      nonNegative: true
+    }),
+    startedAtS: repairNumber(value.startedAtS, 0, `${path}.startedAtS`, mark, {
+      nonNegative: true
+    }),
+    type,
+    untilS: repairNumber(value.untilS, 0, `${path}.untilS`, mark, { nonNegative: true })
+  };
+
+  if (response !== undefined) {
+    incident.response = response;
+  } else if (value.response !== undefined) {
+    mark(`${path}.response`);
+  }
+
+  if (value.resolvedAtS !== undefined) {
+    incident.resolvedAtS = repairNumber(value.resolvedAtS, 0, `${path}.resolvedAtS`, mark, {
+      nonNegative: true
+    });
+  }
+
+  return incident;
+}
+
 function repairNumberRecord(
   value: unknown,
   fallback: Record<string, number>,
   path: string,
-  mark: (path: string) => void
+  mark: (path: string) => void,
+  validKeys?: ReadonlySet<string>
 ): Record<string, number> {
   const repaired = { ...fallback };
 
@@ -834,6 +1247,11 @@ function repairNumberRecord(
   }
 
   for (const [key, entry] of Object.entries(value)) {
+    if (validKeys !== undefined && !validKeys.has(key)) {
+      mark(`${path}.${key}`);
+      continue;
+    }
+
     if (typeof entry === "number" && Number.isInteger(entry) && entry >= 0) {
       repaired[key] = entry;
     } else {
@@ -909,6 +1327,11 @@ function repairProjectOffers(
       continue;
     }
 
+    if (!PROJECT_IDS.has(entry.projectId)) {
+      mark(`${path}.${entry.projectId}`);
+      continue;
+    }
+
     repaired.push({
       id: typeof entry.id === "string" ? entry.id : entry.projectId,
       projectId: entry.projectId
@@ -936,14 +1359,21 @@ function repairActiveBuilds(
       continue;
     }
 
+    if (!ACTIVE_BUILD_PROJECT_IDS.has(entry.projectId)) {
+      mark(`${path}.${entry.projectId}`);
+      continue;
+    }
+
     repaired.push({
       id: entry.id,
       buildS: repairNumber(entry.buildS, 0, `${path}.buildS`, mark, { nonNegative: true }),
-      cost: repairBig(entry.cost, Big.zero(), `${path}.cost`, mark),
+      cost: repairBig(entry.cost, Big.zero(), `${path}.cost`, mark, { nonNegative: true }),
       elapsedS: repairNumber(entry.elapsedS, 0, `${path}.elapsedS`, mark, { nonNegative: true }),
-      payout: repairBig(entry.payout, Big.zero(), `${path}.payout`, mark),
+      payout: repairBig(entry.payout, Big.zero(), `${path}.payout`, mark, { nonNegative: true }),
       projectId: entry.projectId,
-      revenue: repairBig(entry.revenue, Big.zero(), `${path}.revenue`, mark)
+      revenue: repairBig(entry.revenue, Big.zero(), `${path}.revenue`, mark, {
+        nonNegative: true
+      })
     });
   }
 
@@ -964,11 +1394,22 @@ function repairProducts(value: unknown, path: string, mark: (path: string) => vo
       continue;
     }
 
+    if (!PROJECT_IDS.has(entry.projectId)) {
+      mark(`${path}.${entry.projectId}`);
+      continue;
+    }
+
     repaired.push({
       id: entry.id,
       bugged: typeof entry.bugged === "boolean" ? entry.bugged : false,
+      level: repairNumber(entry.level, 1, `${path}.level`, mark, {
+        integer: true,
+        positive: true
+      }),
       projectId: entry.projectId,
-      revenue: repairBig(entry.revenue, Big.zero(), `${path}.revenue`, mark),
+      revenue: repairBig(entry.revenue, Big.zero(), `${path}.revenue`, mark, {
+        nonNegative: true
+      }),
       shippedAtS: repairNumber(entry.shippedAtS, 0, `${path}.shippedAtS`, mark, {
         nonNegative: true
       })
@@ -978,16 +1419,29 @@ function repairProducts(value: unknown, path: string, mark: (path: string) => vo
   return repaired;
 }
 
-function repairBugs(value: unknown, path: string, mark: (path: string) => void): ActiveBug[] {
+function repairBugs(
+  value: unknown,
+  products: readonly Product[],
+  path: string,
+  mark: (path: string) => void
+): ActiveBug[] {
   if (!Array.isArray(value)) {
     mark(path);
     return [];
   }
 
   const repaired: ActiveBug[] = [];
+  const buggedProductIds = new Set(
+    products.filter((product) => product.bugged).map((product) => product.id)
+  );
 
   for (const entry of value) {
     if (isRecord(entry) && typeof entry.productId === "string") {
+      if (!buggedProductIds.has(entry.productId)) {
+        mark(`${path}.${entry.productId}`);
+        continue;
+      }
+
       repaired.push({ productId: entry.productId });
     } else {
       mark(path);
@@ -1005,9 +1459,15 @@ function repairInbox(value: unknown, path: string, mark: (path: string) => void)
 
   const repaired: InboxEntry[] = [];
 
-  for (const entry of value) {
+  for (const [index, entry] of value.entries()) {
     if (isRecord(entry) && typeof entry.eventId === "string") {
-      repaired.push({ eventId: entry.eventId });
+      repaired.push({
+        id:
+          typeof entry.id === "string" && entry.id.length > 0
+            ? entry.id
+            : `${entry.eventId}.${index + 1}`,
+        eventId: entry.eventId
+      });
     } else {
       mark(path);
     }
@@ -1057,14 +1517,34 @@ function repairStats(
       continue;
     }
 
+    if (isBigLikeStat(entry)) {
+      repaired[key] = Big.from(entry);
+      continue;
+    }
+
+    if (typeof entry !== "string") {
+      mark(`${path}.${key}`);
+      continue;
+    }
+
     try {
-      repaired[key] = Big.from(entry as BigInput);
+      repaired[key] = Big.from(entry);
     } catch {
       mark(`${path}.${key}`);
     }
   }
 
   return repaired;
+}
+
+function isBigLikeStat(value: unknown): value is BigInput {
+  return (
+    isRecord(value) &&
+    typeof value.m === "number" &&
+    Number.isFinite(value.m) &&
+    typeof value.e === "number" &&
+    Number.isFinite(value.e)
+  );
 }
 
 function repairWindows(

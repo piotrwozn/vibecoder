@@ -3,6 +3,12 @@ import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
 import { AURORA_HOSTING_PER_SERVER_S, AURORA_SERVER_COMPONENT_IDS } from "../data/aurora";
 import { HARDWARE_POWER_RATES } from "../data/billing";
+import { accrueBankOverdraft, repayBankOverdraft } from "./bank";
+import { getIncidentEffects } from "./incidents";
+import { getSprintEffects } from "./roadmap";
+import { isPositiveBig, isPositiveFinite, spendBig } from "./resources";
+import { getRunStyleEffects } from "./run-styles";
+import { getStoryDecisionEffects } from "./story-decisions";
 
 export interface BillingBreakdown {
   readonly auroraHosting: Big;
@@ -10,6 +16,8 @@ export interface BillingBreakdown {
   readonly hardwarePower: Big;
   readonly total: Big;
 }
+
+export const POWER_OVERDRAW_STAT = "billing.powerOverdrawAt";
 
 export function createBillingBreakdown(state: GameState): BillingBreakdown {
   const hardwarePower = getHardwarePowerRate(state);
@@ -24,7 +32,7 @@ export function createBillingBreakdown(state: GameState): BillingBreakdown {
   };
 }
 
-export function getBillingRate(state: GameState): Big {
+function getBillingRate(state: GameState): Big {
   return createBillingBreakdown(state).total;
 }
 
@@ -38,27 +46,62 @@ export function getNetMoneyRate(grossIncome: Big, state: GameState): Big {
 }
 
 export function tickBilling(state: GameState, dtS: number, bus?: EventBus): boolean {
+  if (!isPositiveFinite(dtS)) {
+    return false;
+  }
+
+  let changed = repayBankOverdraft(state, bus);
+  const previousAuroraBillingPaused = state.aurora.billingPaused;
   const breakdown = createBillingBreakdown(state);
-  const bill = Big.mul(breakdown.total, Big.fromNumber(dtS));
-  const auroraBill = Big.mul(
+  const fullHardwareBill = Big.mul(breakdown.hardwarePower, Big.fromNumber(dtS));
+  const hardwareWasPaused = state.stats[POWER_OVERDRAW_STAT] !== undefined;
+  const hardwareBill =
+    hardwareWasPaused && state.res.money.lt(fullHardwareBill) ? Big.zero() : fullHardwareBill;
+  const fullAuroraBill = Big.mul(
     Big.add(breakdown.auroraPower, breakdown.auroraHosting),
     Big.fromNumber(dtS)
   );
-  const auroraBillingPaused = auroraBill.gt(Big.zero()) && state.res.money.lt(auroraBill);
+  const moneyAfterHardwareGrace = Big.max(Big.zero(), Big.sub(state.res.money, hardwareBill));
+  const auroraBill =
+    isPositiveBig(fullAuroraBill) && moneyAfterHardwareGrace.lt(fullAuroraBill)
+      ? Big.zero()
+      : fullAuroraBill;
+  const totalBill = Big.add(hardwareBill, auroraBill);
+  const moneyBeforePayment = state.res.money.copy();
+  const unpaidHardware = Big.max(Big.zero(), Big.sub(hardwareBill, moneyBeforePayment));
+  const hardwarePaused =
+    isPositiveBig(unpaidHardware) ||
+    (hardwareWasPaused && hardwareBill.eq0() && isPositiveBig(fullHardwareBill));
+  const auroraBillingPaused = isPositiveBig(fullAuroraBill) && auroraBill.eq0();
 
-  state.aurora.billingPaused = auroraBillingPaused;
-
-  if (bill.eq0() || state.res.money.eq0()) {
-    return auroraBillingPaused;
+  if (hardwarePaused) {
+    state.stats[POWER_OVERDRAW_STAT] = state.stats[POWER_OVERDRAW_STAT] ?? state.meta.playtimeS;
+  } else {
+    delete state.stats[POWER_OVERDRAW_STAT];
   }
 
-  const paid = Big.min(state.res.money, bill);
-  Big.subIn(state.res.money, paid);
-  bus?.emit("res:changed", "money");
-  return true;
+  state.aurora.billingPaused = auroraBillingPaused;
+  changed = changed || previousAuroraBillingPaused !== auroraBillingPaused;
+
+  if (!isPositiveBig(totalBill)) {
+    return changed || hardwarePaused || auroraBillingPaused;
+  }
+
+  const paid = Big.min(state.res.money, totalBill);
+  if (isPositiveBig(paid) && spendBig(state.res.money, paid)) {
+    bus?.emit("res:changed", "money");
+    changed = true;
+  }
+
+  const unpaidBill = Big.sub(totalBill, paid);
+  if (isPositiveBig(unpaidBill)) {
+    changed = accrueBankOverdraft(state, unpaidBill, bus) || changed;
+  }
+
+  return changed || hardwarePaused || auroraBillingPaused;
 }
 
-export function getHardwarePowerRate(state: GameState): Big {
+function getHardwarePowerRate(state: GameState): Big {
   let rate = Big.zero();
 
   for (const entry of HARDWARE_POWER_RATES) {
@@ -92,20 +135,32 @@ export function getHardwarePowerRatePerLevel(hardwareId: string): Big {
 }
 
 function getAuroraDedicatedPowerRate(state: GameState): Big {
-  if (state.aurora.dedicatedServers <= 0) {
+  if (state.aurora.completed || state.aurora.dedicatedServers <= 0) {
     return Big.zero();
   }
 
   return Big.mul(
-    getAuroraDedicatedServerPowerRate(),
-    Big.fromNumber(state.aurora.dedicatedServers)
+    Big.mul(getAuroraDedicatedServerPowerRate(), Big.fromNumber(state.aurora.dedicatedServers)),
+    Big.fromNumber(getAuroraBillingMultiplier(state))
   );
 }
 
 function getAuroraHostingRate(state: GameState): Big {
-  if (state.aurora.hostedServers <= 0) {
+  if (state.aurora.completed || state.aurora.hostedServers <= 0) {
     return Big.zero();
   }
 
-  return Big.mul(AURORA_HOSTING_PER_SERVER_S, Big.fromNumber(state.aurora.hostedServers));
+  return Big.mul(
+    Big.mul(AURORA_HOSTING_PER_SERVER_S, Big.fromNumber(state.aurora.hostedServers)),
+    Big.fromNumber(getAuroraBillingMultiplier(state))
+  );
+}
+
+function getAuroraBillingMultiplier(state: GameState): number {
+  return (
+    getIncidentEffects(state).auroraBillingMultiplier *
+    getSprintEffects(state).auroraBillingMultiplier *
+    getRunStyleEffects(state).auroraBillingMultiplier *
+    getStoryDecisionEffects(state).auroraBillingMultiplier
+  );
 }

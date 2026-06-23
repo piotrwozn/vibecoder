@@ -12,6 +12,7 @@ import {
 import { isDemoLocked } from "./demo";
 import { calculateIterationCostMultiplier } from "./iteration";
 import type { DerivedCache } from "./production";
+import { canSpendBig, spendBig } from "./resources";
 
 export interface BuyHardwareResult {
   readonly cost: Big;
@@ -81,11 +82,11 @@ export function buyHardware(state: GameState, id: string, bus?: EventBus): BuyHa
     return { cost, id, ok: false, reason: "psuTier" };
   }
 
-  if (state.res.money.lt(cost)) {
+  if (!canSpendBig(state.res.money, cost)) {
     return { cost, id, ok: false, reason: "unaffordable" };
   }
 
-  Big.subIn(state.res.money, cost);
+  spendBig(state.res.money, cost);
   state.owned.hardware[id] = owned + 1;
   recomputeComputeCap(state);
 
@@ -122,7 +123,7 @@ export function getAvailableHardware(state: GameState): readonly HardwareDefinit
   );
 }
 
-export function isHardwareUnlocked(state: GameState, hardware: HardwareDefinition): boolean {
+function isHardwareUnlocked(state: GameState, hardware: HardwareDefinition): boolean {
   if (hardware.phase === "server" && !isPcComplete(state)) {
     return false;
   }
@@ -162,7 +163,7 @@ export function getHardwareTierGateRequirement(
       };
 }
 
-export function getHardwareCapContribution(hardware: HardwareDefinition, level: number): number {
+function getHardwareCapContribution(hardware: HardwareDefinition, level: number): number {
   const effectiveLevel = Math.min(Math.max(0, level), hardware.maxLevel);
 
   if (effectiveLevel <= 0) {
@@ -183,7 +184,7 @@ export function getHardwareCapGain(hardware: HardwareDefinition, owned: number):
   );
 }
 
-export function isPcComplete(state: GameState): boolean {
+function isPcComplete(state: GameState): boolean {
   return state.hardware.pcComplete || arePcComponentsMaxed(state);
 }
 

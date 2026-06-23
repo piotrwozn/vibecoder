@@ -36,35 +36,93 @@ export function createVibexAiClient(
   }
 
   let client: VibexAiClient | undefined;
-  let loading: Promise<VibexAiClient> | undefined;
+  let loading: Promise<VibexAiClient | undefined> | undefined;
+  let loadError: string | undefined;
+  let loadEpoch = 0;
 
-  const loadClient = async (): Promise<VibexAiClient> => {
-    loading ??= import("./ai.full").then((module) => {
-      client = module.createFullVibexAiClient(onChange);
-      onChange();
+  const loadClient = async (): Promise<VibexAiClient | undefined> => {
+    if (client !== undefined) {
       return client;
-    });
+    }
+
+    const epoch = loadEpoch;
+    loadError = undefined;
+    loading ??= import("./ai.full")
+      .then((module) => {
+        const loadedClient = module.createFullVibexAiClient(onChange);
+
+        if (epoch !== loadEpoch) {
+          loadedClient.dispose();
+          return undefined;
+        }
+
+        client = loadedClient;
+        onChange();
+        return client;
+      })
+      .catch((error: unknown) => {
+        if (epoch === loadEpoch) {
+          loadError = getErrorMessage(error);
+          onChange();
+        }
+
+        return undefined;
+      })
+      .finally(() => {
+        if (epoch === loadEpoch) {
+          loading = undefined;
+        }
+      });
     return loading;
   };
 
   return {
     dispose(): void {
+      loadEpoch += 1;
       client?.dispose();
       client = undefined;
+      loadError = undefined;
       loading = undefined;
       onChange();
     },
 
     async downloadModel(): Promise<boolean> {
-      return (await loadClient()).downloadModel();
+      const loadedClient = await loadClient();
+
+      if (loadedClient === undefined) {
+        return false;
+      }
+
+      try {
+        return await loadedClient.downloadModel();
+      } catch (error) {
+        loadError = getErrorMessage(error);
+        onChange();
+        return false;
+      }
     },
 
     async generate(prompt: string, eraModel: string): Promise<string | undefined> {
-      return (await loadClient()).generate(prompt, eraModel);
+      const loadedClient = await loadClient();
+
+      if (loadedClient === undefined) {
+        return undefined;
+      }
+
+      try {
+        return await loadedClient.generate(prompt, eraModel);
+      } catch (error) {
+        loadError = getErrorMessage(error);
+        onChange();
+        return undefined;
+      }
     },
 
     snapshot(): VibexAiSnapshot {
-      return client?.snapshot() ?? createIdleSnapshot();
+      return (
+        client?.snapshot() ??
+        (loadError === undefined ? createIdleSnapshot() : createErrorSnapshot(loadError))
+      );
     }
   };
 }
@@ -99,4 +157,18 @@ function createUnavailableAiClient(): VibexAiClient {
       };
     }
   };
+}
+
+function createErrorSnapshot(errorMessage: string): VibexAiSnapshot {
+  return {
+    canDownload: true,
+    errorMessage,
+    modelSizeLabel: MODEL_SIZE_LABEL,
+    progress: undefined,
+    status: "error"
+  };
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "local AI failed";
 }

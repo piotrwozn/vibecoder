@@ -3,6 +3,7 @@ import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
 import { C } from "../data/constants";
 import type { DerivedCache } from "./production";
+import { addNonNegativeBig } from "./resources";
 
 const FLOW_IDLE_GRACE_S = 5;
 const LAST_PROMPT_AT_STAT = "prompt.lastAt";
@@ -18,9 +19,12 @@ export function performPromptClick(
   }
 
   const clickPower = getClickPower(state, cache, nowS);
-  Big.addIn(state.res.loc, clickPower);
-  Big.addIn(state.lifetime.loc, clickPower);
-  Big.addIn(state.lifetime.locSinceExit, clickPower);
+  if (!addNonNegativeBig(state.res.loc, clickPower)) {
+    return Big.zero();
+  }
+
+  addNonNegativeBig(state.lifetime.loc, clickPower);
+  addNonNegativeBig(state.lifetime.locSinceExit, clickPower);
 
   state.stats[LAST_PROMPT_AT_STAT] = nowS;
   state.flow.meter = Math.min(1, state.flow.meter + cache.click.flowGain);

@@ -51,6 +51,13 @@ export function createAudioController(initialSettings: AudioSettings): AudioCont
   let master: GainNode | undefined;
   let music: HTMLAudioElement | undefined;
   let musicFallback: MusicFallback | undefined;
+  let userGestureSeen = hasUserGesture();
+
+  if (!userGestureSeen) {
+    installUserGestureListeners(() => {
+      userGestureSeen = true;
+    });
+  }
 
   function ensureContext(): AudioContext | undefined {
     if (context !== undefined) {
@@ -79,6 +86,10 @@ export function createAudioController(initialSettings: AudioSettings): AudioCont
   return {
     play(kind): void {
       if (!enabled || volume <= 0) {
+        return;
+      }
+
+      if (!userGestureSeen) {
         return;
       }
 
@@ -325,6 +336,37 @@ function canPlayOgg(audio: HTMLAudioElement): boolean {
 
 function getAudioWindow(): AudioWindow | undefined {
   return typeof window === "undefined" ? undefined : (window as AudioWindow);
+}
+
+function hasUserGesture(): boolean {
+  const audioWindow = getAudioWindow();
+
+  if (audioWindow?.document === undefined) {
+    return true;
+  }
+
+  const userActivation = audioWindow.navigator.userActivation;
+  return userActivation?.hasBeenActive === true;
+}
+
+function installUserGestureListeners(onGesture: () => void): void {
+  const audioWindow = getAudioWindow();
+  const document = audioWindow?.document;
+
+  if (document === undefined) {
+    return;
+  }
+
+  const activate = (): void => {
+    onGesture();
+    document.removeEventListener("keydown", activate, true);
+    document.removeEventListener("pointerdown", activate, true);
+    document.removeEventListener("touchstart", activate, true);
+  };
+
+  document.addEventListener("keydown", activate, true);
+  document.addEventListener("pointerdown", activate, true);
+  document.addEventListener("touchstart", activate, true);
 }
 
 function clampVolume(value: number): number {

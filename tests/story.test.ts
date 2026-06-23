@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { Big } from "../src/core/bignum";
 import { createDefaultGameState, type EndingChoice, type GameState } from "../src/core/state";
 import { REFACTOR_COMPLETED_STAT } from "../src/data/conditions";
-import { C, PRESTIGE } from "../src/data/constants";
+import { C, OMEGA, PRESTIGE } from "../src/data/constants";
 import { calculateDebtD0 } from "../src/systems/debt";
 import {
   chooseStoryOption,
@@ -58,7 +58,7 @@ describe("M7 story engine", () => {
       "a0_07_tutorial_done"
     ]);
     expect(state.story.act).toBe(1);
-    expect(state.story.flags.has("achievement.hello_world")).toBe(true);
+    expect(state.story.flags.has("achievement.hello_world")).toBe(false);
   });
 
   it("simulates Act 1 progression and both a1_10 choice variants", () => {
@@ -107,7 +107,7 @@ describe("M7 story engine", () => {
     expect(getInboxIds(state).filter((id) => id === "a1_10_act_end")).toHaveLength(1);
 
     advanceStory(state);
-    expect(getInboxIds(state).filter((id) => id === "a1_10_act_end")).toHaveLength(2);
+    expect(getInboxIds(state).filter((id) => id === "a1_10_act_end")).toHaveLength(1);
 
     expect(chooseStoryOption(state, "a1_10_act_end", "accept").ok).toBe(true);
     expect(state.story.act).toBe(2);
@@ -161,7 +161,8 @@ describe("M7 story engine", () => {
     state.meta.edition = "full";
     state.story.act = 5;
     state.era = 10;
-    state.lifetime.loc = Big.from("1e35");
+    state.lifetime.loc = Big.from(OMEGA.LIFETIME_LOC_TARGET);
+    state.stats[`project.${OMEGA.PROJECT_ID}.shipped`] = 1;
 
     advanceStory(state);
     expect(chooseStoryOption(state, "a5_12_final_choice", "merge").ok).toBe(true);
@@ -173,6 +174,32 @@ describe("M7 story engine", () => {
     expect(state.story.flags.has("achievement.ending_merge")).toBe(true);
     expect(state.story.flags.has("achievement.ending_unplug")).toBe(true);
     expect(state.story.flags.has("achievement.ending_fork")).toBe(true);
+
+    const finaleEntries = () =>
+      getInboxIds(state).filter((eventId) => eventId === "a5_12_final_choice").length;
+    expect(finaleEntries()).toBe(1);
+
+    advanceStory(state, 5);
+    expect(finaleEntries()).toBe(1);
+  });
+
+  it("keeps the OMEGA finale closed until OMEGA REQUEST ships", () => {
+    const state = createDefaultGameState();
+    state.meta.edition = "full";
+    state.story.act = 5;
+    state.era = 10;
+    state.lifetime.loc = Big.from(OMEGA.LIFETIME_LOC_TARGET);
+
+    advanceStory(state);
+
+    expect(getInboxIds(state)).not.toContain("a5_11_finale");
+    expect(getInboxIds(state)).not.toContain("a5_12_final_choice");
+
+    state.stats[`project.${OMEGA.PROJECT_ID}.shipped`] = 1;
+    advanceStory(state);
+
+    expect(getInboxIds(state)).toContain("a5_11_finale");
+    expect(getInboxIds(state)).toContain("a5_12_final_choice");
   });
 
   it("holds the Act 2 agent-bank beat until the larger agent and shipping milestone", () => {
@@ -214,7 +241,7 @@ describe("M7 story engine", () => {
     const hypeAfterFirstReject = state.res.hype;
 
     advanceStory(state, 30 * 60);
-    expect(getInboxIds(state).filter((id) => id === "a3_02_takeover_offer")).toHaveLength(2);
+    expect(getInboxIds(state).filter((id) => id === "a3_02_takeover_offer")).toHaveLength(1);
     expect(chooseStoryOption(state, "a3_02_takeover_offer", "reject").ok).toBe(true);
 
     expect(state.res.hype).toBe(hypeAfterFirstReject);
@@ -223,11 +250,11 @@ describe("M7 story engine", () => {
   it("counts and clears M14 unread channels independently", () => {
     const state = createDefaultGameState();
     state.story.inbox.push(
-      { eventId: "a0_02_zora_hi" },
-      { eventId: "a0_03_first_gig" },
-      { eventId: "a1_05_feed_hype" },
-      { eventId: "a0_01_boot" },
-      { eventId: "a3_06_human_review_act" }
+      makeInboxEntry("a0_02_zora_hi", 1),
+      makeInboxEntry("a0_03_first_gig", 2),
+      makeInboxEntry("a1_05_feed_hype", 3),
+      makeInboxEntry("a0_01_boot", 4),
+      makeInboxEntry("a3_06_human_review_act", 5)
     );
 
     expect(getUnreadStoryCount(state, "chat")).toBe(1);
@@ -271,12 +298,19 @@ function choosePrepared(
   state.meta.playtimeS = playtimeS;
   state.story.act = getStoryEvent(eventId)?.act ?? state.story.act;
   state.story.seen.add(eventId);
-  state.story.inbox.push({ eventId });
+  state.story.inbox.push(makeInboxEntry(eventId, 1));
 
   const result = chooseStoryOption(state, eventId, choiceId);
   expect(result.ok).toBe(true);
 
   return { state };
+}
+
+function makeInboxEntry(
+  eventId: string,
+  ordinal: number
+): { readonly id: string; readonly eventId: string } {
+  return { id: `${eventId}.${ordinal}`, eventId };
 }
 
 function expectEndingChoice(choice: EndingChoice, achievementFlag: string): void {

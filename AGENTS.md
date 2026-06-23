@@ -1,43 +1,36 @@
-# AGENTS.md — VIBECODER
+# AGENTS.md - VIBECODER
 
-Idle/incremental game. Pure TypeScript + Vite. **No game engine, no runtime dependencies.**
-The full design lives in `plan/` (Polish prose, English identifiers). It is the single source of truth.
+## Ruflo Integration
 
-## Read first
-- `plan/README.md` — index and how plan files map to code
-- `plan/08-roadmapa.md` — current milestone = your scope. Do ONE milestone (or one task) at a time.
+When working on multi-file tasks or complex features, use ToolSearch to find and invoke Ruflo MCP
+tools.
 
-**Reference notation:** `03 §5.1` means: file `plan/03-balans.md`, numbered heading `5.1`. Files are numbered `01`–`12`; always resolve and read every section your milestone references before writing code. If a reference doesn't resolve, stop and ask.
+Key tools: `memory_store`, `memory_search`, `hooks_route`, `swarm_init`, `agent_spawn`.
+
+Check system-reminder tags for `[INTELLIGENCE]` pattern suggestions before starting work.
+
+## Project Contract
+
+VIBECODER is an idle/incremental game built with TypeScript, Vite, and Tauri. Keep changes aligned
+with the current architecture notes in `docs/architecture.md` and the staged development roadmap in
+`docs/roadmap.md`.
 
 ## Commands
-- `npm run dev` — dev server
-- `npm run check` — tsc --noEmit + eslint + vitest + content validator. **Must pass before you claim done.**
-- `npm run sim -- --strategy sane --hours 5` — headless balance smoke
-- `npm run build` / `VITE_EDITION=demo npm run build` — full / web demo
-- `npm run tauri build` — desktop build (M12+)
 
-## Hard rules
-1. **No runtime dependencies.** devDependencies only. If you think you need a library, you don't — implement it (specs are in `plan/07`). **Sole owner-approved exception:** the Vibex local-AI island in `src/platform/ai.*` (engine `wllama`, MIT + a bundled GGUF model, Apache-2.0) — isolated, must not leak imports into `core/`, `systems/`, `data/` or `ui/`; spec in `plan/06 §15`, milestone `08 §M15`.
-2. **Never invent numbers.** Every constant comes from `plan/03`, `plan/04` or `plan/09`. Missing constant → stop and ask.
-3. **Layering:** `data/` has no logic. `systems/` never touches DOM. `ui/` never computes game math. Enforced by the validator.
-4. **All user-facing text via i18n** (`src/i18n/en.json`). No string literals in `ui/`.
-5. **Big numbers:** use the in-house `Big` class everywhere a value can exceed 1e15. Never `number` for loc/money.
-6. **Performance is a feature:** no DOM allocation in the tick/render hot path; dirty-flags only; transforms/opacity for animation. Budgets in `plan/07 §9`.
-7. **Saves are sacred:** any `GameState` shape change = bump `SAVE_VERSION` + migration + fixture test (`plan/10 §4`).
-8. Conventional commits prefixed with milestone: `M3: project board UI`.
+- `npm run dev` - start the demo web build.
+- `npm run dev:full` - start the full-edition web build.
+- `npm run check:app` - TypeScript, ESLint, Prettier, Vitest, and repository validation.
+- `npm run check` - app checks, smoke simulations, and Tauri Rust tests.
+- `npm run sim -- --hours 100 --strategy sane` - run a balance simulation.
+- `npm run tauri -- build` - create the desktop build.
 
-## Review workflow (`review/` folder)
-Milestone reviews live in `review/review_<k>.md` (see `review/README.md`, process in `plan/08 §15`).
-When applying a review file: fix unchecked MUST FIX items, tick `[ ]`→`[x]`, fill each `fix-note:`,
-never edit the reviewer's finding text, log disagreements under DISPUTED instead of skipping,
-set `Status: FIXED` when done. P2 items: fix only if <10 lines, else note "→ backlog".
+## Hard Rules
 
-## Map: plan → code
-| Plan | Code |
-|------|------|
-| 02 systems design | `src/systems/*` |
-| 03/04 formulas+constants | `src/data/constants.ts`, systems |
-| 05 story events | `src/data/story/*`, `src/i18n/en.json` |
-| 06 UI/tokens | `src/ui/*` |
-| 07 architecture | `src/core/*`, `src/platform/*` |
-| 09 content tables | `src/data/*` |
+1. Keep runtime dependencies limited. The approved local-AI island is `@wllama/wllama` in
+   `src/platform/ai.*`; do not let it leak into `core`, `systems`, `data`, or `ui`.
+2. Add durable state through `GameState`, defaults, save repair, migrations, fixtures, and tests.
+3. Keep `data` declarative, `systems` deterministic and DOM-free, and `ui` free of game math.
+4. Put user-facing text in `src/i18n/en.json` and `src/i18n/pl.json`.
+5. Use the in-house `Big` class for values that can grow beyond ordinary JavaScript number ranges.
+6. Prefer behavior-preserving refactors before adding new gameplay systems.
+7. Run focused tests while developing and `npm run check` before claiming release readiness.

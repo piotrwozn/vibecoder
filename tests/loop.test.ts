@@ -1,7 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { C } from "../src/data/constants";
-import { OFFLINE_CATCH_UP_MS, TICK_MS, createLoopStepper } from "../src/core/loop";
+import {
+  OFFLINE_CATCH_UP_MS,
+  OFFLINE_THRESHOLD_MS,
+  TICK_MS,
+  createLoopStepper,
+  startLoop
+} from "../src/core/loop";
 
 describe("fixed timestep loop", () => {
   it("ticks exactly 10 times for one second", () => {
@@ -78,14 +84,35 @@ describe("fixed timestep loop", () => {
       }
     );
 
-    const result = stepper.step(OFFLINE_CATCH_UP_MS + 1);
+    const result = stepper.step(OFFLINE_THRESHOLD_MS + 1);
 
-    expect(caughtMs).toBe(OFFLINE_CATCH_UP_MS + 1);
+    expect(caughtMs).toBe(OFFLINE_THRESHOLD_MS + 1);
     expect(result.ticks).toBe(0);
     expect(result.accumulatorMs).toBe(0);
     expect(result.alpha).toBe(0);
     expect(alpha).toBe(0);
     expect(ticks).toBe(0);
+  });
+
+  it("clamps medium frame gaps without routing them to offline catch-up", () => {
+    let caughtMs = 0;
+    let ticks = 0;
+    const stepper = createLoopStepper(
+      () => {
+        ticks += 1;
+      },
+      () => {},
+      (elapsedMs) => {
+        caughtMs = elapsedMs;
+      }
+    );
+
+    const result = stepper.step(OFFLINE_CATCH_UP_MS + 1);
+
+    expect(caughtMs).toBe(0);
+    expect(result.ticks).toBe(20);
+    expect(result.accumulatorMs).toBe(0);
+    expect(ticks).toBe(20);
   });
 
   it("records measured tick and frame durations when instrumentation is enabled", () => {
@@ -110,5 +137,29 @@ describe("fixed timestep loop", () => {
 
     expect(tickMs).toEqual([0.25]);
     expect(frameMs).toEqual([0.25]);
+  });
+
+  it("reschedules the frame loop after a thrown tick", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const callbacks: FrameRequestCallback[] = [];
+    const controls = startLoop({
+      now: () => 0,
+      render: () => {},
+      requestFrame: (callback) => {
+        callbacks.push(callback);
+        return callbacks.length;
+      },
+      tick: () => {
+        throw new Error("tick failed");
+      }
+    });
+
+    callbacks[0]?.(TICK_MS);
+
+    expect(callbacks).toHaveLength(2);
+    expect(controls.running).toBe(true);
+    expect(errorSpy).toHaveBeenCalled();
+    controls.stop();
+    errorSpy.mockRestore();
   });
 });

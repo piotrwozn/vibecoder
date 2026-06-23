@@ -38,6 +38,7 @@ describe("M3 Projects rendering", () => {
     const view = {
       activeBuilds: [],
       incomeRate: "$1/s",
+      nextUnlock: "After MUSE: $20K",
       offers: [],
       portfolio: [],
       refactor: {
@@ -52,6 +53,31 @@ describe("M3 Projects rendering", () => {
     updateProjectSummaryIncome(income, view);
 
     expect(income.data).toBe("$1/s");
+  });
+
+  it("updates the next project unlock hint without a page refresh", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.projects.open = true;
+    view.ui.windows.projects.z = 4;
+
+    const app = mountApp(root, view, createActions());
+    const projectsWindow = root.querySelector<HTMLElement>(
+      '.desktop-window[data-app-id="projects"]'
+    );
+    expect(projectsWindow?.textContent).toContain("After MUSE: $20K");
+
+    app.updateDevFloor({
+      ...view,
+      projects: {
+        ...view.projects,
+        nextUnlock: "After MUSE: buy now"
+      }
+    });
+
+    expect(projectsWindow?.textContent).toContain("After MUSE: buy now");
+    expect(projectsWindow?.textContent).not.toContain("After MUSE: $20K");
   });
 });
 
@@ -81,6 +107,69 @@ describe("M7 comms rendering", () => {
 });
 
 describe("M14 split app rendering", () => {
+  it("renders Roadmap as a desktop app with sprint and incident actions", () => {
+    installDom();
+    const root = document.createElement("div");
+    const calls: string[] = [];
+    const view = {
+      ...createDevFloorView(false),
+      roadmap: {
+        activeSprint: "No sprint",
+        activity: [{ id: "changelog", label: "Changelog", detail: "LoC 1/s", tone: "success" }],
+        cooldown: "Ready",
+        incidents: [
+          {
+            id: "incident.1",
+            description: "Production is down",
+            label: "Outage",
+            responses: [
+              {
+                id: "hotfix",
+                cost: "10 LoC",
+                description: "Fix now",
+                disabled: false,
+                label: "Hotfix"
+              }
+            ],
+            severity: "S2",
+            timeRemaining: "5m"
+          }
+        ],
+        priorities: [
+          {
+            active: false,
+            description: "Less debt",
+            disabled: false,
+            id: "stability",
+            label: "Stability"
+          }
+        ],
+        runStyles: [],
+        sprintRemaining: "-"
+      }
+    } satisfies DevFloorView;
+    view.ui.windows.roadmap.open = true;
+    view.ui.windows.roadmap.z = 5;
+
+    mountApp(root, view, {
+      ...createActions(),
+      resolveIncident: (id, response) => {
+        calls.push(`${id}:${response}`);
+      },
+      selectSprintPriority: (id) => {
+        calls.push(id);
+      }
+    });
+
+    const roadmapWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="roadmap"]');
+    expect(roadmapWindow?.textContent).toContain("Roadmap");
+    expect(roadmapWindow?.textContent).toContain("Outage");
+    findButton(roadmapWindow!, "StabilityLess debt")?.click();
+    findButton(roadmapWindow!, "Hotfix10 LoC")?.click();
+
+    expect(calls).toEqual(["stability", "incident.1:hotfix"]);
+  });
+
   it("routes comms content into separate Chat, Mail, and Feed windows", () => {
     installDom();
     const root = document.createElement("div");
@@ -208,6 +297,55 @@ describe("M13 desktop window interactions", () => {
     dispatchPointer(window, "pointerup", { clientX: 240, clientY: 280 });
   });
 
+  it("caches desktop bounds until viewport resize invalidates them", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.agents.open = true;
+    view.ui.windows.agents.z = 3;
+    const app = mountApp(root, view, createActions());
+    const layer = root.querySelector<HTMLElement>(".desktop__windows");
+    const windowNode = root.querySelector<HTMLElement>('.desktop-window[data-app-id="agents"]');
+    let reads = 0;
+    let width = 900;
+    let height = 700;
+
+    Object.defineProperty(layer!, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        reads += 1;
+        return {
+          bottom: height,
+          height,
+          left: 0,
+          right: width,
+          top: 0,
+          width,
+          x: 0,
+          y: 0,
+          toJSON: () => ({})
+        } as DOMRect;
+      }
+    });
+
+    app.updateDevFloor(view);
+    app.updateDevFloor(view);
+
+    expect(reads).toBe(1);
+    expect(windowNode?.style.width).toBe("860px");
+
+    width = 600;
+    height = 640;
+    window.dispatchEvent(new window.Event("resize"));
+    app.updateDevFloor(view);
+
+    expect(reads).toBe(2);
+    expect(windowNode?.style.width).toBe("600px");
+    expect(windowNode?.style.transform).toContain("translate3d(0px,");
+
+    app.destroy();
+  });
+
   it("hides stale generator, upgrade, and product rows after prestige views empty out", () => {
     installDom();
     const root = document.createElement("div");
@@ -248,6 +386,115 @@ describe("M13 desktop window interactions", () => {
       root.querySelector<HTMLElement>('.product-row[data-product-id="p_landing.1"]')?.hidden
     ).toBe(true);
   });
+
+  it("syncs project offers after board changes without a page refresh", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.projects.open = true;
+    view.ui.windows.projects.z = 4;
+    const populated = {
+      ...view,
+      projects: {
+        ...view.projects,
+        offers: [createProjectOfferView("p_landing", false)]
+      }
+    };
+    const app = mountApp(root, populated, createActions());
+
+    const initialOffer = root.querySelector<HTMLElement>('[data-project-id="p_landing"]');
+    const initialButton = initialOffer?.querySelector<HTMLButtonElement>("button");
+    expect(initialOffer).not.toBeNull();
+    expect(initialButton?.disabled).toBe(true);
+
+    app.updateDevFloor({
+      ...populated,
+      projects: {
+        ...populated.projects,
+        offers: [createProjectOfferView("p_mvp", true)]
+      }
+    });
+
+    const staleOffer = root.querySelector<HTMLElement>('[data-project-id="p_landing"]');
+    const refreshedOffer = root.querySelector<HTMLElement>('[data-project-id="p_mvp"]');
+    const refreshedButton = refreshedOffer?.querySelector<HTMLButtonElement>("button");
+
+    expect(staleOffer?.hidden).toBe(true);
+    expect(refreshedOffer).not.toBeNull();
+    expect(refreshedOffer?.hidden).toBe(false);
+    expect(refreshedButton?.disabled).toBe(false);
+  });
+
+  it("updates project levels and payout labels without a page refresh", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.projects.open = true;
+    view.ui.windows.projects.z = 4;
+    const populated = {
+      ...view,
+      projects: {
+        ...view.projects,
+        offers: [createProjectOfferView("p_landing", true, "0/10", "$20", "$1/s")],
+        portfolio: [createProductView("p_landing.1", "1/10", "$1/s")]
+      }
+    };
+    const app = mountApp(root, populated, createActions());
+
+    app.updateDevFloor({
+      ...populated,
+      projects: {
+        ...populated.projects,
+        offers: [createProjectOfferView("p_landing", true, "1/10", "First ship only", "$1.25/s")],
+        portfolio: [createProductView("p_landing.1", "2/10", "$1.25/s")]
+      }
+    });
+
+    const offer = root.querySelector<HTMLElement>('[data-project-id="p_landing"]');
+    const product = root.querySelector<HTMLElement>('[data-product-id="p_landing.1"]');
+
+    expect(offer?.textContent).toContain("1/10");
+    expect(offer?.textContent).toContain("First ship only");
+    expect(offer?.textContent).toContain("$1.25/s");
+    expect(product?.textContent).toContain("2/10");
+    expect(product?.textContent).toContain("$1.25/s");
+  });
+
+  it("updates the refactor build time without a page refresh", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.projects.open = true;
+    view.ui.windows.projects.z = 4;
+    const populated = {
+      ...view,
+      projects: {
+        ...view.projects,
+        refactor: {
+          ...view.projects.refactor,
+          buildTime: "30s"
+        }
+      }
+    };
+    const app = mountApp(root, populated, createActions());
+
+    app.updateDevFloor({
+      ...populated,
+      projects: {
+        ...populated.projects,
+        refactor: {
+          ...populated.projects.refactor,
+          buildTime: "0s"
+        }
+      }
+    });
+
+    const projectsWindow = root.querySelector<HTMLElement>(
+      '.desktop-window[data-app-id="projects"]'
+    );
+    expect(projectsWindow?.textContent).toContain("0s");
+    expect(projectsWindow?.textContent).not.toContain("30s");
+  });
 });
 
 describe("M4 Settings rendering", () => {
@@ -286,9 +533,9 @@ describe("M4 Settings rendering", () => {
     );
 
     expect(settingsWindow?.textContent).toContain("Game controls");
-    expect(settingsWindow?.textContent).not.toContain("Save tools");
-    expect(settingsWindow?.textContent).not.toContain("Export");
-    expect(settingsWindow?.textContent).not.toContain("Import");
+    expect(settingsWindow?.textContent).toContain("Save diagnostics");
+    expect(settingsWindow?.textContent).toContain("Export save");
+    expect(settingsWindow?.textContent).toContain("Import save");
 
     findButton(root, "Replay tutorial")?.click();
 
@@ -403,7 +650,7 @@ describe("M15 Vibex rendering", () => {
   });
 
   it("keeps Vibex code visible when glitch effects override intro animations", () => {
-    const css = readFileSync(new URL("../src/ui/layout.css", import.meta.url), "utf8");
+    const css = readLayoutCss();
 
     expect(css).toMatch(/\.vibex-code-line\s*\{[^}]*opacity:\s*1;/s);
     expect(css).toMatch(
@@ -447,9 +694,65 @@ describe("M15 Vibex rendering", () => {
     expect(terminal?.textContent).not.toContain("Vibex assistant answer");
   });
 
+  it("ignores stale Vibex AI responses", async () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    let firstResolve: ((response: string) => void) | undefined;
+    let secondResolve: ((response: string) => void) | undefined;
+    let sends = 0;
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    mountApp(root, view, {
+      ...createActions(),
+      sendVibexPrompt: (prompt) => {
+        sends += 1;
+        const pendingResponse = new Promise<string>((resolve) => {
+          if (sends === 1) {
+            firstResolve = resolve;
+          } else {
+            secondResolve = resolve;
+          }
+        });
+
+        return {
+          committed: false,
+          loc: "1 Lines of Code",
+          pendingResponse,
+          prompt,
+          response: `typing ${prompt}`
+        };
+      }
+    });
+
+    const vibexWindow = root.querySelector<HTMLElement>('.desktop-window[data-app-id="vibex"]');
+    const input = vibexWindow?.querySelector<HTMLTextAreaElement>(".vibex-terminal__input");
+    const send = vibexWindow?.querySelector<HTMLButtonElement>(".terminal__prompt");
+    const assistant = vibexWindow?.querySelector<HTMLElement>(".vibex-canned");
+
+    input!.value = "first";
+    send?.click();
+    input!.value = "second";
+    send?.click();
+
+    secondResolve?.("second final");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(assistant?.textContent).toContain("second final");
+
+    firstResolve?.("first final");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(assistant?.textContent).toContain("second final");
+    expect(assistant?.textContent).not.toContain("first final");
+  });
+
   it("keeps auto-prompts as LoC-only terminal output without touching the AI Assistant or draft input", () => {
     installDom();
     const root = document.createElement("div");
+    document.body.append(root);
     const view = createDevFloorView(false);
     const sends: Array<{ readonly prompt: string; readonly source: string | undefined }> = [];
     view.ui.windows.vibex.open = true;
@@ -589,6 +892,45 @@ describe("M15 Vibex rendering", () => {
 
     expect(terminal?.textContent).toContain("commit: files staged");
   });
+
+  it("dismisses the offline modal with Escape while focus is in an editable field", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    let dismissCount = 0;
+    view.ui.windows.vibex.open = true;
+    view.ui.windows.vibex.minimized = false;
+    view.ui.windows.vibex.z = 9;
+
+    mountApp(
+      root,
+      {
+        ...view,
+        offline: {
+          duration: "1h",
+          hype: "x1",
+          loc: "1 LoC",
+          money: "$1",
+          visible: true
+        }
+      },
+      {
+        ...createActions(),
+        dismissOffline: () => {
+          dismissCount += 1;
+        }
+      }
+    );
+
+    const input = root.querySelector<HTMLTextAreaElement>(".vibex-terminal__input");
+    input?.focus();
+    expect(input).not.toBeNull();
+    const event = new window.KeyboardEvent("keydown", { bubbles: true, key: "Escape" });
+    Object.defineProperty(event, "target", { value: input });
+    window.dispatchEvent(event);
+
+    expect(dismissCount).toBe(1);
+  });
 });
 
 describe("M16 Hardware rendering", () => {
@@ -720,7 +1062,7 @@ describe("M17 Aurora desktop visibility", () => {
   });
 
   it("keeps hidden desktop buttons visually removed in CSS", () => {
-    const css = readFileSync("src/ui/layout.css", "utf8");
+    const css = readLayoutCss();
 
     expect(css).toContain(".desktop-icon[hidden]");
     expect(css).toContain(".taskbar-item[hidden]");
@@ -766,6 +1108,49 @@ describe("M12 demo rendering", () => {
 
     expect(panel?.hidden).toBe(true);
   });
+
+  it("shows bankruptcy game over with export, title, and wipe actions", () => {
+    installDom();
+    const root = document.createElement("div");
+    let quit = false;
+    let wiped = false;
+
+    mountApp(
+      root,
+      {
+        ...createDevFloorView(false),
+        gameOver: {
+          lines: ["The bank closed the account."],
+          overdraft: "-$10,000",
+          visible: true
+        }
+      },
+      {
+        ...createActions(),
+        exportSave: () => "BANK-SAVE",
+        quitToTitle: () => {
+          quit = true;
+        },
+        wipeSave: () => {
+          wiped = true;
+        }
+      }
+    );
+
+    const modal = root.querySelector<HTMLElement>(".game-over-modal");
+    expect(modal?.hidden).toBe(false);
+    expect(modal?.textContent).toContain("Bankruptcy");
+    expect(modal?.textContent).toContain("The bank closed the account.");
+    expect(modal?.textContent).toContain("-$10,000");
+
+    findButton(modal!, "Export save")?.click();
+    expect(modal?.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("BANK-SAVE");
+
+    findButton(modal!, "Quit to title")?.click();
+    findButton(modal!, "Wipe save")?.click();
+    expect(quit).toBe(true);
+    expect(wiped).toBe(true);
+  });
 });
 
 describe("M13 desktop shell rendering", () => {
@@ -795,6 +1180,41 @@ describe("M13 desktop shell rendering", () => {
 
     expect(promptCount).toBe(0);
     expect(openedCount).toBe(0);
+  });
+
+  it("tears down boot scene global listeners on destroy", () => {
+    installDom();
+    const root = document.createElement("div");
+    const windowAdd = vi.spyOn(window, "addEventListener");
+    const windowRemove = vi.spyOn(window, "removeEventListener");
+    const documentAdd = vi.spyOn(document, "addEventListener");
+    const documentRemove = vi.spyOn(document, "removeEventListener");
+
+    const app = mountApp(
+      root,
+      { ...createDevFloorView(false), ui: createShellUiView("boot") },
+      createActions()
+    );
+
+    const keydownHandlers = windowAdd.mock.calls
+      .filter(([type]) => type === "keydown")
+      .map(([, handler]) => handler)
+      .filter((handler) => {
+        const name = typeof handler === "function" ? handler.name : "";
+        return name === "keydownHandler" || name === "escapeHandler";
+      });
+    const fullscreenHandler = documentAdd.mock.calls.find(
+      ([type]) => type === "fullscreenchange"
+    )?.[1];
+
+    app.destroy();
+
+    expect(keydownHandlers).toHaveLength(2);
+    for (const handler of keydownHandlers) {
+      expect(windowRemove).toHaveBeenCalledWith("keydown", handler);
+    }
+    expect(fullscreenHandler).toBeDefined();
+    expect(documentRemove).toHaveBeenCalledWith("fullscreenchange", fullscreenHandler);
   });
 
   it("renders the boot continue button and runs the desktop transition", () => {
@@ -1205,6 +1625,19 @@ function getVisibleVibexCodeLines(root: ParentNode | null | undefined): HTMLElem
   );
 }
 
+function readLayoutCss(): string {
+  return [
+    "src/ui/layout.css",
+    "src/ui/layout/shell-apps.css",
+    "src/ui/layout/terminal-comms.css",
+    "src/ui/layout/stats-settings-modals.css",
+    "src/ui/layout/desktop-boot.css",
+    "src/ui/layout/vibex-responsive.css"
+  ]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
+}
+
 function createActions(): AppActions {
   return {
     buyEra(): void {},
@@ -1247,11 +1680,15 @@ function createActions(): AppActions {
     quitToTitle(): void {},
     resetSettings(): void {},
     resetWindowLayout(): void {},
+    resolveIncident(): void {},
     replayTutorial(): void {},
     resizeApp(): void {},
+    releaseAuroraHost(): void {},
     rentAuroraHost(): void {},
     rewrite(): void {},
+    selectRunStyle(): void {},
     selectRunModifier(): void {},
+    selectSprintPriority(): void {},
     sendVibexPrompt: () => ({
       committed: false,
       loc: "0",
@@ -1301,13 +1738,38 @@ function createUpgradeRowView(id: string): DevFloorView["upgrades"][number] {
   };
 }
 
-function createProductView(id: string): DevFloorView["projects"]["portfolio"][number] {
+function createProductView(
+  id: string,
+  level = "1/10",
+  revenue = "$1/s"
+): DevFloorView["projects"]["portfolio"][number] {
   return {
     canFix: false,
     id,
+    level,
     name: id,
-    revenue: "$1/s",
+    revenue,
     status: "OK"
+  };
+}
+
+function createProjectOfferView(
+  id: string,
+  canStart: boolean,
+  level = "0/10",
+  payout = "$20",
+  revenue = "$1/s"
+): DevFloorView["projects"]["offers"][number] {
+  return {
+    buildTime: "10s",
+    canStart,
+    cost: "10 LoC",
+    id,
+    level,
+    name: id,
+    payout,
+    revenue,
+    tag: "Standard"
   };
 }
 
@@ -1328,6 +1790,7 @@ function createDevFloorView(booting: boolean): DevFloorView {
       canDedicate: false,
       canFund: false,
       canHost: false,
+      canReleaseHost: false,
       completed: false,
       costLoc: "0 LoC",
       costMoney: "$0",
@@ -1369,6 +1832,11 @@ function createDevFloorView(booting: boolean): DevFloorView {
     fullGame: {
       visible: false
     },
+    gameOver: {
+      lines: [],
+      overdraft: "$0",
+      visible: false
+    },
     generators: [],
     hardware: [],
     model: {
@@ -1389,6 +1857,7 @@ function createDevFloorView(booting: boolean): DevFloorView {
     projects: {
       activeBuilds: [],
       incomeRate: "$0/s",
+      nextUnlock: "After MUSE: $20K",
       offers: [],
       portfolio: [],
       refactor: {
@@ -1399,11 +1868,23 @@ function createDevFloorView(booting: boolean): DevFloorView {
         effect: ""
       }
     },
+    roadmap: {
+      activeSprint: "No sprint",
+      activity: [],
+      cooldown: "Ready",
+      incidents: [],
+      priorities: [],
+      runStyles: [],
+      sprintRemaining: "-"
+    },
     research: {
       nodes: [],
       rp: "0"
     },
     resources: {
+      bank: "-$0",
+      bankTooltip: "",
+      bankVisible: false,
       compute: "0/0",
       hype: "1x",
       loc: "0",
@@ -1428,6 +1909,13 @@ function createDevFloorView(booting: boolean): DevFloorView {
       reducedFx: false,
       skipIntro: false,
       sound: true,
+      save: {
+        backupCount: "0",
+        edition: "demo",
+        lastAutosave: "1970-01-01T00:00:00.000Z",
+        status: "OK",
+        version: "v13"
+      },
       vibexLocalAi: false,
       volume: "0.30"
     },
@@ -1486,6 +1974,7 @@ function createShellUiView(scene: DevFloorView["ui"]["scene"]): DevFloorView["ui
 function createRewriteView(booting: boolean): DevFloorView["rewrite"] {
   return {
     exit: {
+      unlocked: false,
       perks: [],
       preview: {
         canExit: false,
@@ -1533,6 +2022,8 @@ function createRewriteView(booting: boolean): DevFloorView["rewrite"] {
       lostMoney: "$0",
       lostProducts: "0",
       lostUpgrades: "0",
+      nextInsight: "none",
+      nextMilestone: "1 REWRITE",
       requiredInsight: "0",
       speedup: "x1",
       startEra: "E1",

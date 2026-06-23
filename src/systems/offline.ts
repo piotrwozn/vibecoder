@@ -1,9 +1,10 @@
 import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
-import { C } from "../data/constants";
+import { isBankrupt, repayBankOverdraft } from "./bank";
 import { getNetMoneyRate } from "./billing";
-import type { DerivedCache } from "./production";
+import { getAngelNetworkUntilS, type DerivedCache } from "./production";
 import { getProjectIncomeRate } from "./projects";
+import { addNonNegativeBig, isNonNegativeBig } from "./resources";
 
 const SECONDS_PER_HOUR = 60 * 60;
 
@@ -19,34 +20,55 @@ export interface OfflineProgressResult {
 export function applyOfflineProgress(
   state: GameState,
   cache: DerivedCache,
-  nowMs: number
+  nowMs: number,
+  maxElapsedMs?: number
 ): OfflineProgressResult {
-  const elapsedS = Math.max(0, (nowMs - state.meta.lastSimTickMs) / 1000);
-  const cappedS = Math.min(elapsedS, cache.offline.capH * SECONDS_PER_HOUR);
-  const loc = Big.mul(cache.locRate, Big.fromNumber(cappedS));
-  const grossMoneyRate = getProjectIncomeRate(state, cache, 1);
-  const money = Big.mul(
-    Big.max(Big.zero(), getNetMoneyRate(grossMoneyRate, state)),
-    Big.fromNumber(cappedS)
-  );
+  const effectiveNowMs = clampOfflineNowMs(state.meta.lastSimTickMs, nowMs, maxElapsedMs);
+  const elapsedS = Number.isFinite(effectiveNowMs)
+    ? Math.max(0, (effectiveNowMs - state.meta.lastSimTickMs) / 1000)
+    : 0;
+  const offlineCapH =
+    Number.isFinite(cache.offline.capH) && cache.offline.capH > 0 ? cache.offline.capH : 0;
+  const cappedS = Math.min(elapsedS, offlineCapH * SECONDS_PER_HOUR);
+  if (isBankrupt(state)) {
+    state.meta.lastSimTickMs = effectiveNowMs;
+    return {
+      cappedS: 0,
+      elapsedS,
+      hypeAfter: state.res.hype,
+      hypeBefore: state.res.hype,
+      loc: Big.zero(),
+      money: Big.zero()
+    };
+  }
+
+  const rawLoc = Big.mul(cache.locRate, Big.fromNumber(cappedS));
+  const rawMoney = calculateOfflineMoney(state, cache, cappedS);
+  const loc = isNonNegativeBig(rawLoc) ? rawLoc : Big.zero();
+  const money = isNonNegativeBig(rawMoney) ? rawMoney : Big.zero();
   const hypeBefore = state.res.hype;
   const hypeAfter =
-    elapsedS > 0 ? Math.max(cache.hype.floor, hypeBefore * C.OFFLINE_HYPE_KEEP) : hypeBefore;
+    cappedS > 0
+      ? cache.hype.floor + (hypeBefore - cache.hype.floor) * Math.exp(-cappedS / cache.hype.tauS)
+      : hypeBefore;
 
   if (!loc.eq0()) {
-    Big.addIn(state.res.loc, loc);
-    Big.addIn(state.lifetime.loc, loc);
-    Big.addIn(state.lifetime.locSinceExit, loc);
+    addNonNegativeBig(state.res.loc, loc);
+    addNonNegativeBig(state.lifetime.loc, loc);
+    addNonNegativeBig(state.lifetime.locSinceExit, loc);
   }
 
   if (!money.eq0()) {
-    Big.addIn(state.res.money, money);
-    Big.addIn(state.lifetime.money, money);
+    addNonNegativeBig(state.res.money, money);
+    addNonNegativeBig(state.lifetime.money, money);
+    repayBankOverdraft(state);
   }
 
+  // Achievements intentionally reconcile on the first live tick after offline catch-up.
+  // The unlock UI coalesces those notifications into one batched toast per animation frame.
   state.res.hype = hypeAfter;
   state.meta.playtimeS += cappedS;
-  state.meta.lastSimTickMs = nowMs;
+  state.meta.lastSimTickMs = effectiveNowMs;
 
   return {
     cappedS,
@@ -56,4 +78,50 @@ export function applyOfflineProgress(
     loc,
     money
   };
+}
+
+export function clampOfflineNowMs(
+  lastSimTickMs: number,
+  nowMs: number,
+  maxElapsedMs?: number
+): number {
+  if (!Number.isFinite(nowMs)) {
+    return lastSimTickMs;
+  }
+
+  if (maxElapsedMs === undefined || !Number.isFinite(maxElapsedMs) || maxElapsedMs < 0) {
+    return nowMs;
+  }
+
+  return Math.min(nowMs, lastSimTickMs + maxElapsedMs);
+}
+
+function calculateOfflineMoney(state: GameState, cache: DerivedCache, cappedS: number): Big {
+  let remainingS = cappedS;
+  let cursorS = state.meta.playtimeS;
+  const money = Big.zero();
+
+  while (remainingS > 0) {
+    const nextSegmentS = getOfflineSegmentS(state, cursorS, remainingS);
+    // Offline income uses neutral hype while the saved hype value still decays during catch-up.
+    const grossMoneyRate = getProjectIncomeRate(state, cache, 1, cursorS);
+    const segmentMoney = Big.mul(
+      Big.max(Big.zero(), getNetMoneyRate(grossMoneyRate, state)),
+      Big.fromNumber(nextSegmentS)
+    );
+    Big.addIn(money, segmentMoney);
+    cursorS += nextSegmentS;
+    remainingS -= nextSegmentS;
+  }
+
+  return money;
+}
+
+function getOfflineSegmentS(state: GameState, cursorS: number, remainingS: number): number {
+  const angelUntilS = getAngelNetworkUntilS(state);
+  if (angelUntilS === undefined || cursorS >= angelUntilS || cursorS + remainingS <= angelUntilS) {
+    return remainingS;
+  }
+
+  return Math.max(0, angelUntilS - cursorS);
 }

@@ -15,6 +15,10 @@ import {
 } from "../data/aurora";
 import { recomputeComputeCap } from "./compute";
 import { getAuroraRecurringRate } from "./billing";
+import { getSprintEffects } from "./roadmap";
+import { canSpendBig, isPositiveFinite, spendBig } from "./resources";
+import { getRunStyleEffects } from "./run-styles";
+import { getStoryDecisionEffects } from "./story-decisions";
 
 export interface AuroraActionResult {
   readonly ok: boolean;
@@ -114,6 +118,21 @@ export function rentAuroraHost(state: GameState, bus?: EventBus): AuroraActionRe
   return { ok: true };
 }
 
+export function releaseAuroraHost(state: GameState, bus?: EventBus): AuroraActionResult {
+  if (!state.aurora.unlocked) {
+    return { ok: false, reason: "locked" };
+  }
+
+  if (state.aurora.hostedServers <= 0) {
+    return { ok: false, reason: "servers" };
+  }
+
+  state.aurora.hostedServers -= 1;
+  refreshAuroraStatus(state);
+  bus?.emit("res:changed", "money");
+  return { ok: true };
+}
+
 export function fundAuroraPhase(state: GameState, bus?: EventBus): AuroraActionResult {
   if (!state.aurora.unlocked) {
     return { ok: false, reason: "locked" };
@@ -138,13 +157,16 @@ export function fundAuroraPhase(state: GameState, bus?: EventBus): AuroraActionR
     return { ok: false, reason: "servers" };
   }
 
-  if (state.res.loc.lt(phase.costLoc) || state.res.money.lt(phase.costMoney)) {
+  if (
+    !canSpendBig(state.res.loc, phase.costLoc) ||
+    !canSpendBig(state.res.money, phase.costMoney)
+  ) {
     state.aurora.status = "funding";
     return { ok: false, reason: "unaffordable" };
   }
 
-  Big.subIn(state.res.loc, phase.costLoc);
-  Big.subIn(state.res.money, phase.costMoney);
+  spendBig(state.res.loc, phase.costLoc);
+  spendBig(state.res.money, phase.costMoney);
   state.aurora.phaseActive = true;
   state.aurora.phaseElapsedS = 0;
   state.aurora.status = "ready";
@@ -155,7 +177,7 @@ export function fundAuroraPhase(state: GameState, bus?: EventBus): AuroraActionR
 }
 
 export function tickAurora(state: GameState, dtS: number, bus?: EventBus): boolean {
-  if (!state.aurora.unlocked || state.aurora.completed) {
+  if (!state.aurora.unlocked || state.aurora.completed || !isPositiveFinite(dtS)) {
     return false;
   }
 
@@ -180,7 +202,14 @@ export function tickAurora(state: GameState, dtS: number, bus?: EventBus): boole
     return false;
   }
 
-  const serverRatio = getAuroraServerRatio(state, phase);
+  const serverRatio = Math.max(
+    0,
+    getAuroraServerRatio(state, phase) * getAuroraSpeedMultiplier(state)
+  );
+  if (serverRatio <= 0) {
+    return false;
+  }
+
   state.aurora.phaseElapsedS = Math.min(
     phase.workS,
     state.aurora.phaseElapsedS + dtS * serverRatio
@@ -202,7 +231,7 @@ export function tickAurora(state: GameState, dtS: number, bus?: EventBus): boole
   return true;
 }
 
-export function refreshAuroraStatus(state: GameState): void {
+function refreshAuroraStatus(state: GameState): void {
   if (!state.aurora.unlocked) {
     state.aurora.status = "locked";
     return;
@@ -242,6 +271,14 @@ function getAuroraServerRatio(state: GameState, phase: AuroraPhaseDefinition): n
   }
 
   return Math.min(1, getAvailableAuroraServers(state) / phase.requiredServers);
+}
+
+function getAuroraSpeedMultiplier(state: GameState): number {
+  return (
+    getSprintEffects(state).auroraSpeedMultiplier *
+    getRunStyleEffects(state).auroraSpeedMultiplier *
+    getStoryDecisionEffects(state).auroraSpeedMultiplier
+  );
 }
 
 function completeAurora(state: GameState, bus?: EventBus): void {

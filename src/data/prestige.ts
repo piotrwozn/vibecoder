@@ -35,6 +35,12 @@ export interface InsightNodeDefinition {
   readonly tier: number;
 }
 
+export interface RewriteMilestoneDefinition {
+  readonly count: number;
+  readonly descriptionKey: string;
+  readonly nameKey: string;
+}
+
 export type EquityEffect =
   | { readonly kind: "angelNetwork" }
   | { readonly kind: "compounding"; readonly exponentAdd: number }
@@ -331,6 +337,46 @@ export const INSIGHT_NODES: readonly InsightNodeDefinition[] = [
     effectKey: "insight.i_core_automation.effect",
     requiresAnyTierGte: 3,
     effects: [{ kind: "keepAutomation" }]
+  }
+] as const;
+
+export const FULL_REWRITE_INSIGHT_COUNT = INSIGHT_NODES.length;
+
+export const REWRITE_MILESTONES: readonly RewriteMilestoneDefinition[] = [
+  {
+    count: 1,
+    nameKey: "rewrite.milestone.r1.name",
+    descriptionKey: "rewrite.milestone.r1.description"
+  },
+  {
+    count: 3,
+    nameKey: "rewrite.milestone.r3.name",
+    descriptionKey: "rewrite.milestone.r3.description"
+  },
+  {
+    count: 5,
+    nameKey: "rewrite.milestone.r5.name",
+    descriptionKey: "rewrite.milestone.r5.description"
+  },
+  {
+    count: 8,
+    nameKey: "rewrite.milestone.r8.name",
+    descriptionKey: "rewrite.milestone.r8.description"
+  },
+  {
+    count: 12,
+    nameKey: "rewrite.milestone.r12.name",
+    descriptionKey: "rewrite.milestone.r12.description"
+  },
+  {
+    count: 15,
+    nameKey: "rewrite.milestone.r15.name",
+    descriptionKey: "rewrite.milestone.r15.description"
+  },
+  {
+    count: 30,
+    nameKey: "rewrite.milestone.r30.name",
+    descriptionKey: "rewrite.milestone.r30.description"
   }
 ] as const;
 

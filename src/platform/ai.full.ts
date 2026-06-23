@@ -1,3 +1,6 @@
+import { LoggerWithoutDebug, Wllama } from "@wllama/wllama/esm/index.js";
+import wllamaWasmUrl from "@wllama/wllama/esm/wasm/wllama.wasm?url";
+
 import {
   createIdleSnapshot,
   type VibexAiChangeHandler,
@@ -7,107 +10,36 @@ import {
   type VibexAiStatus
 } from "./ai";
 
-type WorkerRequest =
-  | { readonly id: number; readonly type: "download" }
-  | {
-      readonly eraModel: string;
-      readonly id: number;
-      readonly prompt: string;
-      readonly type: "generate";
-    };
-
-type WorkerMessage =
-  | { readonly id: number; readonly ok: true; readonly text?: string; readonly type: "result" }
-  | { readonly id: number; readonly message: string; readonly ok: false; readonly type: "result" }
-  | { readonly loaded: number; readonly total: number; readonly type: "progress" }
-  | { readonly type: "ready" };
-
-interface PendingRequest {
-  readonly reject: (reason?: unknown) => void;
-  readonly resolve: (value: string | undefined) => void;
-}
-
+const MODEL_FILE = "SmolLM2-135M-Instruct-Q4_K_M.gguf";
+const BUNDLED_MODEL_URL = import.meta.env.DEV
+  ? `/models/${MODEL_FILE}`
+  : new URL(`../models/${MODEL_FILE}`, import.meta.url).href;
+const SYSTEM_PROMPT =
+  "You are Vibex: a dry, funny senior AI pair-programmer. Answer in 1-3 short sentences, under 60 tokens.";
 const MAX_PROMPT_CHARS = 1000;
 
+type LoadModelOptions = NonNullable<Parameters<Wllama["loadModel"]>[1]>;
+type LocalModelFile = Blob & { readonly name: string };
+type ProgressHandler = (progress: VibexAiProgress) => void;
+
 export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAiClient {
-  let nextId = 1;
-  let worker: Worker | undefined;
   let status: VibexAiStatus = "idle";
   let errorMessage: string | undefined;
   let progress: VibexAiProgress | undefined;
-  let disposed = false;
-  const pending = new Map<number, PendingRequest>();
-
-  const ensureWorker = (): Worker => {
-    if (worker !== undefined) {
-      return worker;
-    }
-
-    worker = new Worker(new URL("./ai.worker.ts", import.meta.url), { type: "module" });
-    worker.addEventListener("message", (event: MessageEvent<WorkerMessage>) => {
-      const message = event.data;
-
-      if (message.type === "progress") {
-        errorMessage = undefined;
-        progress = { loaded: message.loaded, total: message.total };
-        status = "downloading";
-        onChange();
-        return;
-      }
-
-      if (message.type === "ready") {
-        errorMessage = undefined;
-        status = "ready";
-        onChange();
-        return;
-      }
-
-      const request = pending.get(message.id);
-      if (request === undefined) {
-        return;
-      }
-
-      pending.delete(message.id);
-      status = message.ok ? "ready" : "error";
-      if (!message.ok) {
-        errorMessage = message.message;
-        progress = undefined;
-      } else {
-        errorMessage = undefined;
-      }
-      onChange();
-
-      if (message.ok) {
-        request.resolve(message.text);
-      } else {
-        request.reject(new Error(message.message));
-      }
-    });
-    worker.addEventListener("error", () => {
-      status = "error";
-      errorMessage = "Vibex AI worker failed";
-      progress = undefined;
-      rejectPending(new Error("Vibex AI worker failed"));
-      worker?.terminate();
-      worker = undefined;
-      onChange();
-    });
-
-    return worker;
-  };
-
-  const send = (message: WorkerRequest): Promise<string | undefined> =>
-    new Promise((resolve, reject) => {
-      pending.set(message.id, { reject, resolve });
-      ensureWorker().postMessage(message);
-    });
+  let wllama: Wllama | undefined;
+  let loading: Promise<void> | undefined;
+  let abortController: AbortController | undefined;
+  let epoch = 0;
+  let lastProgressPercent = -1;
 
   return {
     dispose(): void {
-      disposed = true;
-      rejectPending(new Error("Vibex AI disposed"));
-      worker?.terminate();
-      worker = undefined;
+      epoch += 1;
+      abortController?.abort();
+      abortController = undefined;
+      void wllama?.exit().catch(() => {});
+      wllama = undefined;
+      loading = undefined;
       status = "idle";
       errorMessage = undefined;
       progress = undefined;
@@ -119,26 +51,31 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
         return false;
       }
 
-      disposed = false;
-      const id = nextId;
-      nextId += 1;
+      const requestEpoch = epoch + 1;
+      epoch = requestEpoch;
       status = "downloading";
       errorMessage = undefined;
       progress = { loaded: 0, total: 0 };
       onChange();
 
       try {
-        await send({ id, type: "download" });
+        await ensureModel(requestEpoch);
+
+        if (requestEpoch !== epoch || wllama?.isModelLoaded() !== true) {
+          return false;
+        }
+
         status = "ready";
         onChange();
         return true;
       } catch (error) {
-        if (disposed) {
+        if (requestEpoch !== epoch) {
           return false;
         }
 
+        await disposeCurrentInstance();
         status = "error";
-        errorMessage = error instanceof Error ? error.message : "Vibex AI download failed";
+        errorMessage = getErrorMessage(error, "Vibex AI download failed");
         progress = undefined;
         onChange();
         return false;
@@ -146,23 +83,43 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
     },
 
     async generate(prompt: string, eraModel: string): Promise<string | undefined> {
-      if (status !== "ready") {
+      if (status !== "ready" || wllama?.isModelLoaded() !== true) {
         return undefined;
       }
 
-      disposed = false;
-      const id = nextId;
-      nextId += 1;
+      const requestEpoch = epoch;
       status = "busy";
+      errorMessage = undefined;
       onChange();
 
       try {
-        return await send({ eraModel, id, prompt: clampPrompt(prompt), type: "generate" });
-      } catch {
-        return undefined;
-      } finally {
-        status = status === "busy" ? "ready" : status;
+        const response = await wllama.createChatCompletion({
+          max_tokens: 60,
+          messages: [
+            {
+              role: "system",
+              content: `${SYSTEM_PROMPT} Current in-game model era: ${eraModel}.`
+            },
+            { role: "user", content: clampPrompt(prompt) }
+          ]
+        });
+
+        if (requestEpoch !== epoch) {
+          return undefined;
+        }
+
+        status = "ready";
         onChange();
+        return response.choices[0]?.message.content?.trim();
+      } catch (error) {
+        if (requestEpoch === epoch) {
+          status = "error";
+          errorMessage = getErrorMessage(error, "Vibex AI generation failed");
+          progress = undefined;
+          onChange();
+        }
+
+        return undefined;
       }
     },
 
@@ -179,15 +136,156 @@ export function createFullVibexAiClient(onChange: VibexAiChangeHandler): VibexAi
     }
   };
 
-  function rejectPending(error: Error): void {
-    for (const request of pending.values()) {
-      request.reject(error);
+  async function ensureModel(requestEpoch: number): Promise<void> {
+    if (wllama?.isModelLoaded() === true) {
+      return;
     }
 
-    pending.clear();
+    loading ??= loadModel(requestEpoch).finally(() => {
+      loading = undefined;
+    });
+    await loading;
   }
 
-  function clampPrompt(prompt: string): string {
-    return prompt.length <= MAX_PROMPT_CHARS ? prompt : prompt.slice(0, MAX_PROMPT_CHARS);
+  async function loadModel(requestEpoch: number): Promise<void> {
+    abortController = new AbortController();
+    await disposeCurrentInstance();
+    const instance = new Wllama(
+      {
+        default: wllamaWasmUrl
+      },
+      {
+        allowOffline: true,
+        logger: LoggerWithoutDebug,
+        suppressNativeLog: true
+      }
+    );
+    wllama = instance;
+    lastProgressPercent = -1;
+
+    try {
+      const loadOptions = createLoadOptions();
+      const model = await fetchBundledModelFile(abortController.signal, (nextProgress) => {
+        if (requestEpoch === epoch && shouldReportProgress(nextProgress)) {
+          progress = nextProgress;
+          status = "downloading";
+          onChange();
+        }
+      });
+
+      if (requestEpoch !== epoch) {
+        await disposeInstance(instance);
+        return;
+      }
+
+      await instance.loadModel([model], loadOptions);
+
+      if (requestEpoch !== epoch) {
+        await disposeInstance(instance);
+        return;
+      }
+
+      progress = { loaded: model.size, total: model.size };
+      onChange();
+    } catch (error) {
+      await disposeInstance(instance);
+      throw error;
+    }
   }
+
+  async function disposeInstance(instance: Wllama): Promise<void> {
+    if (wllama === instance) {
+      wllama = undefined;
+    }
+
+    await instance.exit().catch(() => {});
+  }
+
+  async function disposeCurrentInstance(): Promise<void> {
+    const instance = wllama;
+    wllama = undefined;
+    await instance?.exit().catch(() => {});
+  }
+
+  function shouldReportProgress(nextProgress: VibexAiProgress): boolean {
+    if (nextProgress.total <= 0) {
+      return lastProgressPercent < 0;
+    }
+
+    const percent = Math.min(100, Math.floor((nextProgress.loaded / nextProgress.total) * 100));
+    if (percent === lastProgressPercent && nextProgress.loaded < nextProgress.total) {
+      return false;
+    }
+
+    lastProgressPercent = percent;
+    return true;
+  }
+}
+
+async function fetchBundledModelFile(
+  signal: AbortSignal,
+  reportProgress: ProgressHandler
+): Promise<LocalModelFile> {
+  const response = await fetch(BUNDLED_MODEL_URL, { signal });
+
+  if (!response.ok) {
+    throw new Error(`Bundled Vibex model failed to load (${response.status})`);
+  }
+
+  const total = Number(response.headers.get("content-length") ?? 0);
+  const contentType = response.headers.get("content-type") ?? "application/octet-stream";
+
+  if (response.body === null) {
+    const blob = await response.blob();
+    reportProgress({ loaded: blob.size, total: total > 0 ? total : blob.size });
+    return createLocalModelFile([blob], contentType);
+  }
+
+  const chunks: ArrayBuffer[] = [];
+  const reader = response.body.getReader();
+  let loaded = 0;
+
+  for (;;) {
+    const result = await reader.read();
+
+    if (result.done) {
+      break;
+    }
+
+    loaded += result.value.byteLength;
+    chunks.push(copyChunk(result.value));
+    reportProgress({ loaded, total });
+  }
+
+  return createLocalModelFile(chunks, contentType);
+}
+
+function createLocalModelFile(chunks: BlobPart[], type: string): LocalModelFile {
+  if (typeof File !== "undefined") {
+    return new File(chunks, MODEL_FILE, { type });
+  }
+
+  const blob = new Blob(chunks, { type }) as LocalModelFile;
+  Object.defineProperty(blob, "name", { value: MODEL_FILE });
+  return blob;
+}
+
+function copyChunk(chunk: Uint8Array): ArrayBuffer {
+  const copy = new ArrayBuffer(chunk.byteLength);
+  new Uint8Array(copy).set(chunk);
+  return copy;
+}
+
+function createLoadOptions(): LoadModelOptions {
+  return {
+    n_gpu_layers: 0
+  };
+}
+
+function clampPrompt(prompt: string): string {
+  return prompt.length <= MAX_PROMPT_CHARS ? prompt : prompt.slice(0, MAX_PROMPT_CHARS);
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

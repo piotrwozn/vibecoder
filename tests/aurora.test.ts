@@ -13,6 +13,7 @@ import {
   dedicateAuroraServer,
   fundAuroraPhase,
   getAuroraReadyServerCount,
+  releaseAuroraHost,
   rentAuroraHost,
   tickAurora
 } from "../src/systems/aurora";
@@ -20,6 +21,7 @@ import {
   createBillingBreakdown,
   getAuroraDedicatedServerPowerRate,
   getNetMoneyRate,
+  POWER_OVERDRAW_STAT,
   tickBilling
 } from "../src/systems/billing";
 import { recomputeComputeCap } from "../src/systems/compute";
@@ -61,6 +63,11 @@ describe("M17 Aurora Project", () => {
     ).toBe(false);
 
     state.meta.playtimeS = 1;
+    expect(tickStory(state, 1, cache)).toBe(true);
+    expect(state.story.flags.has(AURORA_SEED_AVAILABLE_FLAG)).toBe(false);
+
+    state.story.flags.add("achievement.ending_merge");
+    state.meta.playtimeS = 2;
     expect(tickStory(state, 1, cache)).toBe(true);
     expect(state.story.flags.has(AURORA_SEED_AVAILABLE_FLAG)).toBe(true);
     refreshProjectBoard(state);
@@ -133,6 +140,32 @@ describe("M17 Aurora Project", () => {
 
     expect(tickBilling(state, 1)).toBe(true);
     expect(state.res.money.eq0()).toBe(true);
+    expect(state.bank.overdraft.eq0()).toBe(true);
+    expect(state.aurora.billingPaused).toBe(true);
+    expect(tickAurora(state, 1)).toBe(false);
+    expect(state.aurora.phaseElapsedS).toBe(beforeElapsed);
+  });
+
+  it("pauses Aurora progress when only the separate bills are affordable", () => {
+    const { state } = createFullState();
+    unlockForAurora(state);
+    state.owned.hardware[AURORA_SERVER_COMPONENT_IDS[0]!] = 1;
+    state.aurora.dedicatedServers = 1;
+    state.aurora.phaseActive = true;
+    const breakdown = createBillingBreakdown(state);
+    const auroraBill = Big.add(breakdown.auroraPower, breakdown.auroraHosting);
+    state.res.money = Big.add(Big.max(breakdown.hardwarePower, auroraBill), Big.one());
+    const beforeElapsed = state.aurora.phaseElapsedS;
+
+    expect(breakdown.hardwarePower.gt(Big.zero())).toBe(true);
+    expect(auroraBill.gt(Big.zero())).toBe(true);
+    expect(state.res.money.gte(breakdown.hardwarePower)).toBe(true);
+    expect(state.res.money.gte(auroraBill)).toBe(true);
+    expect(state.res.money.lt(Big.add(breakdown.hardwarePower, auroraBill))).toBe(true);
+
+    expect(tickBilling(state, 1)).toBe(true);
+    expect(state.res.money.gt(Big.zero())).toBe(true);
+    expect(state.bank.overdraft.eq0()).toBe(true);
     expect(state.aurora.billingPaused).toBe(true);
     expect(tickAurora(state, 1)).toBe(false);
     expect(state.aurora.phaseElapsedS).toBe(beforeElapsed);
@@ -148,6 +181,28 @@ describe("M17 Aurora Project", () => {
 
     expect(rentAuroraHost(state)).toMatchObject({ ok: false, reason: "servers" });
     expect(state.aurora.hostedServers).toBe(AURORA_REQUIRED_DEDICATED_SERVERS);
+  });
+
+  it("releases rented hosts and stops Aurora recurring bills after completion", () => {
+    const { state } = createFullState();
+    unlockForAurora(state);
+    state.aurora.dedicatedServers = 1;
+
+    expect(rentAuroraHost(state).ok).toBe(true);
+    expect(rentAuroraHost(state).ok).toBe(true);
+    expect(createBillingBreakdown(state).auroraHosting.toNumber()).toBeCloseTo(
+      AURORA_HOSTING_PER_SERVER_S.toNumber() * 2
+    );
+
+    expect(releaseAuroraHost(state).ok).toBe(true);
+    expect(state.aurora.hostedServers).toBe(1);
+    expect(createBillingBreakdown(state).auroraHosting.eq(AURORA_HOSTING_PER_SERVER_S)).toBe(true);
+
+    state.aurora.completed = true;
+
+    expect(createBillingBreakdown(state).auroraHosting.eq0()).toBe(true);
+    expect(createBillingBreakdown(state).auroraPower.eq0()).toBe(true);
+    expect(tickBilling(state, 1)).toBe(false);
   });
 
   it("runs Aurora progress once a phase is funded and enough servers are available", () => {
@@ -183,6 +238,42 @@ describe("M17 Aurora Project", () => {
     state.res.money = Big.fromNumber(1);
     expect(tickBilling(state, 1)).toBe(true);
     expect(state.res.money.eq0()).toBe(true);
+    expect(state.bank.overdraft.toNumber()).toBeCloseTo(9);
+    expect(state.stats[POWER_OVERDRAW_STAT]).toBe(0);
+  });
+
+  it("pauses hardware power billing when the bill would overdraw money", () => {
+    const { state } = createFullState();
+    state.owned.hardware.h_cpu = 1;
+    state.res.money = Big.fromNumber(0.5);
+    state.meta.playtimeS = 12;
+
+    expect(tickBilling(state, 1)).toBe(true);
+    expect(state.res.money.eq0()).toBe(true);
+    expect(state.bank.overdraft.gt(Big.zero())).toBe(true);
+    expect(state.stats[POWER_OVERDRAW_STAT]).toBe(12);
+
+    state.res.money = Big.fromNumber(10);
+    expect(tickBilling(state, 1)).toBe(true);
+    expect(state.bank.overdraft.eq0()).toBe(true);
+    expect(state.stats[POWER_OVERDRAW_STAT]).toBeUndefined();
+  });
+
+  it("does not bank-default after prestiging with a dedicated Aurora server", () => {
+    const { cache, state } = createFullState();
+    unlockForAurora(state);
+    state.aurora.dedicatedServers = 1;
+    state.res.money = Big.from("1e12");
+    seedRewrite(state);
+    recomputeDerivedCache(state, cache);
+
+    expect(performRewrite(state, cache).ok).toBe(true);
+    expect(state.res.money.eq0()).toBe(true);
+    expect(tickBilling(state, 0.1)).toBe(true);
+
+    expect(state.bank.defaulted).toBe(false);
+    expect(state.bank.overdraft.eq0()).toBe(true);
+    expect(state.aurora.billingPaused).toBe(true);
   });
 });
 
@@ -211,6 +302,7 @@ function seedExit(state: GameState): void {
 function seedIteration(state: GameState): void {
   state.prestige.endingChoice = "fork";
   state.story.flags.add("iteration_unlocked");
+  state.story.flags.add("achievement.ending_fork");
   state.stats[ITERATION_HOLD_STAT] = 600;
   state.res.money = Big.from("1e60");
 }

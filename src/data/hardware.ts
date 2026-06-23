@@ -25,7 +25,7 @@ export interface HardwareDefinition {
 }
 
 export const STARTING_COMPUTE_CAP = C.HW_BASE_CAP;
-export const HARDWARE_UNBOUNDED_LEVEL = Number.POSITIVE_INFINITY;
+const HARDWARE_UNBOUNDED_LEVEL = Number.POSITIVE_INFINITY;
 export const LEGACY_HARDWARE_ID = "h_legacy";
 export const LEGACY_HARDWARE_CAP_PER_LEVEL = 1;
 

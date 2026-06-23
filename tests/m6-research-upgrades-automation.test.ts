@@ -4,9 +4,14 @@ import { Big } from "../src/core/bignum";
 import { createDefaultGameState } from "../src/core/state";
 import { C } from "../src/data/constants";
 import {
+  AUTO_BUY_HARDWARE_ID,
   AUTO_FIX_ID,
   AUTO_PROMPT_ID,
+  AUTO_REFACTOR_ID,
+  AUTO_REFRESH_PROJECTS_ID,
+  AUTO_SHIP_ID,
   getAutoBuyRuleId,
+  getAutomationToggles,
   setAutomationEnabled,
   tickAutomation
 } from "../src/systems/automation";
@@ -17,6 +22,7 @@ import {
   recomputeDerivedCache,
   tickProduction
 } from "../src/systems/production";
+import { refreshProjectBoard } from "../src/systems/projects";
 import { buyResearch } from "../src/systems/research";
 import { buyUpgrade } from "../src/systems/upgrades";
 
@@ -99,6 +105,7 @@ describe("M6 automation", () => {
     state.projects.portfolio.push({
       id: "p_llama_todo.1",
       bugged: true,
+      level: 1,
       projectId: "p_llama_todo",
       revenue: Big.fromNumber(1),
       shippedAtS: 0
@@ -118,5 +125,77 @@ describe("M6 automation", () => {
     expect(tickAutomation(state, cache, 0.1)).toBe(true);
     expect(state.bugs).toHaveLength(0);
     expect(state.projects.portfolio[0]?.bugged).toBe(false);
+  });
+
+  it("exposes late automation toggles when their research unlocks", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    for (const id of [
+      "r_a1",
+      "r_a2",
+      "r_a3",
+      "r_a4",
+      "r_a5",
+      "r_a6",
+      "r_a7",
+      "r_a8",
+      "r_a9",
+      "r_a10"
+    ]) {
+      state.owned.research.add(id);
+    }
+
+    recomputeDerivedCache(state, cache);
+
+    const toggles = getAutomationToggles(state, cache);
+    expect(toggles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: AUTO_REFRESH_PROJECTS_ID, unlocked: true }),
+        expect.objectContaining({ id: AUTO_SHIP_ID, unlocked: true }),
+        expect.objectContaining({ id: AUTO_REFACTOR_ID, unlocked: true }),
+        expect.objectContaining({ id: AUTO_BUY_HARDWARE_ID, unlocked: true })
+      ])
+    );
+  });
+
+  it("auto-ships the best affordable project by priority", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    for (const id of ["r_a1", "r_a2", "r_a3", "r_a4", "r_a5", "r_a6"]) {
+      state.owned.research.add(id);
+    }
+    state.res.loc = Big.fromNumber(10_000);
+    state.projects.prioritySetting = "payout";
+    refreshProjectBoard(state);
+    setAutomationEnabled(state, AUTO_SHIP_ID, true);
+    recomputeDerivedCache(state, cache);
+
+    expect(tickAutomation(state, cache, 1)).toBe(true);
+    expect(state.projects.active).toHaveLength(1);
+  });
+
+  it("auto-buys affordable hardware upgrades", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    for (const id of [
+      "r_a1",
+      "r_a2",
+      "r_a3",
+      "r_a4",
+      "r_a5",
+      "r_a6",
+      "r_a7",
+      "r_a8",
+      "r_a9",
+      "r_a10"
+    ]) {
+      state.owned.research.add(id);
+    }
+    state.res.money = Big.fromNumber(1_000);
+    setAutomationEnabled(state, AUTO_BUY_HARDWARE_ID, true);
+    recomputeDerivedCache(state, cache);
+
+    expect(tickAutomation(state, cache, 1)).toBe(true);
+    expect(Object.values(state.owned.hardware).some((level) => level > 0)).toBe(true);
   });
 });

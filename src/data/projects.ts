@@ -2,7 +2,7 @@ import { big, type Big } from "../core/bignum";
 import { AURORA_SEED_AVAILABLE_FLAG, type AuroraCompletionEffect } from "./aurora";
 import type { Condition } from "./conditions";
 
-export type ProjectKind = "open_source" | "refactor" | "standard" | "unlock";
+export type ProjectKind = "refactor" | "standard" | "unlock";
 
 export interface ProjectDefinition {
   readonly bugResistant?: boolean;
@@ -21,6 +21,9 @@ export interface ProjectDefinition {
   readonly unlock?: Condition;
   readonly valueRatio: number;
 }
+
+export const PROJECT_REVENUE_LEVEL_BONUS = 2.5;
+export const PROJECT_MAX_LEVEL = 10;
 
 export const PROJECTS: readonly ProjectDefinition[] = [
   {
@@ -238,9 +241,9 @@ export const PROJECTS: readonly ProjectDefinition[] = [
     era: 10,
     demoLocked: true,
     nameKey: "project.p_omega_request.name",
-    costLoC: big(3e22),
+    costLoC: big(1e20),
     valueRatio: 2,
-    buildS: 60,
+    buildS: 240,
     kind: "standard",
     unlock: { flag: "omega_requests" }
   },
@@ -255,17 +258,6 @@ export const PROJECTS: readonly ProjectDefinition[] = [
     kind: "unlock",
     unlock: { flag: AURORA_SEED_AVAILABLE_FLAG },
     completionEffect: "unlockAurora"
-  },
-  {
-    id: "p_open_source",
-    era: 1,
-    nameKey: "project.p_open_source.name",
-    costLoC: big(0),
-    valueRatio: 0,
-    buildS: 30,
-    kind: "open_source",
-    rpReward: 2,
-    hypeBonus: 0.4
   }
 ] as const;
 

@@ -111,6 +111,7 @@ function createBugFixture(seed: number): GameState {
   state.projects.portfolio.push({
     id: "p_llama_todo.1",
     bugged: false,
+    level: 1,
     projectId: "p_llama_todo",
     revenue: Big.fromNumber(1),
     shippedAtS: 0

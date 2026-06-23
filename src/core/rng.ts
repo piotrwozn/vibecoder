@@ -28,3 +28,13 @@ export function nextRandomIndex(
     index: Math.min(length - 1, Math.floor(result.value * length))
   };
 }
+
+export function deriveSeed(seed: number, salt: string): number {
+  let hash = 0x811c9dc5;
+
+  for (let index = 0; index < salt.length; index += 1) {
+    hash = Math.imul(hash ^ salt.charCodeAt(index), 0x01000193);
+  }
+
+  return (seed ^ hash) | 0;
+}

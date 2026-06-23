@@ -2,6 +2,7 @@ import type { Edition, Platform } from "./platform";
 
 export const WEB_SAVE_KEY = "vibecoder_save";
 const WEB_BACKUP_COUNT = 3;
+const WEB_CORRUPT_COUNT = 3;
 const WEB_BACKUP_PREFIX = `${WEB_SAVE_KEY}.bak`;
 const WEB_CORRUPT_PREFIX = `${WEB_SAVE_KEY}.corrupt`;
 
@@ -14,8 +15,20 @@ export function createWebPlatform(): Platform {
     },
 
     async save(data: string): Promise<void> {
-      rotateWebBackups();
-      window.localStorage.setItem(WEB_SAVE_KEY, data);
+      const recoverySnapshot = snapshotWebRecoveryKeys();
+
+      try {
+        rotateWebBackups();
+        window.localStorage.setItem(WEB_SAVE_KEY, data);
+      } catch {
+        try {
+          pruneWebStorageForPrimaryRetry();
+          window.localStorage.setItem(WEB_SAVE_KEY, data);
+        } catch (error) {
+          restoreWebRecoveryKeys(recoverySnapshot);
+          throw error;
+        }
+      }
     },
 
     async listBackups(): Promise<string[]> {
@@ -36,7 +49,16 @@ export function createWebPlatform(): Platform {
     },
 
     async backupCorrupt(data: string, timestampMs: number): Promise<void> {
-      window.localStorage.setItem(`${WEB_CORRUPT_PREFIX}.${Math.trunc(timestampMs)}`, data);
+      const key = `${WEB_CORRUPT_PREFIX}.${Math.trunc(timestampMs)}`;
+
+      try {
+        window.localStorage.setItem(key, data);
+      } catch {
+        pruneCorruptBackups(0);
+        window.localStorage.setItem(key, data);
+      }
+
+      pruneCorruptBackups(WEB_CORRUPT_COUNT);
     },
 
     openExternal(url: string): void {
@@ -71,6 +93,67 @@ function rotateWebBackups(): void {
   }
 
   window.localStorage.setItem(webBackupKey(1), current);
+}
+
+function pruneWebStorageForPrimaryRetry(): void {
+  for (let index = 1; index <= WEB_BACKUP_COUNT; index += 1) {
+    window.localStorage.removeItem(webBackupKey(index));
+  }
+
+  pruneCorruptBackups(0);
+}
+
+function snapshotWebRecoveryKeys(): Map<string, string> {
+  const snapshot = new Map<string, string>();
+
+  for (const key of getStorageKeys()) {
+    if (isWebBackupKey(key) || key.startsWith(`${WEB_CORRUPT_PREFIX}.`)) {
+      const value = window.localStorage.getItem(key);
+      if (value !== null) {
+        snapshot.set(key, value);
+      }
+    }
+  }
+
+  return snapshot;
+}
+
+function restoreWebRecoveryKeys(snapshot: ReadonlyMap<string, string>): void {
+  for (const [key, value] of snapshot) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // Best-effort restore after a failed quota retry.
+    }
+  }
+}
+
+function pruneCorruptBackups(keep: number): void {
+  const corruptKeys = getStorageKeys()
+    .filter((key) => key.startsWith(`${WEB_CORRUPT_PREFIX}.`))
+    .sort((left, right) => getCorruptTimestamp(right) - getCorruptTimestamp(left));
+
+  for (const key of corruptKeys.slice(Math.max(0, keep))) {
+    window.localStorage.removeItem(key);
+  }
+}
+
+function getStorageKeys(): string[] {
+  const keys: string[] = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key !== null) {
+      keys.push(key);
+    }
+  }
+
+  return keys;
+}
+
+function getCorruptTimestamp(key: string): number {
+  const value = Number(key.slice(`${WEB_CORRUPT_PREFIX}.`.length));
+  return Number.isFinite(value) ? value : 0;
 }
 
 function webBackupKey(index: number): string {

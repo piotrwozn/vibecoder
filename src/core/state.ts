@@ -4,12 +4,43 @@ import { STARTING_COMPUTE_CAP } from "../data/hardware";
 import { Big } from "./bignum";
 import type { NumberNotation } from "./format";
 import { SAVE_VERSION } from "./migrations";
+import { deriveSeed } from "./rng";
 import { createDefaultUiState, type GameUiState } from "./ui-state";
 
 export type Edition = "demo" | "full";
 export type ProjectPriority = "payout" | "revenue" | "rp";
 export type EndingChoice = "merge" | "unplug" | "fork";
 export type AuroraStatus = "billing" | "complete" | "funding" | "locked" | "ready" | "servers";
+export type SprintPriority =
+  | "automation"
+  | "aurora"
+  | "growth"
+  | "research"
+  | "revenue"
+  | "stability";
+export type ProductionIncidentType =
+  | "aurora_instability"
+  | "bad_deploy"
+  | "billing_shock"
+  | "outage"
+  | "security_bug"
+  | "vendor_lock_in"
+  | "viral_launch_spike";
+export type IncidentResponseId =
+  | "accept_debt"
+  | "buy_hardware"
+  | "hotfix"
+  | "pause_growth"
+  | "pay_vendor"
+  | "refactor"
+  | "use_research";
+export type RunStyleId =
+  | "aurora_first"
+  | "bootstrapped"
+  | "cursed_enterprise"
+  | "open_source_collective"
+  | "research_lab"
+  | "vc_backed";
 
 export interface ProjectOffer {
   readonly id: string;
@@ -29,6 +60,7 @@ export interface ActiveBuild {
 export interface Product {
   readonly bugged: boolean;
   readonly id: string;
+  readonly level: number;
   readonly projectId: string;
   readonly revenue: Big;
   readonly shippedAtS: number;
@@ -46,11 +78,63 @@ export interface AuroraState {
   unlocked: boolean;
 }
 
+export interface SprintState {
+  active?: SprintPriority;
+  completed: number;
+  cooldownUntilS: number;
+  endsAtS: number;
+  startedAtS: number;
+}
+
+export interface ProductionIncident {
+  id: string;
+  response?: IncidentResponseId;
+  resolvedAtS?: number;
+  severity: number;
+  startedAtS: number;
+  type: ProductionIncidentType;
+  untilS: number;
+}
+
+export interface ProductionIncidentHistoryEntry {
+  readonly id: string;
+  readonly response?: IncidentResponseId;
+  readonly resolvedAtS: number;
+  readonly severity: number;
+  readonly startedAtS: number;
+  readonly type: ProductionIncidentType;
+}
+
+export interface ProductionIncidentsState {
+  active: ProductionIncident[];
+  history: ProductionIncidentHistoryEntry[];
+  nextCheckAtS: number;
+}
+
+export interface MetaprogressionState {
+  runStyle?: RunStyleId;
+}
+
+export type BankWarningLevel = 0 | 1 | 2;
+
+export interface BankState {
+  defaulted: boolean;
+  defaultedAtS?: number;
+  overdraft: Big;
+  warningsIssued: BankWarningLevel;
+}
+
+export interface VibexState {
+  cannedSeed: number;
+  codeSeed: number;
+}
+
 export interface ActiveBug {
   readonly productId: string;
 }
 
 export interface InboxEntry {
+  readonly id: string;
   readonly eventId: string;
 }
 
@@ -98,6 +182,10 @@ export interface GameState {
     pcComplete: boolean;
   };
   aurora: AuroraState;
+  roadmap: SprintState;
+  incidents: ProductionIncidentsState;
+  metaprogression: MetaprogressionState;
+  bank: BankState;
   era: number;
   projects: {
     active: ActiveBuild[];
@@ -111,6 +199,7 @@ export interface GameState {
     activeUntil: number;
     meter: number;
   };
+  vibex: VibexState;
   prestige: {
     endingChoice?: EndingChoice;
     exits: number;
@@ -144,9 +233,13 @@ export interface GameState {
 
 const DEFAULT_AUTOSAVE_S = 10;
 const DEFAULT_VOLUME = 0.3;
-const DEFAULT_RNG_SEED = 1;
+const RNG_SEED_SALT = "game.rngSeed";
 
-export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "demo"): GameState {
+export function createDefaultGameState(
+  nowMs = Date.now(),
+  edition: Edition = "demo",
+  rngSeed = createInitialRngSeed(nowMs)
+): GameState {
   return {
     v: SAVE_VERSION,
     meta: {
@@ -187,6 +280,10 @@ export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "d
       pcComplete: false
     },
     aurora: createDefaultAuroraState(),
+    roadmap: createDefaultSprintState(),
+    incidents: createDefaultProductionIncidentsState(),
+    metaprogression: createDefaultMetaprogressionState(),
+    bank: createDefaultBankState(),
     era: STARTING_ERA.index,
     projects: {
       active: [],
@@ -200,6 +297,7 @@ export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "d
       activeUntil: 0,
       meter: 0
     },
+    vibex: createDefaultVibexState(rngSeed),
     prestige: {
       exits: 0,
       iteration: 0,
@@ -227,11 +325,11 @@ export function createDefaultGameState(nowMs = Date.now(), edition: Edition = "d
       volume: DEFAULT_VOLUME
     },
     ui: createDefaultUiState("boot", false),
-    rngSeed: DEFAULT_RNG_SEED
+    rngSeed
   };
 }
 
-export function createDefaultAuroraState(): AuroraState {
+function createDefaultAuroraState(): AuroraState {
   return {
     billingPaused: false,
     completed: false,
@@ -245,6 +343,35 @@ export function createDefaultAuroraState(): AuroraState {
   };
 }
 
+function createDefaultSprintState(): SprintState {
+  return {
+    completed: 0,
+    cooldownUntilS: 0,
+    endsAtS: 0,
+    startedAtS: 0
+  };
+}
+
+function createDefaultProductionIncidentsState(): ProductionIncidentsState {
+  return {
+    active: [],
+    history: [],
+    nextCheckAtS: 0
+  };
+}
+
+function createDefaultMetaprogressionState(): MetaprogressionState {
+  return {};
+}
+
+export function createDefaultBankState(): BankState {
+  return {
+    defaulted: false,
+    overdraft: Big.zero(),
+    warningsIssued: 0
+  };
+}
+
 function createGeneratorOwnership(): Record<string, number> {
   const owned: Record<string, number> = {};
 
@@ -253,4 +380,15 @@ function createGeneratorOwnership(): Record<string, number> {
   }
 
   return owned;
+}
+
+export function createDefaultVibexState(rngSeed: number): VibexState {
+  return {
+    cannedSeed: deriveSeed(rngSeed, "vibex.canned"),
+    codeSeed: deriveSeed(rngSeed, "vibex.code")
+  };
+}
+
+export function createInitialRngSeed(nowMs = Date.now()): number {
+  return deriveSeed(Math.trunc(nowMs), RNG_SEED_SALT);
 }

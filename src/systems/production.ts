@@ -1,7 +1,7 @@
 import type { EventBus } from "../core/bus";
 import { Big, type BigInput } from "../core/bignum";
 import type { GameState } from "../core/state";
-import { C, PRESTIGE } from "../data/constants";
+import { C } from "../data/constants";
 import { GENERATORS, type GeneratorDefinition } from "../data/generators";
 import {
   EQUITY_PERKS,
@@ -12,7 +12,7 @@ import {
 import { RESEARCH, type AutomationUnlock, type ResearchEffect } from "../data/research";
 import { UPGRADES, type UpgradeEffect } from "../data/upgrades";
 import { canFitCompute, getAvailableCompute } from "./compute";
-import { calculateDebtEfficiency, hasPendingIncident } from "./debt";
+import { calculateDebtEfficiency } from "./debt";
 import { isDemoLocked } from "./demo";
 import {
   applyIterationSoftcap,
@@ -20,6 +20,21 @@ import {
   calculateIterationProductionMultiplier
 } from "./iteration";
 import { calculateAchievementMultiplier } from "./achievements";
+import { calculatePrestigeMultiplierBig } from "./prestige-math";
+import { getIncidentEffects } from "./incidents";
+import { getBuildMomentumEffects } from "./momentum";
+import { getProjectChainEffects } from "./project-chains";
+import { getSprintEffects } from "./roadmap";
+import {
+  addNonNegativeBig,
+  canSpendBig,
+  isNonNegativeBig,
+  isPositiveBig,
+  isPositiveFinite,
+  spendBig
+} from "./resources";
+import { getRunStyleEffects } from "./run-styles";
+import { getStoryDecisionEffects } from "./story-decisions";
 
 export type BuyQuantity = 1 | 10 | "max";
 
@@ -89,7 +104,10 @@ export interface DerivedCache {
     debt: number;
     era: number;
     insightNodes: number;
+    momentum: number;
     prestige: number;
+    prestigeBig: Big;
+    projectChains: number;
     research: number;
     upgrades: number;
   };
@@ -100,6 +118,7 @@ export interface DerivedCache {
     boardSlots: number;
     buildTimeMultiplier: number;
     goldenClientChance: number;
+    incidentPenaltyMultiplier: number;
     payoutMultiplier: number;
     qaMultiplier: number;
     refactorInstant: boolean;
@@ -219,7 +238,10 @@ export function createDerivedCache(): DerivedCache {
       debt: 1,
       era: 1,
       insightNodes: 1,
+      momentum: 1,
       prestige: 1,
+      prestigeBig: Big.one(),
+      projectChains: 1,
       research: 1,
       upgrades: 1
     },
@@ -230,6 +252,7 @@ export function createDerivedCache(): DerivedCache {
       boardSlots: C.PROJECT_BOARD_BASE_SLOTS,
       buildTimeMultiplier: 1,
       goldenClientChance: 0,
+      incidentPenaltyMultiplier: 1,
       payoutMultiplier: 1,
       qaMultiplier: 1,
       refactorInstant: false,
@@ -247,13 +270,17 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
   const achievements = calculateAchievementMultiplier(state);
   const iterationCost = calculateIterationCostMultiplier(state.prestige.iteration);
   const iterationProduction = calculateIterationProductionMultiplier(state.prestige.iteration);
+  const momentum = getBuildMomentumEffects(state);
+  const projectChains = getProjectChainEffects(state);
   const boundedGlobalMultiplier =
     era *
     debt *
     achievements *
     effects.prestigeNodeMultiplier *
     effects.researchMultiplier *
-    effects.globalUpgradeMultiplier;
+    effects.globalUpgradeMultiplier *
+    momentum.locMultiplier *
+    projectChains.locMultiplier;
   const globalMultiplier = Big.mul(
     Big.mul(prestige, iterationProduction),
     Big.fromNumber(boundedGlobalMultiplier)
@@ -302,7 +329,10 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
     debt,
     era,
     insightNodes: effects.prestigeNodeMultiplier,
+    momentum: momentum.locMultiplier,
     prestige: prestige.toNumber(),
+    prestigeBig: prestige.copy(),
+    projectChains: projectChains.locMultiplier,
     research: effects.researchMultiplier,
     upgrades: effects.globalUpgradeMultiplier
   };
@@ -311,13 +341,19 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
   };
   cache.project = {
     boardSlots: effects.projectBoardSlots,
-    buildTimeMultiplier: effects.buildTimeMultiplier,
+    buildTimeMultiplier:
+      effects.buildTimeMultiplier *
+      momentum.buildTimeMultiplier *
+      projectChains.buildTimeMultiplier,
     goldenClientChance: effects.goldenClientChance,
-    payoutMultiplier: effects.payoutMultiplier,
+    incidentPenaltyMultiplier: effects.incidentPenaltyMultiplier,
+    payoutMultiplier:
+      effects.payoutMultiplier * momentum.payoutMultiplier * projectChains.payoutMultiplier,
     qaMultiplier: effects.qaMultiplier,
     refactorInstant: effects.refactorInstant,
-    revenueMultiplier: effects.revenueMultiplier,
-    rpMultiplier: effects.rpMultiplier
+    revenueMultiplier:
+      effects.revenueMultiplier * momentum.revenueMultiplier * projectChains.revenueMultiplier,
+    rpMultiplier: effects.rpMultiplier * momentum.rpMultiplier * projectChains.rpMultiplier
   };
 
   cache.compute = {
@@ -359,7 +395,14 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
     used: computeUsed
   };
   state.res.computeUsed = computeUsed;
+  const preSoftcapLocRate = locRate.copy();
   cache.locRate = applyIterationSoftcap(locRate, state.prestige.iteration);
+  if (!preSoftcapLocRate.eq0() && cache.locRate.lt(preSoftcapLocRate)) {
+    const displayScale = Big.div(cache.locRate, preSoftcapLocRate);
+    for (const entry of Object.values(cache.generatorEntries)) {
+      entry.rate = Big.mul(entry.rate, displayScale);
+    }
+  }
   return cache;
 }
 
@@ -369,15 +412,16 @@ export function tickProduction(
   dtS: number,
   bus?: EventBus
 ): void {
-  if (cache.locRate.eq0()) {
+  if (!isPositiveFinite(dtS) || !isPositiveBig(cache.locRate)) {
     return;
   }
 
   const produced = Big.mul(cache.locRate, Big.fromNumber(dtS));
-  Big.addIn(state.res.loc, produced);
-  Big.addIn(state.lifetime.loc, produced);
-  Big.addIn(state.lifetime.locSinceExit, produced);
-  bus?.emit("res:changed", "loc");
+  if (addNonNegativeBig(state.res.loc, produced)) {
+    addNonNegativeBig(state.lifetime.loc, produced);
+    addNonNegativeBig(state.lifetime.locSinceExit, produced);
+    bus?.emit("res:changed", "loc");
+  }
 }
 
 export function buyGenerator(
@@ -419,11 +463,11 @@ export function buyGenerator(
   const costMultiplier = cache.costs.generatorMultiplier;
   const cost = getGeneratorCost(generator, owned, count, costMultiplier);
 
-  if (state.res.money.lt(cost) || cost.gt(spendBudget)) {
+  if (!canSpendBig(state.res.money, cost) || !canSpendBig(spendBudget, cost)) {
     return { cost, id, ok: false, quantity: count, reason: "unaffordable" };
   }
 
-  Big.subIn(state.res.money, cost);
+  spendBig(state.res.money, cost);
   state.owned.generators[id] = owned + count;
   recomputeDerivedCache(state, cache);
   bus?.emit("res:changed", "money");
@@ -456,6 +500,10 @@ export function getGeneratorMaxAffordable(
   budget = state.res.money
 ): number {
   const baseCost = Big.mul(generator.baseCost, Big.from(cache?.costs.generatorMultiplier ?? 1));
+  if (!isPositiveBig(baseCost) || !isNonNegativeBig(budget)) {
+    return 0;
+  }
+
   const moneyAffordable = Big.maxAffordable(baseCost, generator.growth, owned, budget);
   const computeUse = getEffectiveComputeUse(generator, cache);
   const computeAffordable =
@@ -479,7 +527,7 @@ export function getMilestoneState(owned: number): GeneratorMilestoneState {
   };
 }
 
-export function getOwnedGeneratorCount(state: GameState, id: string): number {
+function getOwnedGeneratorCount(state: GameState, id: string): number {
   return state.owned.generators[id] ?? 0;
 }
 
@@ -503,7 +551,7 @@ export function isGeneratorUnlocked(state: GameState, generator: GeneratorDefini
   return getOwnedGeneratorCount(state, generator.previousId) > 0;
 }
 
-export function getGenerator(id: string): GeneratorDefinition | undefined {
+function getGenerator(id: string): GeneratorDefinition | undefined {
   return GENERATORS.find((generator) => generator.id === id);
 }
 
@@ -550,11 +598,6 @@ function collectEffects(state: GameState): EffectAccumulator {
     }
   }
 
-  if (isAngelNetworkActive(state)) {
-    effects.payoutMultiplier *= 10;
-    effects.revenueMultiplier *= 10;
-  }
-
   if (effects.goldenClientChance > 0) {
     effects.payoutMultiplier *= 1 + effects.goldenClientChance * 2;
   }
@@ -567,12 +610,42 @@ function collectEffects(state: GameState): EffectAccumulator {
     effects.offlineCapH = 0;
   }
 
-  if (hasPendingIncident(state)) {
-    effects.revenueMultiplier *= 1 - 0.5 * effects.incidentPenaltyMultiplier;
-  }
+  applyStrategicEffects(state, effects);
 
   effects.quality = Math.min(C.QUALITY_MAX, effects.quality);
   return effects;
+}
+
+function applyStrategicEffects(state: GameState, effects: EffectAccumulator): void {
+  const sprint = getSprintEffects(state);
+  const incidents = getIncidentEffects(state);
+  const runStyle = getRunStyleEffects(state);
+  const decisions = getStoryDecisionEffects(state);
+
+  effects.bugChanceMultiplier *=
+    sprint.bugChanceMultiplier * incidents.bugChanceMultiplier * decisions.bugChanceMultiplier;
+  effects.debtFactor *=
+    sprint.debtFactorMultiplier *
+    incidents.debtFactorMultiplier *
+    runStyle.debtFactorMultiplier *
+    decisions.debtFactorMultiplier;
+  effects.generatorCostMultiplier *= decisions.generatorCostMultiplier;
+  effects.hypeShipMultiplier *=
+    sprint.hypeShipMultiplier *
+    incidents.hypeMultiplier *
+    runStyle.hypeShipMultiplier *
+    decisions.hypeShipMultiplier;
+  effects.payoutMultiplier *=
+    sprint.payoutMultiplier * runStyle.payoutMultiplier * decisions.payoutMultiplier;
+  effects.qaMultiplier *= decisions.qaMultiplier;
+  effects.revenueMultiplier *=
+    sprint.revenueMultiplier *
+    incidents.revenueMultiplier *
+    runStyle.revenueMultiplier *
+    decisions.revenueMultiplier;
+  effects.rpMultiplier *= sprint.rpMultiplier * runStyle.rpMultiplier * decisions.rpMultiplier;
+  effects.autoPromptRate *= sprint.autoPromptMultiplier * decisions.autoPromptMultiplier;
+  effects.autoFixDelayS *= sprint.autoFixDelayMultiplier;
 }
 
 function createEffectAccumulator(): EffectAccumulator {
@@ -922,61 +995,17 @@ function getLastConfiguredMilestone(): number {
   return lastMilestone;
 }
 
-export function calculatePrestigeMultiplier(state: GameState): number {
-  return calculatePrestigeMultiplierBig(state).toNumber();
-}
-
-export function calculatePrestigeMultiplierBig(state: GameState): Big {
-  const insight = Big.add(Big.one(), state.res.insight);
-  const insightMult = Big.pow(insight, PRESTIGE.INSIGHT_MULT_EXP);
-  const equityMult = calculateOnePlusScaledPower(
-    state.res.equity,
-    PRESTIGE.EQUITY_MULT_K,
-    getEquityMultiplierExponent(state)
-  );
-  const paradoxExponent = state.owned.paradoxItems.has("x_paradox_engine")
-    ? PRESTIGE.PARADOX_ENGINE_MULT_EXP
-    : PRESTIGE.PARADOX_MULT_EXP;
-  const paradoxMult = Big.powNumber(1 + state.res.paradox, paradoxExponent);
-
-  return Big.mul(Big.mul(insightMult, equityMult), paradoxMult);
-}
-
-function calculateOnePlusScaledPower(value: number, scale: number, exponent: number): Big {
-  if (value <= 0 || scale <= 0) {
-    return Big.one();
-  }
-
-  const termLog10 = Math.log10(scale) + Math.log10(value) * exponent;
-
-  if (termLog10 < 12) {
-    return Big.fromNumber(1 + 10 ** termLog10);
-  }
-
-  return Big.fromLog10(termLog10);
-}
-
-function getEquityMultiplierExponent(state: GameState): number {
-  let exponent = PRESTIGE.EQUITY_MULT_EXP;
-
-  for (const perk of EQUITY_PERKS) {
-    if (!state.owned.equityPerks.has(perk.id)) {
-      continue;
-    }
-
-    for (const effect of perk.effects) {
-      if (effect.kind === "compounding") {
-        exponent += effect.exponentAdd;
-      }
-    }
-  }
-
-  return exponent;
-}
-
-function isAngelNetworkActive(state: GameState): boolean {
+export function getAngelNetworkUntilS(state: GameState): number | undefined {
   const until = state.stats["prestige.angelNetworkUntil"];
-  return typeof until === "number" && state.meta.playtimeS < until;
+  return typeof until === "number" ? until : undefined;
+}
+
+export function getAngelNetworkMultiplierAt(
+  state: GameState,
+  playtimeS = state.meta.playtimeS
+): number {
+  const until = getAngelNetworkUntilS(state);
+  return until !== undefined && playtimeS < until ? 10 : 1;
 }
 
 function isActiveRunModifier(state: GameState, id: string): boolean {

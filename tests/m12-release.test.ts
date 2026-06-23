@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { readFileSync } from "node:fs";
+
+import packageJson from "../package.json";
+import tauriConfig from "../src-tauri/tauri.conf.json";
 import viteConfig from "../vite.config";
 import { Big } from "../src/core/bignum";
 import { exportGameState, importGameState } from "../src/core/save";
@@ -107,6 +111,12 @@ describe("M12 demo gating", () => {
 });
 
 describe("M12 desktop platform", () => {
+  it("keeps the broad Tauri global disabled while command IPC remains reachable", () => {
+    expect(tauriConfig.app.withGlobalTauri).toBe(false);
+    expect(isTauriRuntime({ __TAURI_INTERNALS__: { invoke: vi.fn() } })).toBe(true);
+    expect(isTauriRuntime({})).toBe(false);
+  });
+
   it("uses Tauri commands for full-edition save storage and backups", async () => {
     const invoke = vi.fn(<T>(command: string): Promise<T> => {
       if (command === "load_save") {
@@ -124,9 +134,7 @@ describe("M12 desktop platform", () => {
       return Promise.resolve(undefined as T);
     });
     const host = {
-      __TAURI__: {
-        core: { invoke }
-      }
+      __TAURI_INTERNALS__: { invoke }
     } as Parameters<typeof createDesktopPlatform>[0];
     const platform = createDesktopPlatform(host);
 
@@ -155,16 +163,7 @@ describe("M12 desktop platform", () => {
 
   it("keeps rolling web backups and corrupt sidecars separate", async () => {
     const storage = new Map<string, string>();
-
-    vi.stubGlobal("window", {
-      localStorage: {
-        getItem: (key: string) => storage.get(key) ?? null,
-        setItem: (key: string, value: string) => {
-          storage.set(key, value);
-        }
-      },
-      open: vi.fn()
-    });
+    stubLocalStorage(storage);
 
     try {
       const platform = createWebPlatform();
@@ -180,4 +179,121 @@ describe("M12 desktop platform", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("retries the primary web save after pruning backups on quota failure", async () => {
+    const storage = new Map<string, string>([
+      [WEB_SAVE_KEY, "old"],
+      [`${WEB_SAVE_KEY}.bak1`, "older"],
+      [`${WEB_SAVE_KEY}.corrupt.1`, "bad"]
+    ]);
+    let quotaThrown = false;
+
+    stubLocalStorage(storage, (key, value) => {
+      if (key.startsWith(`${WEB_SAVE_KEY}.bak`) && !quotaThrown) {
+        quotaThrown = true;
+        throw new Error("quota");
+      }
+
+      storage.set(key, value);
+    });
+
+    try {
+      const platform = createWebPlatform();
+
+      await expect(platform.save("new")).resolves.toBeUndefined();
+
+      expect(storage.get(WEB_SAVE_KEY)).toBe("new");
+      expect(storage.has(`${WEB_SAVE_KEY}.bak1`)).toBe(false);
+      expect(storage.has(`${WEB_SAVE_KEY}.corrupt.1`)).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("preserves web backups when the primary retry also fails", async () => {
+    const storage = new Map<string, string>([
+      [WEB_SAVE_KEY, "old"],
+      [`${WEB_SAVE_KEY}.bak1`, "older"],
+      [`${WEB_SAVE_KEY}.corrupt.1`, "bad"]
+    ]);
+
+    stubLocalStorage(storage, (key, value) => {
+      if (key === WEB_SAVE_KEY && value === "new") {
+        throw new Error("quota");
+      }
+
+      storage.set(key, value);
+    });
+
+    try {
+      const platform = createWebPlatform();
+
+      await expect(platform.save("new")).rejects.toThrow("quota");
+
+      expect(storage.get(WEB_SAVE_KEY)).toBe("old");
+      expect(storage.get(`${WEB_SAVE_KEY}.bak1`)).toBe("older");
+      expect(storage.get(`${WEB_SAVE_KEY}.corrupt.1`)).toBe("bad");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps only the newest corrupt web sidecars", async () => {
+    const storage = new Map<string, string>();
+    stubLocalStorage(storage);
+
+    try {
+      const platform = createWebPlatform();
+
+      await platform.backupCorrupt?.("bad1", 1);
+      await platform.backupCorrupt?.("bad2", 2);
+      await platform.backupCorrupt?.("bad3", 3);
+      await platform.backupCorrupt?.("bad4", 4);
+
+      expect([...storage.keys()].sort()).toEqual([
+        `${WEB_SAVE_KEY}.corrupt.2`,
+        `${WEB_SAVE_KEY}.corrupt.3`,
+        `${WEB_SAVE_KEY}.corrupt.4`
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
+
+describe("M12 release flow", () => {
+  it("documents and scripts the release candidate gate", () => {
+    const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+    const checklist = readFileSync(
+      new URL("../docs/release-checklist.md", import.meta.url),
+      "utf8"
+    );
+
+    expect(packageJson.scripts["release:check"]).toContain("npm run check");
+    expect(packageJson.scripts["release:check"]).toContain("npm run changelog:check");
+    expect(packageJson.scripts["release:tauri"]).toBe("npm run tauri -- build");
+    expect(changelog).toContain("## [Unreleased]");
+    expect(checklist).toContain("npm run release:check");
+    expect(checklist).toContain("Roadmap sprint");
+  });
+});
+
+function stubLocalStorage(
+  storage: Map<string, string>,
+  setItem: (key: string, value: string) => void = (key, value) => storage.set(key, value)
+): void {
+  vi.stubGlobal("window", {
+    localStorage: {
+      get length() {
+        return storage.size;
+      },
+      getItem: (key: string) => storage.get(key) ?? null,
+      key: (index: number) => [...storage.keys()][index] ?? null,
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+      setItem
+    },
+    open: vi.fn()
+  });
+}

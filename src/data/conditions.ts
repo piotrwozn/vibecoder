@@ -16,11 +16,13 @@ export interface Condition {
   readonly hypeGte?: number;
   readonly hypeMaxGte?: number;
   readonly insightGainGte?: number;
+  readonly insightNodesGte?: number;
   readonly insightSinceExitGte?: number;
   readonly iterationGte?: number;
   readonly locLifetimeGte?: string;
   readonly moneyGte?: string;
   readonly productCountGte?: number;
+  readonly projectShipped?: string;
   readonly research?: string;
   readonly refactorGte?: number;
   readonly rewritesGte?: number;

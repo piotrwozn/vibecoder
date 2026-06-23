@@ -1,43 +1,81 @@
-# Review #3 — M2
-Reviewer: Claude Opus 4.8 | Data: 2026-06-13
-Status: DONE   <!-- OPEN → FIXED (Codex) → DONE / ESCALATE (reviewer, runda 2) -->
-VERDICT: CHANGES REQUIRED
+# VIBECODER — Iterative Verification Review (Cycle 3)
 
-<!-- Kontekst (zweryfikowane przez reviewera):
-  DoD: `npm run check` zielony (tsc + eslint + prettier + 24× vitest + validate PASS).
-  AC "milestone ×2 przy 10 szt.": production.ts getMilestoneState(10)→mult 2 (test production.test.ts:88) — OK.
-  AC "klik + 3 typy agentów": click 1.2 LoC przy 10 autocomplete (prompt.test.ts:22), kup ×1/×10/MAX wszystkich 3 E1 (production.test.ts:32-67) — OK.
-  AC "tick < 2 ms przy 1000 agentów": production.test.ts:69-82 mierzy tickProduction@1000 — OK (ale mierzy tylko tick, nie recompute — patrz P1-1).
-  Liczby: C == 03 §11 i PRESTIGE == 04 §5 (co do wartości); E1 generatory (15/1.10/0.5/1, 200/1.11/4/2, 2.4e3/1.11/30/3) == 09 §3; STARTING_COMPUTE_CAP=6 == 09 §4; era.e1.model="PARROT-1" == 09 §2.
-  Wzory: produkcja == 03 §2 (eraMult=1.5^(era-1), mnożniki nieobecnych systemów =1), klik == 03 §4, flow == 03 §4, milestony == 03 §3.3, prestiż == 04 §2/§4. Zweryfikowane numerycznie.
-  GameState == 07 §2 (Big dla loc/money/insight/debt + lifetime); bus == 07 §4; layering OK (ui/ nie importuje systems/, systems/ bez DOM); v=1 (pierwszy kształt, brak migracji bo brak save do M4).
-  Zakres: state+bus+constants+production+prompt+DevFloor — bez scope creep (zmiany bignum/format to zatwierdzone fixy M1). -->
+**Subject:** Audit of the codebase after the Executor AI applied the cleanup steps prescribed in `review/review_2.md`.
+**Method:** Each of the five prescribed steps was verified against the **current** source by reading the actual mechanism (symbol-located). The new reentrancy-safe event bus and the window-bounds cache — the only non-trivial new code this cycle — were read in full for correctness and lifecycle wiring. Independent gates `tsc --noEmit` and the full Vitest suite were run.
 
-## MUST FIX (P0/P1 — blokuje merge)
-- [x] **P1-1** | `src/main.ts:37,64-68` — render odświeżany jednym zgrubnym `dirty` podpiętym do `res:changed`: (A) `tickProduction` emituje `res:changed` co tick gdy `locRate>0` → `dirty=true` co tick → `recomputeDerivedCache` + przebudowa całego `DevFloorView` co KLATKĘ (alokacja dziesiątek Big: cost1/cost10/maxAffordable/rate na generator) w hot-path renderu; (B) gdy `locRate===0` (domyślny stan M2 — brak $ na agentów), `tickProduction` kończy wcześnie bez emisji (`production.ts:108`), a `tickPromptFlow` zmienia `flow.meter`/`activeUntil` (`prompt.ts:47`) NIE ustawiając `dirty` → licznik flow `%` i poświata `terminal--flow` zamarzają na ekranie do następnego kliku/zakupu — dlaczego: plan/07 §9 ("DerivedCache … przeliczany eventowo, nie co tick"; "bez alokacji w hot path") i §4 (cache liczony tylko na `bought/prestige/era`); B łamie spójność dirty (tick zmienia stan widoczny, nie podnosząc flagi) — fix: odśwież wartości wyświetlane co klatkę z istniejącego cache, a `recomputeDerivedCache` wołaj tylko na zdarzeniach strukturalnych (`bought`/`unlock`/`era:changed`/`prestige`).
-  - fix-note: Separated cache/view invalidation with `src/core/view-invalidation.ts`; resource ticks now refresh the view from the existing cache, structural events mark cache dirty, and `tickPromptFlow` reports flow decay/expiry as visible changes. Covered by `tests/view-invalidation.test.ts` and `tests/prompt.test.ts`.
-- [x] **P1-2** | `src/systems/production.ts:172` — `milestone.multiplier = 2 ** count` (oraz `owned * milestone.multiplier`, `:80`) liczone jako `number`, a `2^count` przekracza 1e15 (count≥50, owned≈22,5k) — łamie hard rule 5 ("Big wszędzie gdzie wartość może przekroczyć 1e15"); precyzja gubi się powyżej ~22,5k szt., a przy count≥1024 (~509,5k szt. jednego typu, osiągalne w endless) `2**count===Infinity` → `Big.fromNumber(owned*Infinity)` rzuca "value must be finite" → CRASH w `recomputeDerivedCache` — dlaczego: AGENTS.md hard rule 5; `getMilestoneState(600000).multiplier===Infinity` (potwierdzone) — fix: licz milestoneMult i `owned×milestoneMult` w `Big` (np. `Big.pow(2, count)`), nie w `number`. (Latentne w M2 — brak źródła $; istotne dla endless/M10.)
-  - fix-note: Changed milestone multiplier to `Big` and computes `owned × milestoneMult` in `Big`; added an endless regression at 600000 owned so `recomputeDerivedCache` no longer crashes. Covered by `tests/production.test.ts`.
+## Verdict Summary
 
-## ADVISORY (P2 — nie blokuje)
-- [x] **P2-1** | `src/systems/production.ts:112` — `tickProduction` alokuje 2 Big na tick (`Big.mul(locRate, Big.fromNumber(dtS))`) zamiast wariantów mutujących do scratcha — dlaczego: plan/07 §9 ("Mutujące operacje Big w tick (zero GC churn)"); 20 alok/s, minor — fix: trzymaj stałą `Big` dla dtS (=0.1) i mnóż do bufora przez `mulIn`/`set`.
-  - fix-note: → backlog (proper scratch-`Big` plumbing for zero-GC production ticks is more than 10 lines and would require API/caller changes).
-- [x] **P2-2** | `src/i18n/en.json:38,29,16` — osierocone klucze i18n nieużywane po przebudowie render M2: `ui.terminal.tickCounter`, `ui.main.empty`, `ui.devfloor.locked` (render pokazuje flow/agent-list/klasę `--locked`, nie te teksty) — dlaczego: P2 "orphaned i18n key" — fix: usuń nieużywane klucze albo podłącz je (np. tekst "Locked" na zablokowanym wierszu).
-  - fix-note: Removed unused `ui.terminal.tickCounter`, `ui.main.empty`, and `ui.devfloor.locked` keys from `src/i18n/en.json`; content validator still covers i18n shape.
-- [x] **P2-3** | `308'`, `value.append(...)` (root repo) — dwa puste (0 B) pliki-śmieci z pomyłek powłoki w drzewie roboczym; przy `git add .` trafią do commitu M2 — dlaczego: higiena zakresu (plan/08: bez plików roboczych w repo) — fix: usuń oba pliki przed commitem.
-  - fix-note: Deleted the two zero-byte root files `308'` and `value.append(...)`.
+**This cycle is complete and clean.** All five carried-over items from `review_2.md` are correctly FIXED. **No items remain unresolved, and no regressions were introduced.** The two non-trivial changes (event-bus reentrancy guard, bounds cache + invalidation) are mechanically sound and properly wired to component teardown.
 
-## DISPUTED (wypełnia Codex, rozstrzyga człowiek)
-<!-- pozycje, z którymi Codex się nie zgadza: id znaleziska + uzasadnienie z cytatem z planu -->
-_(brak)_
+**Independent gate results:**
+- `npx tsc --noEmit` → **exit 0** (clean).
+- `npx vitest run` → **38 files / 301 tests passed**, 0 failures (one net-new test since Cycle 2).
 
-## PLAN-ISSUES (uwagi reviewera do samego planu — nieblokujące)
-_(brak)_
+| Status | Count | Items |
+|--------|-------|-------|
+| **FIXED** | 5 / 5 | bounds reflow; `listBackups` `.catch`; bus allocation; offline-achievement decision; informational-item decisions |
+| **Unresolved (carried over)** | 0 | — |
+| **New regressions** | 0 | typecheck + 301 tests green |
 
-## Runda 2 — weryfikacja (wypełnia reviewer)
-- Naprawy zweryfikowane:
-  - **P1-1 OK** — nowy `src/core/view-invalidation.ts` rozdziela `cache` (strukturalny) od `view` (wyświetlanie). `main.ts:37-47`: `res:changed`/`production:changed` → `markResourceChanged` (tylko view), `bought`/`unlock`/`era:changed`/`prestige` → `markStructuralChanged` (cache+view). `render` (`main.ts:69-77`): `recomputeDerivedCache` tylko gdy `dirty.cache` → koniec recompute co klatkę (symptom A). `tickPromptFlow` zwraca `changed` (`prompt.ts:38-60`) → `markVisibleChanged` → flow `%`/poświata odświeżają się w idle (symptom B). Test `tests/view-invalidation.test.ts`.
-  - **P1-2 OK** — `getMilestoneState` (`production.ts:173`) zwraca `multiplier: Big.powNumber(2, count)`; `owned × milestoneMult` liczone w `Big` (`production.ts:79`). Regresja `tests/production.test.ts:93-106`: owned=600000 → `count=1205`, `multiplier.e>308`, `locRate` skończone, `recomputeDerivedCache` bez crashu. UI: `formatBig(milestone.multiplier)` (`main.ts:92`); test milestonów porównuje przez `.toNumber()`.
-  - P2-1 → backlog (świadomie, >10 linii); P2-2 klucze usunięte z `en.json`; P2-3 oba pliki-śmieci usunięte (potwierdzone).
-- Nowe P0 wprowadzone poprawkami: brak. Sprawdzone: cache odświeżany tylko na zdarzeniach strukturalnych (w M2 jedyne = `bought`) + recompute startowy (`main.ts:34`); zmiana `multiplier`→`Big` nie zepsuła konsumentów (tsc zielony, UI przez `formatBig`, testy przez `toNumber`); `canBuy*` czyta żywe `money` co klatkę; `npm run check` = 28/28 zielone, validate PASS.
-- Decyzja: DONE — oba blockery (P1-1, P1-2) rozwiązane, P2 rozdysponowane, poprawki bez nowych P0.
+> **Scope note (precision):** this cycle's audit was correctly scoped to the five items review_2 left open, plus a correctness read of the new code and a regression gate. The 47 items confirmed FIXED in Cycle 2 were not re-audited line-by-line; the green typecheck + full suite provides regression coverage over them.
+
+---
+
+## 1. Implementation Audit (Review 2 vs Current Code)
+
+### Step 1 — Eliminate the per-frame forced reflow — **FIXED (complete)**
+The Cycle-2 gap (the layout-reading half) is closed. `getDesktopBounds` (`render.ts:1995-2009`) now returns `cachedWindowBounds.bounds` on a cache hit and only calls `layer.getBoundingClientRect()` on a miss (`render.ts:2000`), caching the result (`2007`). Invalidation is event-driven: `connectWindowBoundsInvalidation` (`render.ts:1968-1987`) registers a `ResizeObserver` on the windows layer **and** a `window` `resize` listener, both calling `invalidateWindowBoundsCache`. Crucially, the lifecycle is wired correctly — the setup is invoked at desktop mount (`render.ts:1254`) and its returned teardown is registered as the component's `destroy` method (`render.ts:1261`), which runs via `desktop.destroy()` (`render.ts:342`). So the observer/listener is disconnected on teardown — **no listener leak**, and the per-frame synchronous reflow is eliminated. The cache key is the layer element, so a stale cache cannot bleed across a remount.
+
+### Step 2 — Close the last unhandled rejection — **FIXED**
+`src/main.ts:59-65`: the boot-time `platform.listBackups?.()` chain now terminates in `.catch(() => {})`. A rejection from the Rust `list_backups` command is swallowed deliberately rather than surfacing as an unhandled rejection. This was the one call site Cycle 2 left unguarded; it now matches the `desktop.ts` pattern.
+
+### Step 3 — Remove the bus per-emit allocation — **FIXED (correct and non-regressive)**
+`src/core/bus.ts` was rewritten to a reentrancy-guarded dispatcher. `emit` (`bus.ts:56-96`) iterates the listener `Set` **directly** (`for (const listener of listeners)`, line 75) — no `[...listeners]` copy on the hot path. Mutation safety is preserved via per-dispatch `DispatchContext` objects: `on`/unsubscribe call `snapshotActiveDispatches` **before** mutating (`bus.ts:107,111`), which lazily freezes `Array.from(listeners)` into every in-flight dispatch only when a mutation actually occurs mid-emit (`bus.ts:118-132`); `emit` then detects `context.snapshot` and finishes iterating the frozen snapshot from the current index (`bus.ts:76-89`). **I verified the semantics match the previous snapshot-at-emit-start behavior:** a handler added during dispatch is excluded from the current emit (snapshot taken before `add`), and a handler removed during dispatch is still invoked for the current emit (snapshot taken before `delete`) — identical to the old `[...listeners]` contract, but the array is allocated **only** when a reentrant mutation happens (rare), not on every emit. Per-listener `try/catch` is retained via `dispatchListener` (`bus.ts:134-140`). No allocation on the steady-state `res:changed`/`production:changed` paths.
+
+### Step 4 — Resolve the two informational items explicitly — **FIXED (documented decisions)**
+- **4a. Offline achievements:** the Executor chose option (i) — accept the RAF-coalesced behavior and document it. `offline.ts:67-68` now carries an explicit comment: *"Achievements intentionally reconcile on the first live tick after offline catch-up. The unlock UI coalesces those notifications into one batched toast per animation frame."* This satisfies the "pick one and make it explicit" requirement.
+- **4b. `calculateOfflineMoney` neutral hype:** documented at `offline.ts:106` — *"Offline income uses neutral hype while the saved hype value still decays during catch-up."* The `hype = 1` assumption is now an intentional, stated modeling choice rather than a silent one.
+
+### Step 5 — Decide `incidents.history` cross-prestige persistence — **FIXED (documented)**
+All three prestige reset paths now carry an explicit comment that the capped history is intentionally retained: `prestige.ts:513`, `:622`, `:786` — *"Capped diagnostic history intentionally survives prestige; active incidents reset per run."* Combined with the Cycle-2 hard cap of 50 entries (`incidents.ts`), the behavior is bounded and deliberate. The optional "clear on prestige" path was consciously not taken, which is acceptable per the review's "or" clause.
+
+---
+
+## 2. Unresolved Issues (Carried Over)
+
+**None.** Every item from `review_2.md` (Sections 2.1–2.4 and the Step-5 optional item) is resolved. There is nothing outstanding from the prior cycle.
+
+---
+
+## 3. New Discoveries & Regressions (Backend & UI)
+
+### 3.1 Regressions — NONE
+- `tsc --noEmit` clean; **301/301 tests pass** (up from 300 — net-new coverage, no failures). The event-bus rewrite did not break the `state-bus` tests, and the bounds-cache change did not break the `render`/window-manager tests.
+- The new bus dispatcher correctly preserves emit-time snapshot semantics (verified by reading, and covered by the passing `tests/state-bus.test.ts`).
+- The bounds-invalidation teardown is wired into `desktop.destroy()`, so the refactor did not introduce a `resize`/`ResizeObserver` listener leak.
+
+### 3.2 Observations (non-blocking, not regressions)
+- **`updateRoadmap` per-frame `JSON.stringify(view)` signature** (`roadmap.ts`) — carried over from Cycle 2 and explicitly accepted there. Still bounded and far cheaper than the DOM teardown it replaced. Not re-flagged; only noted for completeness. A keyed-patch would remove even the stringify, but this is optional and outside the prescribed scope.
+- **`incidents.history` survives prestige** — now documented as intentional. The only theoretical risk (a future feature reading `history` per-run seeing cross-run entries) is unchanged but is now an explicit, owned decision.
+- No new architectural-boundary violations: the strengthened layering validator (Cycle 1) and the DOM-free `systems`/`core` boundaries hold; the new bus and bounds code live in `core`/`ui` respectively with no cross-layer leakage.
+
+### 3.3 No new backend bugs, crashes, exploits, data-corruption risks, or memory leaks were found.
+
+---
+
+## 4. Updated Step-by-Step Implementation Guide for the Executor AI
+
+There is **no required remediation work remaining.** The tracked defect backlog from Cycles 1–3 is closed. The following are **optional, discretionary** polish items only — none is a correctness, security, or stability concern, and none should block a release.
+
+**Step 1 — (Optional) Run the full release gate.** This audit verified `tsc --noEmit` and `vitest run`. Before tagging a release, run the complete `npm run check` (which additionally runs `eslint`, `prettier --check`, the `validate` harness, and the Tauri `cargo test` suite) and `npm run sim -- --strategy sane --hours 100` plus `--strategy maxer` to confirm the Cycle-1 economy/prestige fixes hold under long-run simulation. This is process hygiene, not a code change.
+
+**Step 2 — (Optional) Convert `updateRoadmap` to keyed-patch.** If profiling later shows the per-frame `JSON.stringify(view)` signature is measurable while the Roadmap window is open, migrate it to the create-once + keyed-Map pattern used by `syncGeneratorRows`/`syncHardwareRows`, eliminating both the stringify and the teardown. Low priority.
+
+**Step 3 — (Optional) Add an explicit regression test for the bus reentrancy guard.** Add a `tests/state-bus.test.ts` case that subscribes/unsubscribes a listener from **within** an active `emit` and asserts the documented snapshot semantics (added handler skipped this emit; removed handler still invoked this emit). This locks the new dispatcher's contract against future edits. Recommended but not blocking.
+
+**Verification gate:** none required for the closed backlog. If any optional step above is taken, `npm run check` must remain green.
+
+---
+
+### Closing assessment
+Across three review cycles the Executor resolved a run-ending critical bug, two high-severity economy/loop defects, seven medium issues, and ~40 low-severity items, and then cleanly closed the residual polish — **without introducing a single regression**, as confirmed by a clean typecheck and a fully green 301-test suite. The tracked work is complete; remaining suggestions are discretionary.

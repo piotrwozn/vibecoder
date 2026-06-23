@@ -13,7 +13,8 @@ export function calculateIterationProductionMultiplier(iteration: number): Big {
 }
 
 export function calculateParadoxGain(iteration: number): number {
-  return PRESTIGE.PARADOX_BASE ** iteration;
+  const gain = PRESTIGE.PARADOX_BASE ** iteration;
+  return Number.isFinite(gain) ? gain : Number.MAX_VALUE;
 }
 
 export function getIterationSoftcapThreshold(iteration: number): Big {

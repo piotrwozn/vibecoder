@@ -37,7 +37,7 @@ export interface ResearchDefinition {
   readonly tier: number;
 }
 
-export const RESEARCH_COSTS = [2, 3, 5, 8, 12, 18, 25, 35, 50, 70] as const;
+const RESEARCH_COSTS = [2, 3, 5, 8, 12, 18, 25, 35, 50, 70] as const;
 
 export const RESEARCH: readonly ResearchDefinition[] = [
   {
