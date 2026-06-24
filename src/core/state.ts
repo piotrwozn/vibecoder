@@ -9,6 +9,7 @@ import { createDefaultUiState, type GameUiState } from "./ui-state";
 
 export type Edition = "demo" | "full";
 export type ProjectPriority = "payout" | "revenue" | "rp";
+export type ProjectDeploymentMode = "hosted" | "selfHosted";
 export type EndingChoice = "merge" | "unplug" | "fork";
 export type AuroraStatus = "billing" | "complete" | "funding" | "locked" | "ready" | "servers";
 export type SprintPriority =
@@ -49,7 +50,9 @@ export interface ProjectOffer {
 
 export interface ActiveBuild {
   readonly buildS: number;
+  readonly computeUse: number;
   readonly cost: Big;
+  readonly deploymentMode: ProjectDeploymentMode;
   readonly elapsedS: number;
   readonly id: string;
   readonly payout: Big;
@@ -59,6 +62,8 @@ export interface ActiveBuild {
 
 export interface Product {
   readonly bugged: boolean;
+  readonly computeUse: number;
+  readonly deploymentMode: ProjectDeploymentMode;
   readonly id: string;
   readonly level: number;
   readonly projectId: string;

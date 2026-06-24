@@ -6,6 +6,7 @@ import {
   createDefaultGameState,
   type GameState,
   type IncidentResponseId,
+  type ProjectDeploymentMode,
   type RunStyleId,
   type SprintPriority
 } from "../core/state";
@@ -39,7 +40,11 @@ import {
 import { resolveProductionIncident } from "../systems/incidents";
 import { performPromptClick } from "../systems/prompt";
 import { startSprint } from "../systems/roadmap";
-import { refreshProjectBoard, startProject as startProjectBuild } from "../systems/projects";
+import {
+  refreshProjectBoard,
+  setProductDeploymentMode as changeProductDeploymentMode,
+  startProject as startProjectBuild
+} from "../systems/projects";
 import { buyGenerator, type BuyQuantity, type DerivedCache } from "../systems/production";
 import { buyResearch as purchaseResearch } from "../systems/research";
 import { selectRunStyle as chooseRunStyle } from "../systems/run-styles";
@@ -55,6 +60,7 @@ import type {
 } from "../ui/render";
 import {
   closeWindow,
+  fitOpenWindowsToBounds as fitPersistedOpenWindowsToBounds,
   focusWindow,
   minimizeWindow,
   moveWindow,
@@ -454,6 +460,17 @@ export function createAppActions(runtime: AppActionsRuntime): AppActions {
       void runtime.persistNow();
     },
 
+    fitOpenWindowsToBounds(bounds: WindowBounds): void {
+      const changed = fitPersistedOpenWindowsToBounds(runtime.getState().ui.windows, bounds);
+
+      if (!changed) {
+        return;
+      }
+
+      runtime.updateVisibleView();
+      void runtime.persistNow();
+    },
+
     openApp(appId: AppId, bounds: WindowBounds): void {
       const state = runtime.getState();
       if (appId === "aurora" && !state.aurora.unlocked) {
@@ -681,13 +698,57 @@ export function createAppActions(runtime: AppActionsRuntime): AppActions {
       void runtime.persistNow();
     },
 
-    startProject(id: string): void {
+    setProjectDeploymentMode(productId: string, mode: ProjectDeploymentMode): void {
       if (!beginGameplayAction()) {
         return;
       }
 
-      const result = startProjectBuild(runtime.getState(), id, runtime.cache, runtime.bus);
-      runtime.invalidation.markVisibleChanged(result.ok);
+      const result = changeProductDeploymentMode(
+        runtime.getState(),
+        productId,
+        mode,
+        runtime.cache,
+        runtime.bus
+      );
+
+      if (result.ok) {
+        runtime.invalidation.markStructuralChanged();
+        void runtime.persistNow();
+      } else {
+        runtime.invalidation.markVisibleChanged(false);
+      }
+      runtime.flushActionInvalidation();
+    },
+
+    startNewGame(): void {
+      runtime.persistence.unblock();
+      const fresh = createDefaultGameState(Date.now(), runtime.platform.edition);
+      fresh.ui.scene = "desktop";
+      fresh.ui.bootSeen = true;
+      fresh.ui.tutorial.active = true;
+      runtime.installState(fresh);
+      invalidateVibexResponses();
+      void runtime.persistNow();
+    },
+
+    startProject(id: string, deploymentMode: ProjectDeploymentMode = "selfHosted"): void {
+      if (!beginGameplayAction()) {
+        return;
+      }
+
+      const result = startProjectBuild(
+        runtime.getState(),
+        id,
+        runtime.cache,
+        deploymentMode,
+        runtime.bus
+      );
+      if (result.ok) {
+        runtime.invalidation.markStructuralChanged();
+        void runtime.persistNow();
+      } else {
+        runtime.invalidation.markVisibleChanged(false);
+      }
       runtime.flushActionInvalidation();
     },
 

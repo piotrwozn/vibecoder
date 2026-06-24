@@ -100,14 +100,17 @@ import {
 import {
   getProject,
   getProjectBuildTime,
+  getProjectBuildComputeUse,
   getProjectCost,
+  getProjectExpectedHostingRate,
   getProjectIncomeRate,
   getProjectLevel,
   getProjectMaxLevel,
   getProjectNextLevel,
   getProjectPayout,
   getProjectRevenue,
-  getProductRevenue,
+  getProductHostingRate,
+  getProductNetRevenue,
   getVisibleProjectOffers,
   hasActiveProjectBuild
 } from "../systems/projects";
@@ -193,6 +196,7 @@ export interface ViewModelBuilderRuntime {
   readonly comms: CommsController;
   readonly formatters: AppFormatters;
   readonly getOfflineSummary: () => OfflineProgressResult | undefined;
+  readonly hasPersistedSave: () => boolean;
   readonly getState: () => GameState;
   readonly vibexAi: VibexAiClient;
   readonly vibexSession: VibexSession;
@@ -259,8 +263,8 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
     );
     const flowActive = buildVibex ? isFlowActive(state) : (previous?.flowActive ?? false);
     const grossIncome = getProjectIncomeRate(state, cache);
-    const billingBreakdown = createBillingBreakdown(state);
-    const netIncome = getNetMoneyRate(grossIncome, state);
+    const billingBreakdown = createBillingBreakdown(state, cache);
+    const netIncome = getNetMoneyRate(grossIncome, state, cache);
     const view: DevFloorView = {
       appearance: createAppearanceView(),
       achievements: buildAchievements
@@ -293,7 +297,7 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
       research: buildResearch ? createResearchView() : (previous?.research ?? createResearchView()),
       rewrite: buildRewrite ? createRewriteView() : (previous?.rewrite ?? createRewriteView()),
       resources: {
-        bank: formatMoney(state.bank.overdraft.neg()),
+        bank: formatMoney(state.bank.overdraft),
         bankTooltip: t("ui.tooltip.bankOverdraft"),
         bankVisible: state.bank.overdraft.gt(Big.zero()),
         compute: `${formatCompute(derived.compute.used)}/${formatCompute(derived.compute.cap)}`,
@@ -311,6 +315,7 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
       tutorial: createTutorialView(),
       ui: {
         bootSeen: state.ui.bootSeen,
+        hasSave: runtime.hasPersistedSave(),
         scene: state.ui.scene,
         windows: state.ui.windows
       },
@@ -738,7 +743,7 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
   function createGameOverView(): GameOverView {
     return {
       lines: [t("ui.bankruptcy.body.1"), t("ui.bankruptcy.body.2")],
-      overdraft: formatMoney(state.bank.overdraft.neg()),
+      overdraft: formatMoney(state.bank.overdraft),
       visible: state.bank.defaulted
     };
   }
@@ -857,19 +862,35 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
   }
 
   function createComputeBreakdownView(derived: DerivedCache): DevFloorView["compute"] {
+    const generatorRows = GENERATORS.filter(
+      (generator) => generator.era <= state.era && !isDemoLocked(state, generator)
+    ).map((generator) => {
+      const owned = state.owned.generators[generator.id] ?? 0;
+      return {
+        id: generator.id,
+        name: t(generator.nameKey),
+        used: formatCompute(owned * generator.computeUse)
+      };
+    });
+    const activeBuildRows = state.projects.active
+      .filter((build) => build.deploymentMode === "selfHosted" && build.computeUse > 0)
+      .map((build) => ({
+        id: `build:${build.id}`,
+        name: t("ui.projects.computeBuild", { name: getProjectName(build.projectId) }),
+        used: formatCompute(build.computeUse)
+      }));
+    const productRows = state.projects.portfolio
+      .filter((product) => product.deploymentMode === "selfHosted" && product.computeUse > 0)
+      .map((product) => ({
+        id: `product:${product.id}`,
+        name: t("ui.projects.computeProduct", { name: getProjectName(product.projectId) }),
+        used: formatCompute(product.computeUse)
+      }));
+
     return {
       cap: formatCompute(derived.compute.cap),
       remaining: formatCompute(Math.max(0, derived.compute.cap - derived.compute.used)),
-      rows: GENERATORS.filter(
-        (generator) => generator.era <= state.era && !isDemoLocked(state, generator)
-      ).map((generator) => {
-        const owned = state.owned.generators[generator.id] ?? 0;
-        return {
-          id: generator.id,
-          name: t(generator.nameKey),
-          used: formatCompute(owned * generator.computeUse)
-        };
-      }),
+      rows: [...generatorRows, ...activeBuildRows, ...productRows],
       used: formatCompute(derived.compute.used)
     };
   }
@@ -1142,12 +1163,16 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
 
         return {
           id: build.id,
+          compute: formatCompute(build.computeUse),
+          deployment: t(`ui.projects.deployment.${build.deploymentMode}`),
           name: project === undefined ? build.projectId : t(project.nameKey),
           progress: build.buildS <= 0 ? 1 : Math.min(1, build.elapsedS / build.buildS),
           remaining: formatTime(remainingS)
         };
       }),
-      incomeRate: formatMoneyRate(getProjectIncomeRate(state, cache)),
+      incomeRate: formatMoneyRate(
+        getNetMoneyRate(getProjectIncomeRate(state, cache), state, cache)
+      ),
       nextUnlock: createProjectNextUnlockLabel(),
       offers: getVisibleProjectOffers(state, cache).map((offer): ProjectOfferView => {
         const project = getProject(offer.projectId);
@@ -1163,14 +1188,28 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
 
         return {
           canFix: product.bugged,
+          canSwitchDeployment:
+            product.deploymentMode === "selfHosted" ||
+            product.computeUse <= cache.compute.available,
+          compute: formatCompute(product.computeUse),
+          deployment: t(`ui.projects.deployment.${product.deploymentMode}`),
+          hostingCost: formatMoneyRate(
+            getProductHostingRate(product, cache, state.res.hype, state)
+          ),
           id: product.id,
           level:
             project === undefined
               ? String(product.level)
               : formatProjectLevel(product.level, getProjectMaxLevel(project)),
           name: project === undefined ? product.projectId : t(project.nameKey),
-          revenue: formatMoneyRate(getProductRevenue(product, cache, state.res.hype, state)),
-          status: t(product.bugged ? "ui.projects.statusBugged" : "ui.projects.statusOk")
+          revenue: formatMoneyRate(getProductNetRevenue(product, cache, state.res.hype, state)),
+          status: t(product.bugged ? "ui.projects.statusBugged" : "ui.projects.statusOk"),
+          switchDeploymentLabel: t(
+            product.deploymentMode === "hosted"
+              ? "ui.projects.switchSelfHosted"
+              : "ui.projects.switchHosted"
+          ),
+          switchDeploymentMode: product.deploymentMode === "hosted" ? "selfHosted" : "hosted"
         };
       }),
       refactor: {
@@ -1522,14 +1561,22 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
     const atMaxLevel = project.kind === "standard" && level >= maxLevel;
     const payout = level === 0 ? getProjectPayout(project, cache, state) : Big.zero();
     const revenue = getProjectRevenue(project, cache, nextLevel, state);
+    const computeUse = getProjectBuildComputeUse(state, project, nextLevel, "selfHosted");
+    const canAffordBuild = canSpendBig(state.res.loc, cost);
     const canStartProject = !hasActiveProjectBuild(state);
 
     return {
       id: project.id,
       name: t(project.nameKey),
       buildTime: formatTime(getProjectBuildTime(project, cache)),
-      canStart: canStartProject && !atMaxLevel && canSpendBig(state.res.loc, cost),
+      canStart:
+        canStartProject && !atMaxLevel && canAffordBuild && computeUse <= cache.compute.available,
+      canStartHosted: canStartProject && !atMaxLevel && canAffordBuild,
+      canStartSelfHosted:
+        canStartProject && !atMaxLevel && canAffordBuild && computeUse <= cache.compute.available,
+      compute: formatCompute(computeUse),
       cost: formatLoc(cost),
+      hostingCost: formatMoneyRate(getProjectExpectedHostingRate(project, cache, nextLevel, state)),
       level:
         project.kind === "standard"
           ? formatProjectLevel(level, maxLevel)
@@ -1549,11 +1596,19 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
       return t("ui.projects.tagUnlock");
     }
 
-    if (project.rpReward !== undefined) {
-      return t("ui.projects.tagRp", { rp: project.rpReward });
+    if (hasRemainingProjectRpReward(project)) {
+      return t("ui.projects.tagRp", { rp: project.rpReward ?? 0 });
     }
 
     return t("ui.projects.tagStandard");
+  }
+
+  function hasRemainingProjectRpReward(project: ProjectDefinition): boolean {
+    if (project.rpReward === undefined || project.rpFirst === undefined) {
+      return false;
+    }
+
+    return getNumericStat(`project.${project.id}.shipped`) < project.rpFirst;
   }
 
   function getProductName(productId: string): string {
@@ -1732,8 +1787,9 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
       net: formatMoneyRate(net),
       power: formatMoneyRate(billing.hardwarePower),
       prestige: formatMultiplier(cache.multipliers.prestige),
+      projectHosting: formatMoneyRate(billing.projectHosting),
       revenue: formatMultiplier(cache.project.revenueMultiplier),
-      total: formatMoneyRate(net)
+      total: formatMoneyRate(billing.total)
     });
   }
 

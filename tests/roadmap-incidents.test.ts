@@ -42,6 +42,8 @@ describe("Roadmap and production incidents", () => {
     state.projects.portfolio.push({
       id: "p_micro_saas.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_micro_saas",
       revenue: Big.fromNumber(100),
@@ -123,7 +125,7 @@ describe("Roadmap and production incidents", () => {
 
     expect(tickProductionIncidents(state)).toBe(true);
 
-    expect(state.res.debt.toNumber()).toBe(1_000 * 1.25 + 2 * 250 + 2 * 100);
+    expect(state.res.debt.toNumber()).toBe(1_000 * 1.4 + 2 * 700 + 2 * 600);
     expect(state.incidents.active).toHaveLength(0);
     expect(state.incidents.history[0]?.response).toBe("accept_debt");
   });

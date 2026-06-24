@@ -37,6 +37,7 @@ declare global {
 
 const { appRoot, bootLocaleRepaired, loaded, platform } = await bootstrapApp();
 let state = loaded.state;
+let hasPersistedSave = loaded.source === "primary" || loaded.source === "backup";
 document.documentElement.lang = state.settings.lang;
 platform.setTitle(t("app.title"));
 recordInitialSaveDiagnostics();
@@ -122,6 +123,7 @@ const viewModels = createViewModelBuilder({
   comms,
   formatters,
   getOfflineSummary: () => offlineSummary,
+  hasPersistedSave: () => hasPersistedSave,
   getState: () => state,
   vibexAi,
   vibexSession
@@ -294,7 +296,12 @@ function scheduleAutosave(): void {
 }
 
 async function persistNow(): Promise<boolean> {
-  return persistence.persistNow();
+  const saved = await persistence.persistNow();
+  if (saved && !hasPersistedSave) {
+    hasPersistedSave = true;
+    updateVisibleView();
+  }
+  return saved;
 }
 
 function installState(nextState: typeof state): void {

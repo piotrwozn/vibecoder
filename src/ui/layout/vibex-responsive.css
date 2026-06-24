@@ -1004,6 +1004,12 @@
   overflow-wrap: anywhere;
 }
 
+.project-card__actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
 .project-meta__value,
 .agent-row__value,
 .agent-row__cost,
@@ -2673,6 +2679,17 @@
     minmax(82px, 0.68fr) minmax(92px, 0.82fr) minmax(116px, 0.86fr);
 }
 
+.agent-row__cost {
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.agent-row__cost-separator {
+  flex: 0 0 auto;
+}
+
 .hardware-row,
 .upgrade-row {
   grid-template-columns:
@@ -2686,8 +2703,14 @@
     minmax(76px, 0.52fr) minmax(76px, 0.52fr);
 }
 
+.research-screen,
 .rewrite-screen {
   min-width: 0;
+}
+
+.research-tree,
+.insight-tree {
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
 }
 
 .rewrite-forecast,
@@ -3006,6 +3029,19 @@
   .hardware-row,
   .upgrade-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .research-summary {
+    flex-wrap: wrap;
+  }
+
+  .research-tree,
+  .insight-tree {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .research-tree__connections {
+    display: none;
   }
 
   .vibex-workspace {

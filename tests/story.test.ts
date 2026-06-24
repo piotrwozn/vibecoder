@@ -4,6 +4,7 @@ import { Big } from "../src/core/bignum";
 import { createDefaultGameState, type EndingChoice, type GameState } from "../src/core/state";
 import { REFACTOR_COMPLETED_STAT } from "../src/data/conditions";
 import { C, OMEGA, PRESTIGE } from "../src/data/constants";
+import { ACT2_ENTERPRISE_SHIP_THRESHOLD } from "../src/data/story/act2";
 import { calculateDebtD0 } from "../src/systems/debt";
 import {
   chooseStoryOption,
@@ -202,12 +203,19 @@ describe("M7 story engine", () => {
     expect(getInboxIds(state)).toContain("a5_12_final_choice");
   });
 
-  it("holds the Act 2 agent-bank beat until the larger agent and shipping milestone", () => {
+  it("holds the Act 2 agent-bank beat until the larger agent and Act 2 shipping milestone", () => {
     const state = createDefaultGameState();
     state.meta.edition = "full";
     state.story.act = 2;
     state.story.flags.add("accepted_term_sheet");
-    state.stats[SHIPPED_STAT] = 350;
+    state.stats[SHIPPED_STAT] = ACT2_ENTERPRISE_SHIP_THRESHOLD - 1;
+
+    state.owned.generators.g_autocomplete = C.MILESTONES[3];
+    advanceStory(state);
+
+    expect(getInboxIds(state)).not.toContain("a2_02_agent_bank");
+
+    state.stats[SHIPPED_STAT] = ACT2_ENTERPRISE_SHIP_THRESHOLD;
 
     state.owned.generators.g_autocomplete = C.MILESTONES[1];
     advanceStory(state);

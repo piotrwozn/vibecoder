@@ -69,7 +69,7 @@ export function startVibecoderLoop(options: GameLoopOptions): void {
       options.invalidation.markVisibleChanged(tickPromptFlow(state, dtS));
       tickProduction(state, options.cache, dtS, options.bus);
       options.invalidation.markVisibleChanged(tickProjects(state, options.cache, dtS, options.bus));
-      options.invalidation.markVisibleChanged(tickBilling(state, dtS, options.bus));
+      options.invalidation.markVisibleChanged(tickBilling(state, options.cache, dtS, options.bus));
       if (isBankrupt(state)) {
         options.invalidation.markVisibleChanged(clampCoreResources(state, options.bus));
         return;

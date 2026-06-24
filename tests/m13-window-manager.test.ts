@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createDefaultWindowStates } from "../src/core/ui-state";
 import {
+  fitOpenWindowsToBounds,
   moveWindow,
   openWindow,
   resetWindowLayout,
@@ -70,6 +71,39 @@ describe("M13 window manager", () => {
     expect(windows.stats.maximized).toBe(false);
     expect(windows.stats.w).toBe(760);
     expect(windows.stats.h).toBe(520);
+  });
+
+  it("fits open windows when the desktop viewport changes", () => {
+    const windows = createDefaultWindowStates();
+
+    openWindow(windows, "projects", { height: 720, width: 1280 });
+    resizeWindow(
+      windows,
+      "projects",
+      { h: 560, w: 820, x: 320, y: 180 },
+      { height: 720, width: 1280 }
+    );
+
+    const changed = fitOpenWindowsToBounds(windows, { height: 560, width: 390 });
+
+    expect(changed).toBe(true);
+    expect(windows.projects.maximized).toBe(true);
+    expect(windows.projects.w).toBe(390);
+    expect(windows.projects.h).toBe(560);
+    expect(windows.projects.restore).toEqual({ h: 560, w: 820, x: 320, y: 160 });
+  });
+
+  it("refits maximized windows after a viewport grows", () => {
+    const windows = createDefaultWindowStates();
+
+    openWindow(windows, "research", { height: 560, width: 390 });
+
+    const changed = fitOpenWindowsToBounds(windows, { height: 720, width: 1280 });
+
+    expect(changed).toBe(true);
+    expect(windows.research.maximized).toBe(true);
+    expect(windows.research.w).toBe(1280);
+    expect(windows.research.h).toBe(720);
   });
 
   it("resets frames without closing open windows", () => {

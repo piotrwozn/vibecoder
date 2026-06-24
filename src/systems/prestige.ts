@@ -6,9 +6,10 @@ import {
   BUILD_MOMENTUM_DECAY_ACCUM_STAT,
   BUILD_MOMENTUM_STAT
 } from "../data/momentum";
-import { PRESTIGE } from "../data/constants";
+import { C, PRESTIGE } from "../data/constants";
 import { STARTING_ERA } from "../data/eras";
 import { GENERATORS } from "../data/generators";
+import { PROJECTS } from "../data/projects";
 import {
   EQUITY_PERKS,
   INSIGHT_NODES,
@@ -41,7 +42,12 @@ import {
   calculateParadoxMultiplier
 } from "./prestige-math";
 import { addBuildMomentum } from "./momentum";
-import { refreshProjectBoard } from "./projects";
+import {
+  getProject,
+  getProjectCost,
+  getVisibleProjectOffers,
+  refreshProjectBoard
+} from "./projects";
 import { recomputeDerivedCache, type DerivedCache } from "./production";
 
 export {
@@ -579,6 +585,7 @@ export function performExit(state: GameState, cache: DerivedCache, bus?: EventBu
   const startEra = getExitStartEra(state);
   const prioritySetting = state.projects.prioritySetting;
   const startInsight = getParadoxStartInsight(state);
+  const needsOnRamp = shouldGrantPostExitOnRamp(state, startEra);
 
   state.res.equity += preview.gain;
   state.res.insight = startInsight;
@@ -634,7 +641,9 @@ export function performExit(state: GameState, cache: DerivedCache, bus?: EventBu
   }
 
   recomputeComputeCap(state);
+  recomputeDerivedCache(state, cache);
   refreshProjectBoard(state);
+  state.res.loc = getPostExitOnRampLoc(state, cache, needsOnRamp);
   recomputeDerivedCache(state, cache);
 
   bus?.emit("res:changed", "loc");
@@ -1026,6 +1035,48 @@ function getExitStartEra(state: GameState): number {
   }
 
   return era;
+}
+
+function shouldGrantPostExitOnRamp(state: GameState, startEra: number): boolean {
+  return (
+    startEra > STARTING_ERA.index &&
+    (hasEquityPerk(state, "q_head_start") || hasEquityPerk(state, "q_serial_founder"))
+  );
+}
+
+function getPostExitOnRampLoc(state: GameState, cache: DerivedCache, shouldGrant: boolean): Big {
+  if (!shouldGrant) {
+    return Big.zero();
+  }
+
+  let cheapestVisibleCost: Big | undefined;
+
+  for (const offer of getVisibleProjectOffers(state, cache)) {
+    const project = getProject(offer.projectId);
+
+    if (project === undefined || project.era <= STARTING_ERA.index) {
+      continue;
+    }
+
+    const cost = getProjectCost(project, cache, state);
+    cheapestVisibleCost =
+      cheapestVisibleCost === undefined ? cost : Big.min(cheapestVisibleCost, cost);
+  }
+
+  if (cheapestVisibleCost !== undefined) {
+    return cheapestVisibleCost;
+  }
+
+  const fallback = PROJECTS.filter((project) => project.era <= state.era)
+    .sort((left, right) => right.era - left.era)
+    .slice(0, C.PROJECT_BOARD_BASE_SLOTS)
+    .map((project) => project.costLoC)
+    .reduce<Big | undefined>(
+      (cheapest, cost) => (cheapest === undefined ? cost.copy() : Big.min(cheapest, cost)),
+      undefined
+    );
+
+  return fallback ?? Big.zero();
 }
 
 function getActiveRunModifierEquityMultiplier(state: GameState): number {

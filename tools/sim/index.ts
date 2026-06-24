@@ -27,7 +27,7 @@ import {
   getHardwareTierGateRequirement,
   isHardwareMaxed
 } from "../../src/systems/compute.ts";
-import { calculateDebtEfficiency, tickDebt } from "../../src/systems/debt.ts";
+import { calculateDebtEfficiency, fixBug, tickDebt } from "../../src/systems/debt.ts";
 import { buyNextEra, getEraCost, getNextEra } from "../../src/systems/eras.ts";
 import { tickHype } from "../../src/systems/hype.ts";
 import { tickBuildMomentum } from "../../src/systems/momentum.ts";
@@ -212,6 +212,9 @@ export function runEndlessSmokeSim(iterations: number): EndlessSmokeResult {
   state.story.flags.add("iteration_unlocked");
   state.story.act = 9;
   state.owned.paradoxItems.add("x_start_insight");
+  state.res.computeCap = 1_000;
+  state.res.loc = Big.fromLog10(80);
+  refreshEndlessSmokeRunway(state);
   seedEndlessInsight(state, iterations);
   recomputeDerivedCache(state, cache);
 
@@ -220,7 +223,9 @@ export function runEndlessSmokeSim(iterations: number): EndlessSmokeResult {
 
     for (let second = 0; second < PRESTIGE.ITER_HOLD_S * PRESTIGE.PARADOX_BASE; second += DT_S) {
       state.meta.playtimeS += DT_S;
+      refreshEndlessSmokeRunway(state);
       tickEndlessStrategy(state, cache);
+      refreshEndlessSmokeRunway(state);
       tickSimSystems(state, cache, DT_S);
       maxExponent = Math.max(maxExponent, getMaxBigExponent(state, cache));
 
@@ -241,6 +246,18 @@ export function runEndlessSmokeSim(iterations: number): EndlessSmokeResult {
   };
 }
 
+function refreshEndlessSmokeRunway(state: GameState): void {
+  const runway = Big.fromLog10(300);
+  if (state.res.money.lt(runway)) {
+    state.res.money = runway.copy();
+  }
+
+  state.bank.defaulted = false;
+  delete state.bank.defaultedAtS;
+  state.bank.overdraft.set(0, 0);
+  state.bank.warningsIssued = 0;
+}
+
 function seedEndlessInsight(state: GameState, iterations: number): void {
   const seedExponent =
     PRESTIGE.ITER_SOFTCAP_BASE_E +
@@ -250,6 +267,7 @@ function seedEndlessInsight(state: GameState, iterations: number): void {
 
 function tickEndlessStrategy(state: GameState, cache: DerivedCache): void {
   performPromptClick(state, cache);
+  fixVisibleBugs(state, cache);
   buyAffordableEraAndHardware(state, cache);
   buyAffordableUpgrades(state, cache);
   buyAffordableResearch(state, cache);
@@ -320,7 +338,7 @@ function tickSimSystems(state: GameState, cache: DerivedCache, dtS: number): voi
   tickPromptFlow(state, dtS);
   tickProduction(state, cache, dtS);
   tickProjects(state, cache, dtS);
-  tickBilling(state, dtS);
+  tickBilling(state, cache, dtS);
 
   if (isBankrupt(state)) {
     return;
@@ -345,6 +363,7 @@ function tickStrategy(state: GameState, cache: DerivedCache, strategy: Strategy)
 
   if (active) {
     performPromptClick(state, cache);
+    fixVisibleBugs(state, cache);
   }
 
   if (active && state.meta.playtimeS % PROJECT_DECISION_INTERVAL_S === 0) {
@@ -383,6 +402,14 @@ function tickStrategy(state: GameState, cache: DerivedCache, strategy: Strategy)
   buyBestGenerators(state, cache, strategy);
   if (state.story.act < 5) {
     buyAffordableEraAndHardware(state, cache);
+  }
+}
+
+function fixVisibleBugs(state: GameState, cache: DerivedCache): void {
+  for (const bug of [...state.bugs]) {
+    if (fixBug(state, bug.productId).ok) {
+      recomputeDerivedCache(state, cache);
+    }
   }
 }
 
@@ -721,7 +748,12 @@ function startUsefulProjects(state: GameState, cache: DerivedCache): void {
       break;
     }
 
-    if (startProject(state, project.id, cache).ok) {
+    const result = startProject(state, project.id, cache);
+    if (result.ok) {
+      return;
+    }
+
+    if (result.reason === "compute" && startProject(state, project.id, cache, "hosted").ok) {
       return;
     }
   }

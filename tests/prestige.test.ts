@@ -69,7 +69,9 @@ describe("M8 prestige REWRITE", () => {
     state.projects.active.push({
       id: "p_landing.1",
       buildS: 20,
+      computeUse: 0,
       cost: Big.fromNumber(300),
+      deploymentMode: "selfHosted",
       elapsedS: 5,
       payout: Big.fromNumber(360),
       projectId: "p_landing",
@@ -78,6 +80,8 @@ describe("M8 prestige REWRITE", () => {
     state.projects.portfolio.push({
       id: "p_llama_todo.1",
       bugged: true,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_llama_todo",
       revenue: Big.fromNumber(0.1),
@@ -116,7 +120,7 @@ describe("M8 prestige REWRITE", () => {
     expect(state.owned.generators.g_autocomplete).toBe(5);
     expect(state.owned.generators.g_parrot).toBe(0);
     expect(state.owned.hardware).toEqual({});
-    expect(state.res.computeCap).toBe(6);
+    expect(state.res.computeCap).toBe(10);
     expect(state.projects.active).toHaveLength(0);
     expect(state.projects.portfolio).toHaveLength(0);
     expect(state.stats[getBugSpawnedAtStatKey("p_llama_todo.1")]).toBeUndefined();

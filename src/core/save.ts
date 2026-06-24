@@ -1,5 +1,6 @@
 import type { Platform } from "../platform/platform";
 import { Big, type BigInput } from "./bignum";
+import { C } from "../data/constants";
 import { GENERATORS } from "../data/generators";
 import { HARDWARE, LEGACY_HARDWARE_ID } from "../data/hardware";
 import { PROJECTS, REFACTOR_PROJECT } from "../data/projects";
@@ -25,6 +26,7 @@ import {
   type ProductionIncidentHistoryEntry,
   type ProductionIncidentsState,
   type ProductionIncidentType,
+  type ProjectDeploymentMode,
   type ProjectOffer,
   type ProjectPriority,
   type RunStyleId,
@@ -65,6 +67,12 @@ export interface SaveDecodeResult {
   readonly resetReason?: "corrupt" | "load-failed" | "newer-version";
   readonly state: GameState;
   readonly warnings: readonly string[];
+}
+
+export type SaveSource = "backup" | "new" | "primary" | "reset";
+
+export interface LoadedGameState extends SaveDecodeResult {
+  readonly source: SaveSource;
 }
 
 export type ImportSaveResult =
@@ -109,7 +117,7 @@ export function deserializeGameState(
 export async function loadGameState(
   platform: Pick<Platform, "backupCorrupt" | "edition" | "listBackups" | "load" | "loadBackup">,
   nowMs = Date.now()
-): Promise<SaveDecodeResult> {
+): Promise<LoadedGameState> {
   let data: string | null;
 
   try {
@@ -128,6 +136,7 @@ export async function loadGameState(
       repaired: true,
       reset: true,
       resetReason: "load-failed",
+      source: "reset",
       state: createDefaultGameState(nowMs, platform.edition),
       warnings: ["save load failed"]
     };
@@ -143,6 +152,7 @@ export async function loadGameState(
     return {
       repaired: false,
       reset: false,
+      source: "new",
       state: createDefaultGameState(nowMs, platform.edition),
       warnings: []
     };
@@ -151,7 +161,7 @@ export async function loadGameState(
   const decoded = deserializeGameState(data, { edition: platform.edition, nowMs });
 
   if (!decoded.reset) {
-    return decoded;
+    return { ...decoded, source: "primary" };
   }
 
   await backupUnreadableSave(platform, data, nowMs);
@@ -171,7 +181,7 @@ export async function loadGameState(
     return backup;
   }
 
-  return decoded;
+  return { ...decoded, source: "reset" };
 }
 
 export async function saveGameState(
@@ -180,13 +190,16 @@ export async function saveGameState(
   nowMs = Date.now()
 ): Promise<boolean> {
   const previousLastSeen = state.meta.lastSeen;
+  const previousLastSimTickMs = state.meta.lastSimTickMs;
   state.meta.lastSeen = nowMs;
+  state.meta.lastSimTickMs = nowMs;
 
   try {
     await platform.save(serializeGameState(state));
     return true;
   } catch {
     state.meta.lastSeen = previousLastSeen;
+    state.meta.lastSimTickMs = previousLastSimTickMs;
     return false;
   }
 }
@@ -564,12 +577,69 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   defaults.ui.tutorial = repairTutorial(ui.tutorial, defaults.ui.tutorial, "ui.tutorial", mark);
   defaults.ui.windows = repairWindows(ui.windows, defaults.ui.windows, "ui.windows", mark);
 
+  repairPostExitOnRamp(defaults, mark);
+
   return {
     repaired,
     reset: false,
     state: defaults,
     warnings
   };
+}
+
+function repairPostExitOnRamp(state: GameState, mark: (path: string) => void): void {
+  const onRampLoc = getPostExitOnRampRepairLoc(state);
+
+  if (onRampLoc === undefined || state.res.loc.gte(onRampLoc)) {
+    return;
+  }
+
+  state.res.loc = onRampLoc;
+  mark("res.loc.postExitOnRamp");
+}
+
+function getPostExitOnRampRepairLoc(state: GameState): Big | undefined {
+  if (
+    state.prestige.exits <= 0 ||
+    state.era <= 1 ||
+    state.projects.active.length > 0 ||
+    state.projects.portfolio.length > 0 ||
+    !state.res.money.eq0() ||
+    !hasNoOwnedCounts(state.owned.generators) ||
+    !hasNoOwnedCounts(state.owned.hardware) ||
+    !hasPostExitStartPerk(state)
+  ) {
+    return undefined;
+  }
+
+  const candidates = PROJECTS.filter(
+    (project) =>
+      project.era <= state.era &&
+      (state.meta.edition !== "demo" || project.demoLocked !== true) &&
+      (project.kind === "standard" || project.kind === "unlock")
+  )
+    .sort((left, right) => right.era - left.era)
+    .slice(0, getPostExitBoardSlotCount(state));
+
+  return candidates.reduce<Big | undefined>(
+    (cheapest, project) =>
+      cheapest === undefined ? project.costLoC.copy() : Big.min(cheapest, project.costLoC),
+    undefined
+  );
+}
+
+function hasNoOwnedCounts(record: Record<string, number>): boolean {
+  return Object.values(record).every((count) => count === 0);
+}
+
+function hasPostExitStartPerk(state: GameState): boolean {
+  return (
+    state.owned.equityPerks.has("q_head_start") || state.owned.equityPerks.has("q_serial_founder")
+  );
+}
+
+function getPostExitBoardSlotCount(state: GameState): number {
+  return C.PROJECT_BOARD_BASE_SLOTS + (state.owned.equityPerks.has("q_golden_gut") ? 1 : 0);
 }
 
 function repairVibex(
@@ -622,7 +692,7 @@ async function backupUnreadableSave(
 async function loadMostRecentBackup(
   platform: Pick<Platform, "edition" | "listBackups" | "loadBackup">,
   nowMs: number
-): Promise<SaveDecodeResult | undefined> {
+): Promise<LoadedGameState | undefined> {
   let names: readonly string[];
 
   try {
@@ -650,6 +720,7 @@ async function loadMostRecentBackup(
       return {
         ...decoded,
         repaired: true,
+        source: "backup",
         warnings: ["save restored from backup", ...decoded.warnings]
       };
     }
@@ -839,6 +910,20 @@ function repairProjectPriority(
   }
 
   mark("projects.prioritySetting");
+  return fallback;
+}
+
+function repairProjectDeploymentMode(
+  value: unknown,
+  fallback: ProjectDeploymentMode,
+  path: string,
+  mark: (path: string) => void
+): ProjectDeploymentMode {
+  if (value === "hosted" || value === "selfHosted") {
+    return value;
+  }
+
+  mark(path);
   return fallback;
 }
 
@@ -1367,7 +1452,17 @@ function repairActiveBuilds(
     repaired.push({
       id: entry.id,
       buildS: repairNumber(entry.buildS, 0, `${path}.buildS`, mark, { nonNegative: true }),
+      computeUse: repairNumber(entry.computeUse, 0, `${path}.computeUse`, mark, {
+        integer: true,
+        nonNegative: true
+      }),
       cost: repairBig(entry.cost, Big.zero(), `${path}.cost`, mark, { nonNegative: true }),
+      deploymentMode: repairProjectDeploymentMode(
+        entry.deploymentMode,
+        "hosted",
+        `${path}.deploymentMode`,
+        mark
+      ),
       elapsedS: repairNumber(entry.elapsedS, 0, `${path}.elapsedS`, mark, { nonNegative: true }),
       payout: repairBig(entry.payout, Big.zero(), `${path}.payout`, mark, { nonNegative: true }),
       projectId: entry.projectId,
@@ -1402,6 +1497,16 @@ function repairProducts(value: unknown, path: string, mark: (path: string) => vo
     repaired.push({
       id: entry.id,
       bugged: typeof entry.bugged === "boolean" ? entry.bugged : false,
+      computeUse: repairNumber(entry.computeUse, 0, `${path}.computeUse`, mark, {
+        integer: true,
+        nonNegative: true
+      }),
+      deploymentMode: repairProjectDeploymentMode(
+        entry.deploymentMode,
+        "hosted",
+        `${path}.deploymentMode`,
+        mark
+      ),
       level: repairNumber(entry.level, 1, `${path}.level`, mark, {
         integer: true,
         positive: true

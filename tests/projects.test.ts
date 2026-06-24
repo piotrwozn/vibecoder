@@ -14,6 +14,7 @@ import {
   PROJECT_REVENUE_LEVEL_BONUS,
   REFACTOR_PROJECT
 } from "../src/data/projects";
+import { createBillingBreakdown, getNetMoneyRate } from "../src/systems/billing";
 import { createDerivedCache, recomputeDerivedCache } from "../src/systems/production";
 import {
   ensureProjectBoard,
@@ -22,6 +23,8 @@ import {
   getProjectIncomeRate,
   getProjectMaxLevel,
   getVisibleProjectOffers,
+  getProductHostingRate,
+  getProductNetRevenue,
   getProductRevenue,
   refreshProjectBoard,
   startProject,
@@ -61,6 +64,7 @@ describe("M3 projects and money", () => {
 
     expect(state.res.money.toNumber()).toBeCloseTo(payout);
     expect(getProjectIncomeRate(state, cache).eq0()).toBe(true);
+    expect(getNetMoneyRate(getProjectIncomeRate(state, cache), state, cache).eq0()).toBe(true);
 
     state.projects.portfolio[0] = {
       ...state.projects.portfolio[0]!,
@@ -101,6 +105,88 @@ describe("M3 projects and money", () => {
     expect(getProjectIncomeRate(state, cache).toNumber()).toBeCloseTo(
       payout * C.REVENUE_RATIO * C.BUG_PENALTY * 1.15
     );
+  });
+
+  it("charges hosted projects against net money rate and lets bugged hosted products hurt", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.projects.portfolio.push({
+      id: "p_landing.1",
+      bugged: false,
+      computeUse: 4,
+      deploymentMode: "hosted",
+      level: 1,
+      projectId: "p_landing",
+      revenue: Big.fromNumber(10),
+      shippedAtS: 0
+    });
+    recomputeDerivedCache(state, cache);
+
+    expect(getProductHostingRate(state.projects.portfolio[0]!, cache).toNumber()).toBeCloseTo(
+      10 * (0.12 + 4 * 0.018)
+    );
+    expect(getProductNetRevenue(state.projects.portfolio[0]!, cache).toNumber()).toBeCloseTo(
+      10 - 10 * (0.12 + 4 * 0.018)
+    );
+    expect(createBillingBreakdown(state, cache).projectHosting.toNumber()).toBeCloseTo(1.92);
+
+    state.projects.portfolio[0] = { ...state.projects.portfolio[0]!, bugged: true };
+    recomputeDerivedCache(state, cache);
+
+    expect(getProjectIncomeRate(state, cache).toNumber()).toBeCloseTo(10 * C.BUG_PENALTY);
+    expect(
+      getNetMoneyRate(getProjectIncomeRate(state, cache), state, cache).toNumber()
+    ).toBeLessThan(0);
+  });
+
+  it("reserves local compute during build, keeps it after ship, and reserves only upgrade delta", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.res.loc = Big.fromNumber(10_000);
+    recomputeDerivedCache(state, cache);
+
+    expect(startProject(state, "p_landing", cache).ok).toBe(true);
+    expect(state.projects.active[0]?.computeUse).toBe(4);
+    expect(cache.compute.used).toBe(4);
+
+    tickProjects(state, cache, 75);
+
+    expect(state.projects.active).toHaveLength(0);
+    expect(state.projects.portfolio[0]).toMatchObject({
+      computeUse: 4,
+      deploymentMode: "selfHosted",
+      level: 1
+    });
+    expect(cache.compute.used).toBe(4);
+
+    state.res.loc = Big.fromNumber(10_000);
+    expect(startProject(state, "p_landing", cache).ok).toBe(true);
+    expect(state.projects.active[0]?.computeUse).toBe(3);
+    expect(cache.compute.used).toBe(7);
+
+    tickProjects(state, cache, 75);
+
+    expect(state.projects.portfolio[0]).toMatchObject({
+      computeUse: 7,
+      deploymentMode: "selfHosted",
+      level: 2
+    });
+    expect(cache.compute.used).toBe(7);
+  });
+
+  it("blocks self-hosted project starts without compute while hosted starts still work", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    state.res.computeCap = 0;
+    state.res.loc = Big.fromNumber(10_000);
+    recomputeDerivedCache(state, cache);
+
+    expect(startProject(state, "p_landing", cache).reason).toBe("compute");
+    expect(startProject(state, "p_landing", cache, "hosted").ok).toBe(true);
+    expect(state.projects.active[0]).toMatchObject({
+      computeUse: 0,
+      deploymentMode: "hosted"
+    });
   });
 
   it("starts a project when current LoC exactly matches the computed cost", () => {
@@ -196,6 +282,8 @@ describe("M3 projects and money", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: getProjectMaxLevel(project!),
       projectId: "p_landing",
       revenue: Big.zero(),
@@ -219,10 +307,13 @@ describe("M3 projects and money", () => {
 
     expect(project).not.toBeUndefined();
     state.era = 2;
+    state.res.computeCap = 100;
     state.res.loc = Big.fromNumber(1_000_000_000);
     state.projects.portfolio.push({
       id: "p_micro_saas.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: getProjectMaxLevel(project!) - 1,
       projectId: "p_micro_saas",
       revenue: Big.one(),
@@ -256,6 +347,8 @@ describe("M3 projects and money", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_landing",
       revenue: Big.one(),
@@ -283,6 +376,8 @@ describe("M3 projects and money", () => {
       {
         id: "p_landing.1",
         bugged: false,
+        computeUse: 0,
+        deploymentMode: "selfHosted",
         level: 1,
         projectId: "p_landing",
         revenue: Big.fromNumber(10),
@@ -291,6 +386,8 @@ describe("M3 projects and money", () => {
       {
         id: "p_landing.2",
         bugged: true,
+        computeUse: 0,
+        deploymentMode: "selfHosted",
         level: 1,
         projectId: "p_landing",
         revenue: Big.fromNumber(10),
@@ -317,6 +414,7 @@ describe("M3 projects and money", () => {
   it("grants first-three RP rewards from Scope Creep Special", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
+    state.res.computeCap = 100;
     recomputeDerivedCache(state, cache);
 
     for (let i = 0; i < 4; i += 1) {
@@ -357,6 +455,8 @@ describe("M3 projects and money", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: PROJECT_MAX_LEVEL,
       projectId: "p_landing",
       revenue: Big.fromNumber(10),

@@ -168,6 +168,8 @@ describe("resource invariants", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_landing",
       revenue: Big.fromNumber(10),

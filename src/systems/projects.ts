@@ -1,6 +1,12 @@
 import type { EventBus } from "../core/bus";
 import { Big } from "../core/bignum";
-import type { ActiveBuild, GameState, Product, ProjectOffer } from "../core/state";
+import type {
+  ActiveBuild,
+  GameState,
+  Product,
+  ProjectDeploymentMode,
+  ProjectOffer
+} from "../core/state";
 import { REFACTOR_COMPLETED_STAT } from "../data/conditions";
 import { C } from "../data/constants";
 import { BUILD_MOMENTUM } from "../data/momentum";
@@ -14,9 +20,14 @@ import {
 import { isDemoLocked } from "./demo";
 import { addShipHype } from "./hype";
 import { unlockAurora } from "./aurora";
+import { getAvailableCompute } from "./compute";
 import { hasPendingIncident } from "./debt";
 import { addBuildMomentum } from "./momentum";
-import { getAngelNetworkMultiplierAt, type DerivedCache } from "./production";
+import {
+  getAngelNetworkMultiplierAt,
+  recomputeDerivedCache,
+  type DerivedCache
+} from "./production";
 import { recordProjectChainProgress } from "./project-chains";
 import {
   addNonNegativeBig,
@@ -38,7 +49,21 @@ export interface StartProjectResult {
   readonly cost: Big;
   readonly id: string;
   readonly ok: boolean;
-  readonly reason?: "busy" | "demoLocked" | "locked" | "maxLevel" | "unaffordable" | "missing";
+  readonly reason?:
+    | "busy"
+    | "compute"
+    | "demoLocked"
+    | "locked"
+    | "maxLevel"
+    | "unaffordable"
+    | "missing";
+}
+
+export interface SetProjectDeploymentResult {
+  readonly id: string;
+  readonly mode: ProjectDeploymentMode;
+  readonly ok: boolean;
+  readonly reason?: "compute" | "missing" | "same";
 }
 
 interface StandardCompletionResult {
@@ -66,8 +91,12 @@ export function startProject(
   state: GameState,
   projectId: string,
   cache: DerivedCache,
-  bus?: EventBus
+  deploymentModeOrBus: ProjectDeploymentMode | EventBus = "selfHosted",
+  maybeBus?: EventBus
 ): StartProjectResult {
+  const deploymentMode =
+    typeof deploymentModeOrBus === "string" ? deploymentModeOrBus : "selfHosted";
+  const bus = typeof deploymentModeOrBus === "string" ? maybeBus : deploymentModeOrBus;
   const project = getProject(projectId);
 
   if (project === undefined) {
@@ -96,9 +125,16 @@ export function startProject(
     return { cost, id: projectId, ok: false, reason: "unaffordable" };
   }
 
-  const activeBuild = createActiveBuild(state, project, cache, cost);
+  const nextLevel = getProjectNextLevel(state, project);
+  const computeUse = getProjectBuildComputeUse(state, project, nextLevel, deploymentMode);
+  if (deploymentMode === "selfHosted" && computeUse > getAvailableCompute(state, cache)) {
+    return { cost, id: projectId, ok: false, reason: "compute" };
+  }
+
+  const activeBuild = createActiveBuild(state, project, cache, cost, deploymentMode, computeUse);
   spendBig(state.res.loc, cost);
   state.projects.active.push(activeBuild);
+  recomputeDerivedCache(state, cache);
   if (project.kind === "standard" || project.kind === "unlock") {
     state.stats[PROJECT_STARTED_STAT] = getNumericStat(state, PROJECT_STARTED_STAT) + 1;
     state.stats[getProjectStartedStatKey(project.id)] =
@@ -106,11 +142,21 @@ export function startProject(
   }
 
   bus?.emit("res:changed", "loc");
+  bus?.emit("res:changed", "computeUsed");
   return { cost, id: projectId, ok: true };
 }
 
 export function hasActiveProjectBuild(state: GameState): boolean {
   return state.projects.active.length > 0;
+}
+
+export function tickProjectBuilds(
+  state: GameState,
+  cache: DerivedCache,
+  dtS: number,
+  bus?: EventBus
+): boolean {
+  return tickActiveBuilds(state, cache, dtS, bus);
 }
 
 export function tickProjects(
@@ -233,6 +279,56 @@ export function getProjectMaxLevel(project: ProjectDefinition): number {
   return PROJECT_MAX_LEVEL;
 }
 
+export function getProjectTotalComputeUse(project: ProjectDefinition, level = 1): number {
+  if (project.kind !== "standard" || project.recurringRevenue === false) {
+    return 0;
+  }
+
+  const baseCompute = Math.ceil(2 + project.era * 1.4 + Math.max(0, project.valueRatio - 0.5) * 4);
+  return Math.ceil(baseCompute * (1 + Math.max(0, level - 1) * 0.55));
+}
+
+export function getProjectBuildComputeUse(
+  state: GameState,
+  project: ProjectDefinition,
+  level = getProjectNextLevel(state, project),
+  deploymentMode: ProjectDeploymentMode = "selfHosted"
+): number {
+  if (deploymentMode === "hosted") {
+    return 0;
+  }
+
+  const totalCompute = getProjectTotalComputeUse(project, level);
+  if (totalCompute <= 0) {
+    return 0;
+  }
+
+  const product = getUpgradeableProductByProjectId(state, project.id);
+  if (product === undefined || product.deploymentMode !== "selfHosted") {
+    return totalCompute;
+  }
+
+  return Math.max(0, totalCompute - product.computeUse);
+}
+
+export function getProjectExpectedHostingRate(
+  project: ProjectDefinition,
+  cache: DerivedCache,
+  level = 1,
+  state?: GameState,
+  playtimeS = state?.meta.playtimeS
+): Big {
+  const computeUse = getProjectTotalComputeUse(project, level);
+  if (computeUse <= 0) {
+    return Big.zero();
+  }
+
+  return Big.mul(
+    getProjectRevenue(project, cache, level, state, playtimeS),
+    Big.fromNumber(getProductHostingCostRatio(computeUse))
+  );
+}
+
 export function getProjectNextLevel(state: GameState, project: ProjectDefinition): number {
   if (project.kind !== "standard") {
     return 1;
@@ -256,8 +352,59 @@ export function getProductRevenue(
 ): Big {
   const bugPenalty = product.bugged ? cache.debt.bugPenalty : 1;
   return Big.mul(
-    Big.mul(getProductPortfolioRevenue(product), Big.fromNumber(bugPenalty)),
+    getProductGrossRevenue(product, cache, hype, state, playtimeS),
+    Big.fromNumber(bugPenalty)
+  );
+}
+
+export function getProductGrossRevenue(
+  product: Product,
+  cache: DerivedCache,
+  hype = 1,
+  state?: GameState,
+  playtimeS = state?.meta.playtimeS
+): Big {
+  return Big.mul(
+    getProductPortfolioRevenue(product),
     getPortfolioIncomeMultiplier(cache, hype, state, playtimeS)
+  );
+}
+
+export function getProductHostingCostRatio(computeUse: number): number {
+  if (!Number.isFinite(computeUse) || computeUse <= 0) {
+    return 0;
+  }
+
+  return Math.min(0.85, 0.12 + computeUse * 0.018);
+}
+
+export function getProductHostingRate(
+  product: Product,
+  cache: DerivedCache,
+  hype = 1,
+  state?: GameState,
+  playtimeS = state?.meta.playtimeS
+): Big {
+  if (product.deploymentMode !== "hosted" || product.computeUse <= 0) {
+    return Big.zero();
+  }
+
+  return Big.mul(
+    getProductGrossRevenue(product, cache, hype, state, playtimeS),
+    Big.fromNumber(getProductHostingCostRatio(product.computeUse))
+  );
+}
+
+export function getProductNetRevenue(
+  product: Product,
+  cache: DerivedCache,
+  hype = 1,
+  state?: GameState,
+  playtimeS = state?.meta.playtimeS
+): Big {
+  return Big.sub(
+    getProductRevenue(product, cache, hype, state, playtimeS),
+    getProductHostingRate(product, cache, hype, state, playtimeS)
   );
 }
 
@@ -277,6 +424,59 @@ export function getProjectIncomeRate(
   }
 
   return productRevenue;
+}
+
+export function getProjectHostingRate(
+  state: GameState,
+  cache: DerivedCache,
+  hype = state.res.hype,
+  playtimeS = state.meta.playtimeS
+): Big {
+  let hostingRate = Big.zero();
+
+  for (const product of state.projects.portfolio) {
+    hostingRate = Big.add(
+      hostingRate,
+      getProductHostingRate(product, cache, hype, state, playtimeS)
+    );
+  }
+
+  return hostingRate;
+}
+
+export function setProductDeploymentMode(
+  state: GameState,
+  productId: string,
+  mode: ProjectDeploymentMode,
+  cache: DerivedCache,
+  bus?: EventBus
+): SetProjectDeploymentResult {
+  const productIndex = state.projects.portfolio.findIndex((product) => product.id === productId);
+
+  if (productIndex < 0) {
+    return { id: productId, mode, ok: false, reason: "missing" };
+  }
+
+  const product = state.projects.portfolio[productIndex];
+  if (product === undefined) {
+    return { id: productId, mode, ok: false, reason: "missing" };
+  }
+
+  if (product.deploymentMode === mode) {
+    return { id: productId, mode, ok: false, reason: "same" };
+  }
+
+  if (mode === "selfHosted" && product.computeUse > getAvailableCompute(state, cache)) {
+    return { id: productId, mode, ok: false, reason: "compute" };
+  }
+
+  state.projects.portfolio[productIndex] = {
+    ...product,
+    deploymentMode: mode
+  };
+  recomputeDerivedCache(state, cache);
+  bus?.emit("res:changed", "computeUsed");
+  return { id: productId, mode, ok: true };
 }
 
 export function getProject(id: string): ProjectDefinition | undefined {
@@ -311,6 +511,7 @@ function tickActiveBuilds(
   }
 
   const remainingBuilds: ActiveBuild[] = [];
+  let completed = false;
 
   for (const build of state.projects.active) {
     const nextElapsedS = Math.min(build.buildS, build.elapsedS + dtS);
@@ -318,12 +519,17 @@ function tickActiveBuilds(
 
     if (nextElapsedS >= build.buildS) {
       completeBuild(state, cache, nextBuild, bus);
+      completed = true;
     } else {
       remainingBuilds.push(nextBuild);
     }
   }
 
   state.projects.active = remainingBuilds;
+  if (completed) {
+    recomputeDerivedCache(state, cache);
+    bus?.emit("res:changed", "computeUsed");
+  }
   return true;
 }
 
@@ -381,7 +587,9 @@ function createActiveBuild(
   state: GameState,
   project: ProjectDefinition,
   cache: DerivedCache,
-  cost: Big
+  cost: Big,
+  deploymentMode: ProjectDeploymentMode,
+  computeUse: number
 ): ActiveBuild {
   const started = getNumericStat(state, PROJECT_STARTED_STAT);
 
@@ -391,7 +599,9 @@ function createActiveBuild(
   return {
     id: `${project.id}.${started + 1}`,
     buildS: getProjectBuildTime(project, cache),
+    computeUse,
     cost,
+    deploymentMode,
     elapsedS: 0,
     payout:
       project.kind === "standard" && isFirstShip
@@ -466,10 +676,12 @@ function getLiveProjectRevenueMultiplier(
   return multiplier;
 }
 
-function createProduct(state: GameState, build: ActiveBuild): Product {
+function createProduct(state: GameState, project: ProjectDefinition, build: ActiveBuild): Product {
   return {
     id: `${build.projectId}.${state.projects.portfolio.length + 1}`,
     bugged: false,
+    computeUse: getProjectTotalComputeUse(project, 1),
+    deploymentMode: build.deploymentMode,
     level: 1,
     projectId: build.projectId,
     revenue: build.revenue,
@@ -487,7 +699,7 @@ function completeStandardBuild(
   if (productIndex < 0) {
     addNonNegativeBig(state.res.money, build.payout);
     addNonNegativeBig(state.lifetime.money, build.payout);
-    state.projects.portfolio.push(createProduct(state, build));
+    state.projects.portfolio.push(createProduct(state, project, build));
     return {
       level: 1,
       payout: build.payout,
@@ -510,6 +722,8 @@ function completeStandardBuild(
   const nextLevel = Math.min(product.level + 1, getProjectMaxLevel(project));
   state.projects.portfolio[productIndex] = {
     ...product,
+    computeUse: getProjectTotalComputeUse(project, nextLevel),
+    deploymentMode: build.deploymentMode,
     level: nextLevel,
     revenue: getProjectPortfolioRevenue(project, nextLevel)
   };
@@ -532,6 +746,14 @@ export function getOwnedProductLevel(state: GameState, projectId: string): numbe
   }
 
   return level;
+}
+
+function getUpgradeableProductByProjectId(
+  state: GameState,
+  projectId: string
+): Product | undefined {
+  const index = findUpgradeableProductIndexByProjectId(state, projectId);
+  return index < 0 ? undefined : state.projects.portfolio[index];
 }
 
 function findUpgradeableProductIndexByProjectId(state: GameState, projectId: string): number {

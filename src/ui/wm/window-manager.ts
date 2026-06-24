@@ -103,6 +103,38 @@ export function resizeWindow(
   focusWindow(windows, appId);
 }
 
+export function fitOpenWindowsToBounds(
+  windows: Record<AppId, WindowState>,
+  bounds: WindowBounds
+): boolean {
+  let changed = false;
+
+  for (const appId of APP_IDS) {
+    const windowState = windows[appId];
+
+    if (!windowState.open) {
+      continue;
+    }
+
+    const before = snapshotFittableWindowState(windowState);
+
+    if (shouldMaximizeForBounds(bounds) && !windowState.maximized) {
+      windowState.restore = {
+        h: windowState.h,
+        w: windowState.w,
+        x: windowState.x,
+        y: windowState.y
+      };
+      windowState.maximized = true;
+    }
+
+    clampWindow(windowState, bounds);
+    changed = changed || !sameFittableWindowState(before, windowState);
+  }
+
+  return changed;
+}
+
 export function resetWindowLayout(windows: Record<AppId, WindowState>): void {
   for (const appId of APP_IDS) {
     const current = windows[appId];
@@ -155,6 +187,44 @@ function shouldMaximizeForBounds(bounds: WindowBounds): boolean {
 
 function getTopZ(windows: Record<AppId, WindowState>): number {
   return Math.max(0, ...APP_IDS.map((appId) => windows[appId].z));
+}
+
+function snapshotFittableWindowState(
+  windowState: WindowState
+): Pick<WindowState, "h" | "maximized" | "w" | "x" | "y" | "restore"> {
+  return {
+    h: windowState.h,
+    maximized: windowState.maximized,
+    restore: windowState.restore === undefined ? undefined : { ...windowState.restore },
+    w: windowState.w,
+    x: windowState.x,
+    y: windowState.y
+  };
+}
+
+function sameFittableWindowState(
+  before: ReturnType<typeof snapshotFittableWindowState>,
+  after: WindowState
+): boolean {
+  return (
+    before.h === after.h &&
+    before.maximized === after.maximized &&
+    before.w === after.w &&
+    before.x === after.x &&
+    before.y === after.y &&
+    sameOptionalWindowFrame(before.restore, after.restore)
+  );
+}
+
+function sameOptionalWindowFrame(
+  left: WindowFrame | undefined,
+  right: WindowFrame | undefined
+): boolean {
+  if (left === undefined || right === undefined) {
+    return left === right;
+  }
+
+  return left.h === right.h && left.w === right.w && left.x === right.x && left.y === right.y;
 }
 
 function clamp(value: number, min: number, max: number): number {

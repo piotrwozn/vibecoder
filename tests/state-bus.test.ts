@@ -40,8 +40,8 @@ describe("M2 state and bus", () => {
   it("exports all M2 constants from the plan", () => {
     expect(C.TICK_HZ).toBe(10);
     expect(C.CLICK_SYNERGY).toBe(0.02);
-    expect(C.HW_BASE_CAP).toBe(6);
-    expect(C.HW_PC_MAX_CAP).toBe(182);
+    expect(C.HW_BASE_CAP).toBe(10);
+    expect(C.HW_PC_MAX_CAP).toBe(186);
     expect(C.MILESTONES).toEqual([10, 25, 50, 100, 250, 500, 1000]);
     expect(PRESTIGE.INSIGHT_DIV).toBe(1e6);
     expect(PRESTIGE.REWRITE_MIN_FIRST).toBe(6);

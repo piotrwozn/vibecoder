@@ -23,7 +23,14 @@ import {
   performExit,
   selectRunModifier
 } from "../src/systems/prestige";
-import { getProject, getProjectIncomeRate, getProjectPayout } from "../src/systems/projects";
+import {
+  getProject,
+  getProjectCost,
+  getProjectIncomeRate,
+  getProjectPayout,
+  getVisibleProjectOffers,
+  startProject
+} from "../src/systems/projects";
 import { chooseStoryOption, tickStory } from "../src/systems/story";
 
 describe("M9 content tables", () => {
@@ -92,6 +99,8 @@ describe("M9 EXIT prestige", () => {
     state.projects.portfolio.push({
       id: "p_micro_saas.1",
       bugged: true,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_micro_saas",
       revenue: Big.fromNumber(10),
@@ -175,6 +184,8 @@ describe("M9 EXIT prestige", () => {
     state.projects.portfolio.push({
       id: "p_micro_saas.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_micro_saas",
       revenue: Big.fromNumber(100),
@@ -203,6 +214,36 @@ describe("M9 EXIT prestige", () => {
     state.owned.equityPerks.add("q_war_chest");
 
     expect(getRewriteStartMoney(state).toNumber()).toBeCloseTo(50_000);
+  });
+
+  it("seeds enough LoC to start a visible project after a higher-era EXIT", () => {
+    const state = createDefaultGameState(1_000, "full");
+    const cache = createDerivedCache();
+
+    state.story.flags.add("exit_unlocked");
+    state.lifetime.insightSinceExit = 300;
+    state.prestige.exits = 2;
+    state.owned.equityPerks.add("q_head_start");
+
+    expect(performExit(state, cache).ok).toBe(true);
+
+    const cheapestVisibleOffer = getVisibleProjectOffers(state, cache)
+      .map((offer) => getProject(offer.projectId))
+      .filter(
+        (project): project is NonNullable<typeof project> =>
+          project !== undefined && project.era > 1
+      )
+      .map((project) => ({ id: project.id, cost: getProjectCost(project, cache, state) }))
+      .reduce<{ readonly cost: Big; readonly id: string } | undefined>(
+        (cheapest, project) =>
+          cheapest === undefined || project.cost.lt(cheapest.cost) ? project : cheapest,
+        undefined
+      );
+
+    expect(state.era).toBe(4);
+    expect(cheapestVisibleOffer).toBeDefined();
+    expect(state.res.loc.gte(cheapestVisibleOffer!.cost)).toBe(true);
+    expect(startProject(state, cheapestVisibleOffer!.id, cache).ok).toBe(true);
   });
 
   it("turns Golden Gut into a real x3 payout effect", () => {

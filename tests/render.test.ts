@@ -387,6 +387,50 @@ describe("M13 desktop window interactions", () => {
     ).toBe(true);
   });
 
+  it("resets a desktop app scroll position when reopening it", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    view.ui.windows.agents.open = true;
+    view.ui.windows.agents.z = 4;
+    const populated = {
+      ...view,
+      generators: [createGeneratorRowView("g_autocomplete")]
+    };
+    const app = mountApp(root, populated, createActions());
+    const body = root.querySelector<HTMLElement>(
+      '.desktop-window[data-app-id="agents"] .desktop-window__body'
+    );
+
+    expect(body).not.toBeNull();
+    body!.scrollTop = 640;
+    body!.scrollLeft = 80;
+
+    app.updateDevFloor({
+      ...populated,
+      ui: {
+        ...populated.ui,
+        windows: {
+          ...populated.ui.windows,
+          agents: { ...populated.ui.windows.agents, open: false }
+        }
+      }
+    });
+    app.updateDevFloor({
+      ...populated,
+      ui: {
+        ...populated.ui,
+        windows: {
+          ...populated.ui.windows,
+          agents: { ...populated.ui.windows.agents, open: true }
+        }
+      }
+    });
+
+    expect(body!.scrollTop).toBe(0);
+    expect(body!.scrollLeft).toBe(0);
+  });
+
   it("syncs project offers after board changes without a page refresh", () => {
     installDom();
     const root = document.createElement("div");
@@ -1121,7 +1165,7 @@ describe("M12 demo rendering", () => {
         ...createDevFloorView(false),
         gameOver: {
           lines: ["The bank closed the account."],
-          overdraft: "-$10,000",
+          overdraft: "$10,000",
           visible: true
         }
       },
@@ -1141,7 +1185,7 @@ describe("M12 demo rendering", () => {
     expect(modal?.hidden).toBe(false);
     expect(modal?.textContent).toContain("Bankruptcy");
     expect(modal?.textContent).toContain("The bank closed the account.");
-    expect(modal?.textContent).toContain("-$10,000");
+    expect(modal?.textContent).toContain("$10,000");
 
     findButton(modal!, "Export save")?.click();
     expect(modal?.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("BANK-SAVE");
@@ -1256,6 +1300,42 @@ describe("M13 desktop shell rendering", () => {
     expect(startCount).toBe(1);
     expect(bootSoundCount).toBe(1);
     expect(clickSoundCount).toBe(1);
+  });
+
+  it("switches boot labels only when a persisted save exists", () => {
+    installDom();
+    const root = document.createElement("div");
+    let newGameCount = 0;
+    const app = mountApp(
+      root,
+      { ...createDevFloorView(false), ui: createShellUiView("boot") },
+      {
+        ...createActions(),
+        startNewGame: () => {
+          newGameCount += 1;
+        }
+      }
+    );
+
+    const primary = root.querySelector<HTMLButtonElement>(".boot-scene__button--primary");
+    const secondary = root.querySelector<HTMLButtonElement>(".boot-scene__button--continue");
+    expect(primary?.textContent).toBe("START GAME");
+    expect(secondary?.textContent).toBe("CONTINUE");
+
+    app.updateDevFloor({
+      ...createDevFloorView(false),
+      ui: { ...createShellUiView("boot"), hasSave: true }
+    });
+
+    expect(primary?.textContent).toBe("CONTINUE");
+    expect(secondary?.textContent).toBe("START NEW GAME");
+
+    secondary?.click();
+    expect(newGameCount).toBe(0);
+    expect(secondary?.textContent).toBe("CONFIRM NEW GAME");
+
+    secondary?.click();
+    expect(newGameCount).toBe(1);
   });
 
   it("renders steam without the removed boot room animations", () => {
@@ -1666,6 +1746,7 @@ function createActions(): AppActions {
     exit(): void {},
     exportSave: () => "",
     fixBug(): void {},
+    fitOpenWindowsToBounds(): void {},
     focusApp(): void {},
     fundAuroraPhase(): void {},
     importSave: () => false,
@@ -1689,6 +1770,7 @@ function createActions(): AppActions {
     selectRunStyle(): void {},
     selectRunModifier(): void {},
     selectSprintPriority(): void {},
+    setProjectDeploymentMode(): void {},
     sendVibexPrompt: () => ({
       committed: false,
       loc: "0",
@@ -1696,6 +1778,7 @@ function createActions(): AppActions {
       response: "ok"
     }),
     startDesktop(): void {},
+    startNewGame(): void {},
     startProject(): void {},
     startRefactor(): void {},
     toggleAutomation(): void {},
@@ -1745,11 +1828,17 @@ function createProductView(
 ): DevFloorView["projects"]["portfolio"][number] {
   return {
     canFix: false,
+    canSwitchDeployment: true,
+    compute: "0",
+    deployment: "Local",
+    hostingCost: "$0/s",
     id,
     level,
     name: id,
     revenue,
-    status: "OK"
+    status: "OK",
+    switchDeploymentLabel: "Host",
+    switchDeploymentMode: "hosted"
   };
 }
 
@@ -1763,7 +1852,11 @@ function createProjectOfferView(
   return {
     buildTime: "10s",
     canStart,
+    canStartHosted: canStart,
+    canStartSelfHosted: canStart,
+    compute: "0",
     cost: "10 LoC",
+    hostingCost: "$0/s",
     id,
     level,
     name: id,
@@ -1882,7 +1975,7 @@ function createDevFloorView(booting: boolean): DevFloorView {
       rp: "0"
     },
     resources: {
-      bank: "-$0",
+      bank: "$0",
       bankTooltip: "",
       bankVisible: false,
       compute: "0/0",
@@ -1966,6 +2059,7 @@ function createShellUiView(scene: DevFloorView["ui"]["scene"]): DevFloorView["ui
 
   return {
     bootSeen: true,
+    hasSave: false,
     scene,
     windows
   };

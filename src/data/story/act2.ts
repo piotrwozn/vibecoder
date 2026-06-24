@@ -2,7 +2,7 @@ import type { StoryEvent } from "./types";
 import { C } from "../constants";
 
 const AGENT_BANK_THRESHOLD = C.MILESTONES[3];
-const ACT2_ENTERPRISE_SHIP_THRESHOLD = 300;
+export const ACT2_ENTERPRISE_SHIP_THRESHOLD = 30;
 
 export const ACT2_EVENTS: readonly StoryEvent[] = [
   {

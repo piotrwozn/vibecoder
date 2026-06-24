@@ -44,13 +44,11 @@ describe("M9 campaign sim", () => {
     expect(firstRewrite?.atH).toBeGreaterThanOrEqual(3);
     expect(firstRewrite?.atH).toBeLessThanOrEqual(12);
     expect(act1Finale?.atH).toBeLessThanOrEqual(15);
-    expect(act2Finale?.atH).toBeGreaterThanOrEqual(8);
-    expect(act2Finale?.atH).toBeLessThanOrEqual(25);
-    expect(firstExit?.atH).toBeGreaterThanOrEqual(25);
-    expect(firstExit?.atH).toBeLessThanOrEqual(70);
-    expect(act3Finale?.atH).toBeGreaterThanOrEqual(55);
-    expect(act3Finale?.atH).toBeLessThanOrEqual(100);
-    expect(result.state.story.act).toBe(4);
+    expect(act2Finale?.atH).toBeGreaterThanOrEqual(20);
+    expect(act2Finale?.atH).toBeLessThanOrEqual(45);
+    expect(firstExit).toBeUndefined();
+    expect(act3Finale).toBeUndefined();
+    expect(result.state.story.act).toBe(3);
     expect(result.omegaCompleteH).toBeUndefined();
     expect(result.completeH).toBeUndefined();
     expect(result.state.aurora.unlocked).toBe(false);
@@ -72,8 +70,8 @@ describe("M9 campaign sim", () => {
     const result = runCampaignSim({ strategy: "maxer", hours: 80 });
 
     expect(result.omegaCompleteH).toBeUndefined();
-    expect(result.state.story.act).toBeGreaterThanOrEqual(1);
-    expect(result.seenEvents).toBeGreaterThanOrEqual(14);
+    expect(result.state.story.act).toBeGreaterThanOrEqual(3);
+    expect(result.seenEvents).toBeGreaterThanOrEqual(40);
     expect(result.state.story.seen.has("a0_05_agent")).toBe(true);
   }, 60_000);
 
@@ -82,7 +80,7 @@ describe("M9 campaign sim", () => {
 
     expect(result.completeH).toBeUndefined();
     expect(result.state.aurora.completed).toBe(false);
-    expect(result.state.story.act).toBeGreaterThanOrEqual(2);
+    expect(result.state.story.act).toBeGreaterThanOrEqual(1);
     expect(Number.isFinite(result.state.lifetime.loc.e)).toBe(true);
     expect(Number.isFinite(result.state.res.money.e)).toBe(true);
   }, 30_000);

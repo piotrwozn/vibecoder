@@ -389,6 +389,18 @@ export function recomputeDerivedCache(state: GameState, cache: DerivedCache): De
     locRate = Big.add(locRate, rate);
   }
 
+  for (const build of state.projects.active) {
+    if (build.deploymentMode === "selfHosted") {
+      computeUsed += build.computeUse;
+    }
+  }
+
+  for (const product of state.projects.portfolio) {
+    if (product.deploymentMode === "selfHosted") {
+      computeUsed += product.computeUse;
+    }
+  }
+
   cache.compute = {
     ...cache.compute,
     available: Math.max(0, state.res.computeCap - computeUsed),

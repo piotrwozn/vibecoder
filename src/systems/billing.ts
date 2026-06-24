@@ -5,6 +5,8 @@ import { AURORA_HOSTING_PER_SERVER_S, AURORA_SERVER_COMPONENT_IDS } from "../dat
 import { HARDWARE_POWER_RATES } from "../data/billing";
 import { accrueBankOverdraft, repayBankOverdraft } from "./bank";
 import { getIncidentEffects } from "./incidents";
+import { getProjectHostingRate } from "./projects";
+import type { DerivedCache } from "./production";
 import { getSprintEffects } from "./roadmap";
 import { isPositiveBig, isPositiveFinite, spendBig } from "./resources";
 import { getRunStyleEffects } from "./run-styles";
@@ -14,45 +16,63 @@ export interface BillingBreakdown {
   readonly auroraHosting: Big;
   readonly auroraPower: Big;
   readonly hardwarePower: Big;
+  readonly projectHosting: Big;
   readonly total: Big;
 }
 
 export const POWER_OVERDRAW_STAT = "billing.powerOverdrawAt";
 
-export function createBillingBreakdown(state: GameState): BillingBreakdown {
+export function createBillingBreakdown(state: GameState, cache?: DerivedCache): BillingBreakdown {
   const hardwarePower = getHardwarePowerRate(state);
   const auroraPower = getAuroraDedicatedPowerRate(state);
   const auroraHosting = getAuroraHostingRate(state);
+  const projectHosting = cache === undefined ? Big.zero() : getProjectHostingRate(state, cache);
 
   return {
     auroraHosting,
     auroraPower,
     hardwarePower,
-    total: Big.add(Big.add(hardwarePower, auroraPower), auroraHosting)
+    projectHosting,
+    total: Big.add(Big.add(Big.add(hardwarePower, auroraPower), auroraHosting), projectHosting)
   };
 }
 
-function getBillingRate(state: GameState): Big {
-  return createBillingBreakdown(state).total;
+function getBillingRate(state: GameState, cache?: DerivedCache): Big {
+  return createBillingBreakdown(state, cache).total;
 }
 
-export function getAuroraRecurringRate(state: GameState): Big {
-  const breakdown = createBillingBreakdown(state);
+export function getAuroraRecurringRate(state: GameState, cache?: DerivedCache): Big {
+  const breakdown = createBillingBreakdown(state, cache);
   return Big.add(breakdown.auroraPower, breakdown.auroraHosting);
 }
 
-export function getNetMoneyRate(grossIncome: Big, state: GameState): Big {
-  return Big.sub(grossIncome, getBillingRate(state));
+export function getNetMoneyRate(grossIncome: Big, state: GameState, cache?: DerivedCache): Big {
+  return Big.sub(grossIncome, getBillingRate(state, cache));
 }
 
-export function tickBilling(state: GameState, dtS: number, bus?: EventBus): boolean {
+export function tickBilling(state: GameState, dtS: number, bus?: EventBus): boolean;
+export function tickBilling(
+  state: GameState,
+  cache: DerivedCache,
+  dtS: number,
+  bus?: EventBus
+): boolean;
+export function tickBilling(
+  state: GameState,
+  cacheOrDtS: DerivedCache | number,
+  dtSOrBus?: EventBus | number,
+  maybeBus?: EventBus
+): boolean {
+  const cache = typeof cacheOrDtS === "number" ? undefined : cacheOrDtS;
+  const dtS = typeof cacheOrDtS === "number" ? cacheOrDtS : (dtSOrBus as number);
+  const bus = typeof cacheOrDtS === "number" ? (dtSOrBus as EventBus | undefined) : maybeBus;
   if (!isPositiveFinite(dtS)) {
     return false;
   }
 
   let changed = repayBankOverdraft(state, bus);
   const previousAuroraBillingPaused = state.aurora.billingPaused;
-  const breakdown = createBillingBreakdown(state);
+  const breakdown = createBillingBreakdown(state, cache);
   const fullHardwareBill = Big.mul(breakdown.hardwarePower, Big.fromNumber(dtS));
   const hardwareWasPaused = state.stats[POWER_OVERDRAW_STAT] !== undefined;
   const hardwareBill =
@@ -66,7 +86,8 @@ export function tickBilling(state: GameState, dtS: number, bus?: EventBus): bool
     isPositiveBig(fullAuroraBill) && moneyAfterHardwareGrace.lt(fullAuroraBill)
       ? Big.zero()
       : fullAuroraBill;
-  const totalBill = Big.add(hardwareBill, auroraBill);
+  const projectHostingBill = Big.mul(breakdown.projectHosting, Big.fromNumber(dtS));
+  const totalBill = Big.add(Big.add(hardwareBill, auroraBill), projectHostingBill);
   const moneyBeforePayment = state.res.money.copy();
   const unpaidHardware = Big.max(Big.zero(), Big.sub(hardwareBill, moneyBeforePayment));
   const hardwarePaused =

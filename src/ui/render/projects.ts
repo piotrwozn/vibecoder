@@ -11,23 +11,32 @@ import type {
 
 interface ProjectOfferNodes {
   readonly buildTime: Text;
-  readonly button: HTMLButtonElement;
+  readonly compute: Text;
   readonly cost: Text;
+  readonly hostedButton: HTMLButtonElement;
+  readonly hostingCost: Text;
   readonly level: Text;
   readonly payout: Text;
   readonly revenue: Text;
   readonly root: HTMLElement;
+  readonly selfHostedButton: HTMLButtonElement;
   readonly tag: Text;
 }
 
 interface ActiveBuildNodes {
+  readonly compute: Text;
+  readonly deployment: Text;
   readonly progress: HTMLElement;
   readonly remaining: Text;
   readonly root: HTMLElement;
 }
 
 interface ProductNodes {
+  readonly compute: Text;
+  readonly deployment: Text;
+  readonly deploymentButton: HTMLButtonElement;
   readonly fix: HTMLButtonElement;
+  readonly hostingCost: Text;
   readonly level: Text;
   readonly revenue: Text;
   readonly root: HTMLElement;
@@ -139,28 +148,42 @@ function createProjectOffer(view: ProjectOfferView, actions: AppActions): HTMLEl
   const cost = text(view.cost);
   const payout = text(view.payout);
   const revenue = text(view.revenue);
+  const compute = text(view.compute);
+  const hostingCost = text(view.hostingCost);
   const buildTime = text(view.buildTime);
-  const button = createProjectButton("ui.projects.build", () => actions.startProject(view.id));
+  const selfHostedButton = createProjectButton("ui.projects.buildSelfHosted", () =>
+    actions.startProject(view.id, "selfHosted")
+  );
+  const hostedButton = createProjectButton("ui.projects.buildHosted", () =>
+    actions.startProject(view.id, "hosted")
+  );
+  const buttons = el("div", { className: "project-card__actions" });
+  buttons.append(selfHostedButton, hostedButton);
 
   root.append(
     name,
     createProjectMeta("ui.projects.tag", tag),
     createProjectMeta("ui.projects.level", level),
     createProjectMeta("ui.projects.cost", cost),
+    createProjectMeta("ui.projects.compute", compute),
+    createProjectMeta("ui.projects.hosting", hostingCost),
     createProjectMeta("ui.projects.payout", payout),
     createProjectMeta("ui.projects.revenue", revenue),
     createProjectMeta("ui.projects.time", buildTime),
-    button
+    buttons
   );
 
   projectOffers.set(view.id, {
     buildTime,
-    button,
+    compute,
     cost,
+    hostedButton,
+    hostingCost,
     level,
     payout,
     revenue,
     root,
+    selfHostedButton,
     tag
   });
   updateProjectOffer(view);
@@ -171,12 +194,20 @@ function createActiveBuild(view: ActiveBuildView): HTMLElement {
   const root = el("div", { className: "active-build" });
   const name = el("strong", { className: "active-build__name" });
   name.append(text(view.name));
+  const deployment = text(view.deployment);
+  const compute = text(view.compute);
   const remaining = text(view.remaining);
   const track = el("div", { className: "active-build__track" });
   const progress = el("div", { className: "active-build__bar" });
   track.append(progress);
-  root.append(name, createValueCell(remaining), track);
-  activeBuilds.set(view.id, { progress, remaining, root });
+  root.append(
+    name,
+    createValueCell(deployment),
+    createValueCell(compute),
+    createValueCell(remaining),
+    track
+  );
+  activeBuilds.set(view.id, { compute, deployment, progress, remaining, root });
   updateActiveBuild(view);
   return root;
 }
@@ -187,11 +218,37 @@ function createProduct(view: ProductView, actions: AppActions): HTMLElement {
   const name = el("strong", { className: "product-row__name" });
   name.append(text(view.name));
   const level = text(view.level);
+  const deployment = text(view.deployment);
   const revenue = text(view.revenue);
+  const hostingCost = text(view.hostingCost);
+  const compute = text(view.compute);
   const status = text(view.status);
+  const deploymentButton = createProjectButton("ui.projects.switchDeployment", () =>
+    actions.setProjectDeploymentMode(view.id, view.switchDeploymentMode)
+  );
   const fix = createProjectButton("ui.projects.fixBug", () => actions.fixBug(view.id));
-  root.append(name, createValueCell(level), createValueCell(revenue), createValueCell(status), fix);
-  products.set(view.id, { fix, level, revenue, root, status });
+  root.append(
+    name,
+    createValueCell(level),
+    createValueCell(deployment),
+    createValueCell(revenue),
+    createValueCell(hostingCost),
+    createValueCell(compute),
+    createValueCell(status),
+    deploymentButton,
+    fix
+  );
+  products.set(view.id, {
+    compute,
+    deployment,
+    deploymentButton,
+    fix,
+    hostingCost,
+    level,
+    revenue,
+    root,
+    status
+  });
   updateProduct(view);
   return root;
 }
@@ -272,10 +329,13 @@ function updateProjectOffer(view: ProjectOfferView): void {
   setText(row.tag, view.tag);
   setText(row.level, view.level);
   setText(row.cost, view.cost);
+  setText(row.compute, view.compute);
+  setText(row.hostingCost, view.hostingCost);
   setText(row.payout, view.payout);
   setText(row.revenue, view.revenue);
   setText(row.buildTime, view.buildTime);
-  row.button.disabled = !view.canStart;
+  row.selfHostedButton.disabled = !view.canStartSelfHosted;
+  row.hostedButton.disabled = !view.canStartHosted;
 }
 
 function syncActiveBuilds(views: readonly ActiveBuildView[], screen: HTMLElement): void {
@@ -310,6 +370,8 @@ function updateActiveBuild(view: ActiveBuildView): void {
   }
 
   setText(nodes.remaining, view.remaining);
+  setText(nodes.deployment, view.deployment);
+  setText(nodes.compute, view.compute);
   nodes.progress.style.transform = `scaleX(${view.progress.toFixed(3)})`;
 }
 
@@ -348,8 +410,13 @@ function updateProduct(view: ProductView): void {
   }
 
   setText(nodes.level, view.level);
+  setText(nodes.deployment, view.deployment);
   setText(nodes.revenue, view.revenue);
+  setText(nodes.hostingCost, view.hostingCost);
+  setText(nodes.compute, view.compute);
   setText(nodes.status, view.status);
+  setText(nodes.deploymentButton.firstChild as Text, view.switchDeploymentLabel);
+  nodes.deploymentButton.disabled = !view.canSwitchDeployment;
   nodes.fix.disabled = !view.canFix;
 }
 

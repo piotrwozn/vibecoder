@@ -3,3 +3,7 @@
 @import "./layout/stats-settings-modals.css";
 @import "./layout/desktop-boot.css";
 @import "./layout/vibex-responsive.css";
+
+:where([hidden]) {
+  display: none !important;
+}

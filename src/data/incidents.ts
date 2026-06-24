@@ -28,47 +28,47 @@ export const INCIDENT_RESPONSES: readonly IncidentResponseDefinition[] = [
     id: "hotfix",
     nameKey: "incident.response.hotfix.name",
     descriptionKey: "incident.response.hotfix.effect",
-    costLocS: 45,
-    debtMultiplier: 1.1
+    costLocS: 60,
+    debtMultiplier: 1.2
   },
   {
     id: "refactor",
     nameKey: "incident.response.refactor.name",
     descriptionKey: "incident.response.refactor.effect",
-    costLocS: 90,
-    debtMultiplier: 0.8
+    costLocS: 140,
+    debtMultiplier: 0.75
   },
   {
     id: "buy_hardware",
     nameKey: "incident.response.buy_hardware.name",
     descriptionKey: "incident.response.buy_hardware.effect",
-    costMoneyRatio: 0.12
+    costMoneyRatio: 0.2
   },
   {
     id: "pause_growth",
     nameKey: "incident.response.pause_growth.name",
     descriptionKey: "incident.response.pause_growth.effect",
-    hypeDelta: -0.5,
-    debtMultiplier: 0.9
+    hypeDelta: -0.8,
+    debtMultiplier: 0.85
   },
   {
     id: "pay_vendor",
     nameKey: "incident.response.pay_vendor.name",
     descriptionKey: "incident.response.pay_vendor.effect",
-    costMoneyRatio: 0.18
+    costMoneyRatio: 0.3
   },
   {
     id: "accept_debt",
     nameKey: "incident.response.accept_debt.name",
     descriptionKey: "incident.response.accept_debt.effect",
-    debtMultiplier: 1.25
+    debtMultiplier: 1.4
   },
   {
     id: "use_research",
     nameKey: "incident.response.use_research.name",
     descriptionKey: "incident.response.use_research.effect",
-    costRp: 3,
-    debtMultiplier: 0.7
+    costRp: 5,
+    debtMultiplier: 0.6
   }
 ] as const;
 

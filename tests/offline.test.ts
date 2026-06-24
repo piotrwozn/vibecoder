@@ -4,6 +4,7 @@ import { Big } from "../src/core/bignum";
 import { createDefaultGameState } from "../src/core/state";
 import { applyOfflineProgress } from "../src/systems/offline";
 import { createDerivedCache, recomputeDerivedCache } from "../src/systems/production";
+import { startProject } from "../src/systems/projects";
 
 describe("M4 offline progress", () => {
   it("applies the one-hour closed form exactly from saved rates", () => {
@@ -14,6 +15,8 @@ describe("M4 offline progress", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_landing",
       revenue: Big.fromNumber(5),
@@ -68,6 +71,8 @@ describe("M4 offline progress", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_landing",
       revenue: Big.fromNumber(5),
@@ -83,6 +88,24 @@ describe("M4 offline progress", () => {
     expect(state.res.money.toNumber()).toBe(0);
   });
 
+  it("advances active project builds and reports their payout while offline", () => {
+    const state = createDefaultGameState(0);
+    state.meta.lastSimTickMs = 0;
+    state.res.loc = Big.fromNumber(10_000);
+    const cache = createDerivedCache();
+    recomputeDerivedCache(state, cache);
+
+    expect(startProject(state, "p_landing", cache).ok).toBe(true);
+
+    const result = applyOfflineProgress(state, cache, 60 * 60 * 1000);
+
+    expect(state.projects.active).toHaveLength(0);
+    expect(state.projects.portfolio).toHaveLength(1);
+    expect(state.projects.portfolio[0]?.projectId).toBe("p_landing");
+    expect(result.money.toNumber()).toBe(660);
+    expect(state.res.money.toNumber()).toBe(660);
+  });
+
   it("segments offline income when the angel network expires during the offline window", () => {
     const state = createDefaultGameState(0);
     state.meta.lastSimTickMs = 0;
@@ -90,6 +113,8 @@ describe("M4 offline progress", () => {
     state.projects.portfolio.push({
       id: "p_landing.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_landing",
       revenue: Big.fromNumber(1),

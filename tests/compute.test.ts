@@ -27,31 +27,32 @@ describe("M16 component hardware", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
     state.res.money = Big.fromNumber(2_000);
+    state.owned.generators.g_autocomplete = 1;
     recomputeDerivedCache(state, cache);
 
     expect(buyGenerator(state, cache, "g_autocomplete", 10).reason).toBe("compute");
-    expect(state.owned.generators.g_autocomplete).toBe(0);
+    expect(state.owned.generators.g_autocomplete).toBe(1);
 
     const hardware = buyHardware(state, "h_cpu");
 
     expect(hardware.ok).toBe(true);
     expect(state.owned.hardware.h_cpu).toBe(1);
-    expect(state.res.computeCap).toBe(8);
+    expect(state.res.computeCap).toBe(12);
     for (const id of ["h_ram", "h_ssd", "h_psu_pc", "h_cooling_pc", "h_gpu"]) {
       expect(buyHardware(state, id).ok).toBe(true);
     }
-    expect(state.res.computeCap).toBe(16);
+    expect(state.res.computeCap).toBe(20);
     const blockedCpuTier = buyHardware(state, "h_cpu");
     expect(blockedCpuTier.ok).toBe(false);
     expect(blockedCpuTier.reason).toBe("psuTier");
     expect(buyHardware(state, "h_psu_pc").ok).toBe(true);
-    expect(state.res.computeCap).toBe(16);
+    expect(state.res.computeCap).toBe(20);
     expect(buyHardware(state, "h_cpu").ok).toBe(true);
-    expect(state.res.computeCap).toBe(18);
+    expect(state.res.computeCap).toBe(22);
     recomputeDerivedCache(state, cache);
 
     expect(buyGenerator(state, cache, "g_autocomplete", 10).ok).toBe(true);
-    expect(state.res.computeUsed).toBe(10);
+    expect(state.res.computeUsed).toBe(11);
   });
 
   it("gates server hardware behind a completed PC and gives the PC max cap", () => {

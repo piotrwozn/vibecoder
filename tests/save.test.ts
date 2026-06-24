@@ -45,6 +45,8 @@ describe("M4 save/load", () => {
     state.projects.portfolio.push({
       id: "p_llama_todo.1",
       bugged: false,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_llama_todo",
       revenue: Big.fromNumber(7),
@@ -88,6 +90,24 @@ describe("M4 save/load", () => {
     expect(result.state.meta.lastSimTickMs).toBe(1_000);
   });
 
+  it("repairs post-EXIT Head Start saves that have no playable on-ramp", () => {
+    const state = createDefaultGameState(1_000, "full");
+
+    state.prestige.exits = 3;
+    state.era = 4;
+    state.res.loc = Big.one();
+    state.owned.equityPerks.add("q_head_start");
+
+    const result = deserializeGameState(serializeGameState(state), {
+      edition: "full",
+      nowMs: 9_000
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.warnings).toContain("res.loc.postExitOnRamp repaired");
+    expect(result.state.res.loc.gte(Big.fromNumber(3e6))).toBe(true);
+  });
+
   it("repairs broken localStorage JSON into a bootable default state", async () => {
     const backupCorrupt = vi.fn<() => Promise<void>>(() => Promise.resolve());
     const result = await loadGameState(
@@ -103,6 +123,7 @@ describe("M4 save/load", () => {
     expect(result.repaired).toBe(true);
     expect(result.reset).toBe(true);
     expect(result.resetReason).toBe("corrupt");
+    expect(result.source).toBe("reset");
     expect(result.state.v).toBe(SAVE_VERSION);
     expect(result.state.meta.lastSeen).toBe(42);
     expect(result.state.meta.lastSimTickMs).toBe(42);
@@ -123,6 +144,7 @@ describe("M4 save/load", () => {
     );
 
     expect(result.reset).toBe(true);
+    expect(result.source).toBe("reset");
     expect(result.warnings).toContain("save root was not an object");
     expect(backupCorrupt).toHaveBeenCalledWith("[]", 43);
   });
@@ -144,6 +166,7 @@ describe("M4 save/load", () => {
     );
 
     expect(result.reset).toBe(false);
+    expect(result.source).toBe("backup");
     expect(result.repaired).toBe(true);
     expect(result.warnings).toContain("save restored from backup");
     expect(result.state.res.loc.toNumber()).toBe(77);
@@ -167,6 +190,7 @@ describe("M4 save/load", () => {
     );
 
     expect(result.reset).toBe(false);
+    expect(result.source).toBe("backup");
     expect(result.repaired).toBe(true);
     expect(result.warnings).toContain("save restored from backup");
     expect(result.state.res.loc.toNumber()).toBe(77);
@@ -191,15 +215,59 @@ describe("M4 save/load", () => {
     );
 
     expect(result.reset).toBe(false);
+    expect(result.source).toBe("backup");
     expect(result.repaired).toBe(true);
     expect(result.warnings).toContain("save load failed");
     expect(result.warnings).toContain("save restored from backup");
     expect(result.state.res.money.toNumber()).toBe(55);
   });
 
-  it("restores lastSeen in memory when a save write fails", async () => {
+  it("marks a missing primary save with no backup as a new run", async () => {
+    const result = await loadGameState(
+      {
+        backupCorrupt: async () => {},
+        edition: "demo",
+        listBackups: async () => [],
+        load: async () => null,
+        loadBackup: async () => null
+      },
+      46
+    );
+
+    expect(result.reset).toBe(false);
+    expect(result.source).toBe("new");
+    expect(result.state.meta.lastSeen).toBe(46);
+  });
+
+  it("stamps the offline anchor when saving", async () => {
+    let payload = "";
     const state = createDefaultGameState(1_000, "demo");
     state.meta.lastSeen = 1_234;
+    state.meta.lastSimTickMs = 2_345;
+
+    const saved = await saveGameState(
+      {
+        save: async (nextPayload) => {
+          payload = nextPayload;
+        }
+      },
+      state,
+      9_999
+    );
+
+    const reloaded = deserializeGameState(payload, { edition: "demo", nowMs: 10_000 });
+
+    expect(saved).toBe(true);
+    expect(state.meta.lastSeen).toBe(9_999);
+    expect(state.meta.lastSimTickMs).toBe(9_999);
+    expect(reloaded.state.meta.lastSeen).toBe(9_999);
+    expect(reloaded.state.meta.lastSimTickMs).toBe(9_999);
+  });
+
+  it("restores save timestamps in memory when a save write fails", async () => {
+    const state = createDefaultGameState(1_000, "demo");
+    state.meta.lastSeen = 1_234;
+    state.meta.lastSimTickMs = 2_345;
 
     const saved = await saveGameState(
       {
@@ -213,6 +281,7 @@ describe("M4 save/load", () => {
 
     expect(saved).toBe(false);
     expect(state.meta.lastSeen).toBe(1_234);
+    expect(state.meta.lastSimTickMs).toBe(2_345);
   });
 
   it("repairs negative Big resources to non-negative defaults", () => {
@@ -530,8 +599,8 @@ describe("M4 save/load", () => {
     expect(result.state.v).toBe(SAVE_VERSION);
     expect(result.state.owned.hardware[LEGACY_HARDWARE_ID]).toBe(3124);
     expect(result.state.owned.hardware.h_gaming_rig).toBeUndefined();
-    expect(result.state.res.computeCap).toBe(3130);
-    expect(recomputeComputeCap(result.state)).toBe(3130);
+    expect(result.state.res.computeCap).toBe(3134);
+    expect(recomputeComputeCap(result.state)).toBe(3134);
     expect(result.state.hardware.pcComplete).toBe(true);
     expect(result.state.res.computeCap).toBe(C.HW_BASE_CAP + 3124);
     expect(result.state.ui.tutorial).toEqual({
@@ -654,6 +723,12 @@ describe("M4 save/load", () => {
     expect(result.repaired).toBe(true);
     expect(result.state.v).toBe(SAVE_VERSION);
     expect(result.state.projects.portfolio[0]?.level).toBe(2);
+    expect(result.state.projects.portfolio[0]).toMatchObject({
+      deploymentMode: "hosted"
+    });
+    expect(result.state.projects.active.every((build) => build.deploymentMode === "hosted")).toBe(
+      true
+    );
     expect(result.state.bugs).toEqual([{ productId: "p_landing.1" }]);
     expect(result.state.roadmap).toEqual({
       completed: 0,
@@ -703,6 +778,7 @@ describe("M4 save/load", () => {
     expect(result.state.projects.portfolio).toHaveLength(2);
     expect(result.state.projects.portfolio[0]).toMatchObject({
       bugged: true,
+      deploymentMode: "hosted",
       id: "p_landing.1",
       level: 6,
       projectId: "p_landing",
@@ -710,6 +786,7 @@ describe("M4 save/load", () => {
     });
     expect(result.state.projects.portfolio[0]?.revenue.toNumber()).toBeCloseTo(21);
     expect(result.state.projects.portfolio[1]).toMatchObject({
+      deploymentMode: "hosted",
       id: "p_micro_saas.1",
       level: 1,
       projectId: "p_micro_saas"

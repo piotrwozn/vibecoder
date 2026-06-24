@@ -168,11 +168,11 @@ export function getIncidentEffects(state: GameState): IncidentEffects {
   }
 
   return {
-    auroraBillingMultiplier: 1 + activeSeverity * 0.08,
-    bugChanceMultiplier: 1 + activeSeverity * 0.15,
-    debtFactorMultiplier: 1 + activeSeverity * 0.12,
-    hypeMultiplier: Math.max(0.25, 1 - activeSeverity * 0.08),
-    revenueMultiplier: Math.max(0.2, 1 - activeSeverity * 0.18)
+    auroraBillingMultiplier: 1 + activeSeverity * 0.15,
+    bugChanceMultiplier: 1 + activeSeverity * 0.35,
+    debtFactorMultiplier: 1 + activeSeverity * 0.22,
+    hypeMultiplier: Math.max(0.15, 1 - activeSeverity * 0.14),
+    revenueMultiplier: Math.max(0.05, 1 - activeSeverity * 0.28)
   };
 }
 
@@ -199,7 +199,7 @@ function resolveExpiredIncidents(state: GameState, bus?: EventBus): boolean {
 }
 
 function getIncidentTimeoutDebtPenalty(incident: ProductionIncident): Big {
-  return Big.fromNumber(incident.severity * 100);
+  return Big.fromNumber(incident.severity * 600);
 }
 
 function getIncidentChance(
@@ -229,7 +229,9 @@ function getIncidentChance(
     chance *= 1.25;
   }
 
-  return Math.min(0.75, Math.max(0, chance));
+  chance *= 1.25;
+
+  return Math.min(0.85, Math.max(0, chance));
 }
 
 function createIncident(state: GameState, type: ProductionIncidentType): ProductionIncident {
@@ -259,7 +261,7 @@ function applyIncidentResponseEffect(
   }
 
   if (response === "accept_debt") {
-    Big.addIn(state.res.debt, Big.fromNumber(incident.severity * 250));
+    Big.addIn(state.res.debt, Big.fromNumber(incident.severity * 700));
   }
 
   if (definition?.hypeDelta !== undefined) {

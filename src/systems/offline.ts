@@ -3,7 +3,7 @@ import type { GameState } from "../core/state";
 import { isBankrupt, repayBankOverdraft } from "./bank";
 import { getNetMoneyRate } from "./billing";
 import { getAngelNetworkUntilS, type DerivedCache } from "./production";
-import { getProjectIncomeRate } from "./projects";
+import { getProjectIncomeRate, tickProjectBuilds } from "./projects";
 import { addNonNegativeBig, isNonNegativeBig } from "./resources";
 
 const SECONDS_PER_HOUR = 60 * 60;
@@ -68,6 +68,10 @@ export function applyOfflineProgress(
   // The unlock UI coalesces those notifications into one batched toast per animation frame.
   state.res.hype = hypeAfter;
   state.meta.playtimeS += cappedS;
+  const moneyBeforeBuilds = state.res.money.copy();
+  tickProjectBuilds(state, cache, cappedS);
+  const buildMoney = Big.sub(state.res.money, moneyBeforeBuilds);
+  const totalMoney = buildMoney.gt(Big.zero()) ? Big.add(money, buildMoney) : money;
   state.meta.lastSimTickMs = effectiveNowMs;
 
   return {
@@ -76,7 +80,7 @@ export function applyOfflineProgress(
     hypeAfter,
     hypeBefore,
     loc,
-    money
+    money: totalMoney
   };
 }
 
@@ -106,7 +110,7 @@ function calculateOfflineMoney(state: GameState, cache: DerivedCache, cappedS: n
     // Offline income uses neutral hype while the saved hype value still decays during catch-up.
     const grossMoneyRate = getProjectIncomeRate(state, cache, 1, cursorS);
     const segmentMoney = Big.mul(
-      Big.max(Big.zero(), getNetMoneyRate(grossMoneyRate, state)),
+      Big.max(Big.zero(), getNetMoneyRate(grossMoneyRate, state, cache)),
       Big.fromNumber(nextSegmentS)
     );
     Big.addIn(money, segmentMoney);

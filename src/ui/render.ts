@@ -155,7 +155,10 @@ interface ModelNodes {
 }
 
 interface BootNodes {
+  readonly continueLabel: Text;
   currentLang: string;
+  hasSave: boolean;
+  newGameConfirming: boolean;
   readonly credits: HTMLElement;
   readonly destroy: () => void;
   readonly langButton: HTMLButtonElement;
@@ -465,7 +468,8 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
     title: t("ui.boot.continue")
   });
   continueButton.type = "button";
-  continueButton.append(text(t("ui.boot.continue")));
+  const continueLabel = text("");
+  continueButton.append(continueLabel);
 
   const bootSettings = createBootSettings(view.settings, actions);
   const settings = createBootPanel("ui.boot.settingsTitle", bootSettings.root);
@@ -526,6 +530,7 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
 
   const beginBootTransition = (event: Event): void => {
     event.stopPropagation();
+    nodes.newGameConfirming = false;
     if (transitionTimer !== undefined) {
       return;
     }
@@ -535,8 +540,26 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
     root.classList.add(reduced ? "boot-scene--fade" : "boot-scene--entering");
     transitionTimer = window.setTimeout(finish, reduced ? BOOT_FADE_MS : BOOT_ZOOM_MS);
   };
+  const handleSecondaryBootAction = (event: Event): void => {
+    event.stopPropagation();
+
+    if (!nodes.hasSave) {
+      beginBootTransition(event);
+      return;
+    }
+
+    if (!nodes.newGameConfirming) {
+      nodes.newGameConfirming = true;
+      setText(nodes.continueLabel, t("ui.boot.confirmNewGame"));
+      continueButton.title = t("ui.boot.confirmNewGame");
+      return;
+    }
+
+    nodes.newGameConfirming = false;
+    actions.startNewGame();
+  };
   start.addEventListener("click", beginBootTransition);
-  continueButton.addEventListener("click", beginBootTransition);
+  continueButton.addEventListener("click", handleSecondaryBootAction);
   root.addEventListener("click", () => {
     if (transitionTimer !== undefined) {
       finish();
@@ -551,6 +574,7 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
   window.addEventListener("keydown", escapeHandler);
 
   const nodes: BootNodes = {
+    continueLabel,
     credits,
     currentLang: view.settings.lang,
     destroy: () => {
@@ -563,6 +587,8 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
     },
     langButton,
     langLabel,
+    hasSave: view.ui.hasSave,
+    newGameConfirming: false,
     root,
     settings,
     settingsNodes: bootSettings,
@@ -621,9 +647,39 @@ function updateBootScene(nodes: BootNodes, view: DevFloorView): void {
   }
 
   nodes.currentLang = view.settings.lang;
-  setText(nodes.startLabel, t("ui.boot.start"));
+  const saveModeChanged = nodes.hasSave !== view.ui.hasSave;
+  nodes.hasSave = view.ui.hasSave;
+  if (saveModeChanged) {
+    nodes.newGameConfirming = false;
+  }
+  setText(nodes.startLabel, t(view.ui.hasSave ? "ui.boot.continue" : "ui.boot.start"));
+  setText(
+    nodes.continueLabel,
+    t(
+      view.ui.hasSave
+        ? nodes.newGameConfirming
+          ? "ui.boot.confirmNewGame"
+          : "ui.boot.startNewGame"
+        : "ui.boot.continue"
+    )
+  );
   setText(nodes.langLabel, t("ui.boot.languageValue", { lang: view.settings.lang.toUpperCase() }));
   nodes.langButton.title = t("ui.boot.language");
+  nodes.root
+    .querySelector<HTMLButtonElement>(".boot-scene__button--primary")
+    ?.setAttribute("title", t(view.ui.hasSave ? "ui.boot.continue" : "ui.boot.start"));
+  nodes.root
+    .querySelector<HTMLButtonElement>(".boot-scene__button--continue")
+    ?.setAttribute(
+      "title",
+      t(
+        view.ui.hasSave
+          ? nodes.newGameConfirming
+            ? "ui.boot.confirmNewGame"
+            : "ui.boot.startNewGame"
+          : "ui.boot.continue"
+      )
+    );
   setText(nodes.settingsNodes.langValue, view.settings.lang.toUpperCase());
   const bootLangLabel = nodes.settingsNodes.root.querySelector<HTMLElement>(
     "[data-boot-lang-label='1']"
@@ -1251,7 +1307,7 @@ function createDesktop(
   const wallpaper = el("div", { className: "desktop__wallpaper" });
   const icons = createDesktopIcons(actions);
   const windowsLayer = el("section", { className: "desktop__windows" });
-  const destroyBoundsInvalidation = connectWindowBoundsInvalidation(windowsLayer);
+  const destroyBoundsInvalidation = connectWindowBoundsInvalidation(windowsLayer, actions);
   const notes = createStickyNotes(counters);
   const taskbar = createTaskbar(actions);
   const tutorial = createTutorialOverlay(view.tutorial, actions);
@@ -1639,8 +1695,13 @@ function updateDesktopWindows(nodes: DesktopNodes, view: DevFloorView): void {
     const node = nodes.windowNodes[appId];
     const visible = isWindowVisible(windowState) && isAppAvailable(view, appId);
     const minimizing = node.wasVisible && windowState.open && windowState.minimized && !visible;
+    const becameVisible = visible && !node.wasVisible;
     setText(node.title, getWindowTitle(appId, view));
     updateWindowVisibility(node, visible, minimizing, view.appearance.reducedFx);
+    if (becameVisible) {
+      node.content.scrollTop = 0;
+      node.content.scrollLeft = 0;
+    }
     node.root.classList.toggle("desktop-window--maximized", windowState.maximized);
     node.root.classList.toggle("desktop-window--active", visible && windowState.z === activeZ);
 
@@ -1965,10 +2026,19 @@ function getRenderedWindowFrame(windowState: WindowState, bounds: WindowBounds):
   return { h: copy.h, w: copy.w, x: copy.x, y: copy.y };
 }
 
-function connectWindowBoundsInvalidation(layer: HTMLElement): () => void {
+function connectWindowBoundsInvalidation(layer: HTMLElement, actions: AppActions): () => void {
   invalidateWindowBoundsCache(layer);
+  let lastBounds: WindowBounds | undefined;
   const invalidate = (): void => {
     invalidateWindowBoundsCache(layer);
+    const bounds = getDesktopBounds(layer);
+
+    if (sameWindowBounds(lastBounds, bounds)) {
+      return;
+    }
+
+    lastBounds = { ...bounds };
+    actions.fitOpenWindowsToBounds(bounds);
   };
   let observer: ResizeObserver | undefined;
 
@@ -1984,6 +2054,10 @@ function connectWindowBoundsInvalidation(layer: HTMLElement): () => void {
     window.removeEventListener("resize", invalidate);
     invalidateWindowBoundsCache(layer);
   };
+}
+
+function sameWindowBounds(left: WindowBounds | undefined, right: WindowBounds): boolean {
+  return left !== undefined && left.height === right.height && left.width === right.width;
 }
 
 function invalidateWindowBoundsCache(layer?: HTMLElement): void {

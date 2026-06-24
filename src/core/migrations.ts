@@ -1,7 +1,12 @@
 import { createDefaultTutorialState, createDefaultUiState } from "./ui-state";
 import { Big } from "./bignum";
 import { C } from "../data/constants";
-import { LEGACY_HARDWARE_ID, OLD_HARDWARE_TIERS } from "../data/hardware";
+import {
+  HARDWARE,
+  LEGACY_HARDWARE_CAP_PER_LEVEL,
+  LEGACY_HARDWARE_ID,
+  OLD_HARDWARE_TIERS
+} from "../data/hardware";
 import { PROJECT_MAX_LEVEL, PROJECTS } from "../data/projects";
 import { deriveSeed } from "./rng";
 
@@ -16,7 +21,7 @@ type MigratedProjectProduct = RawSaveObject & {
   shippedAtS: number;
 };
 
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 
 export interface MigrationResult {
   readonly raw: RawSaveObject;
@@ -76,7 +81,8 @@ const migrations: readonly Migration[] = [
   migrateVibexSeeds,
   migrateProjectLevels,
   migrateRoadmapIncidentsAndRunStyle,
-  migrateBankState
+  migrateBankState,
+  migrateProjectDeployment
 ];
 
 export function migrateRawSave(rawValue: unknown): MigrationResult {
@@ -401,6 +407,64 @@ function migrateBankState(raw: RawSaveObject): RawSaveObject {
   };
 }
 
+function migrateProjectDeployment(raw: RawSaveObject): RawSaveObject {
+  const projects = isRecord(raw.projects) ? raw.projects : {};
+  const owned = isRecord(raw.owned) ? raw.owned : {};
+  const ownedHardware = isRecord(owned.hardware) ? owned.hardware : {};
+  const res = isRecord(raw.res) ? raw.res : {};
+
+  return {
+    ...raw,
+    res: {
+      ...res,
+      computeCap: calculateMigratedHardwareCap(ownedHardware)
+    },
+    projects: {
+      ...projects,
+      active: migrateActiveBuildDeployment(projects.active),
+      portfolio: migratePortfolioDeployment(projects.portfolio)
+    },
+    v: 14
+  };
+}
+
+function migrateActiveBuildDeployment(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.map((entry) =>
+    isRecord(entry)
+      ? {
+          ...entry,
+          computeUse: 0,
+          deploymentMode: "hosted"
+        }
+      : entry
+  );
+}
+
+function migratePortfolioDeployment(value: unknown): unknown {
+  if (!Array.isArray(value)) {
+    return value;
+  }
+
+  return value.map((entry) => {
+    if (!isRecord(entry)) {
+      return entry;
+    }
+
+    const projectId = typeof entry.projectId === "string" ? entry.projectId : "";
+    const level = readPositiveInteger(entry.level) ?? 1;
+    return {
+      ...entry,
+      computeUse:
+        readNonNegativeInteger(entry.computeUse) ?? getMigratedProjectComputeUse(projectId, level),
+      deploymentMode: "hosted"
+    };
+  });
+}
+
 function migrateProjectLevelBugs(value: unknown, remap: ReadonlyMap<string, string>): unknown {
   if (!Array.isArray(value)) {
     return value;
@@ -449,6 +513,10 @@ function readPositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
+function readNonNegativeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
 function readFiniteNonNegativeNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
@@ -461,6 +529,37 @@ function getProjectMaxLevelForId(projectId: string): number {
   }
 
   return PROJECT_MAX_LEVEL;
+}
+
+function getMigratedProjectComputeUse(projectId: string, level: number): number {
+  const project = PROJECTS.find((entry) => entry.id === projectId);
+  if (project === undefined || project.kind !== "standard" || project.recurringRevenue === false) {
+    return 0;
+  }
+
+  const baseCompute = Math.ceil(2 + project.era * 1.4 + Math.max(0, project.valueRatio - 0.5) * 4);
+  return Math.ceil(baseCompute * (1 + Math.max(0, level - 1) * 0.55));
+}
+
+function calculateMigratedHardwareCap(ownedHardware: RawSaveObject): number {
+  let cap = C.HW_BASE_CAP;
+  const legacyLevel = ownedHardware[LEGACY_HARDWARE_ID];
+  if (typeof legacyLevel === "number" && Number.isFinite(legacyLevel) && legacyLevel > 0) {
+    cap += Math.trunc(legacyLevel) * LEGACY_HARDWARE_CAP_PER_LEVEL;
+  }
+
+  for (const hardware of HARDWARE) {
+    const rawLevel = ownedHardware[hardware.id];
+    if (typeof rawLevel !== "number" || !Number.isFinite(rawLevel) || rawLevel <= 0) {
+      continue;
+    }
+
+    const level = Math.min(Math.trunc(rawLevel), hardware.maxLevel);
+    const firstLevelCap = hardware.firstLevelCap ?? hardware.capPerLevel;
+    cap += firstLevelCap + Math.max(0, level - 1) * hardware.capPerLevel;
+  }
+
+  return cap;
 }
 
 function calculateOldHardwareCap(ownedHardware: RawSaveObject): number {

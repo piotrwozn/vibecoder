@@ -1,4 +1,9 @@
-import type { IncidentResponseId, RunStyleId, SprintPriority } from "../../core/state";
+import type {
+  IncidentResponseId,
+  ProjectDeploymentMode,
+  RunStyleId,
+  SprintPriority
+} from "../../core/state";
 import type { AppId, SceneId, TutorialStep, WindowFrame, WindowState } from "../../core/ui-state";
 import type { WindowBounds } from "../wm/window-manager";
 import type { ResearchView, RewriteView } from "./prestige-view-types";
@@ -161,7 +166,11 @@ export interface AutomationToggleView {
 export interface ProjectOfferView {
   readonly buildTime: string;
   readonly canStart: boolean;
+  readonly canStartHosted: boolean;
+  readonly canStartSelfHosted: boolean;
+  readonly compute: string;
   readonly cost: string;
+  readonly hostingCost: string;
   readonly id: string;
   readonly level: string;
   readonly name: string;
@@ -171,6 +180,8 @@ export interface ProjectOfferView {
 }
 
 export interface ActiveBuildView {
+  readonly compute: string;
+  readonly deployment: string;
   readonly id: string;
   readonly name: string;
   readonly progress: number;
@@ -179,11 +190,17 @@ export interface ActiveBuildView {
 
 export interface ProductView {
   readonly canFix: boolean;
+  readonly canSwitchDeployment: boolean;
+  readonly compute: string;
+  readonly deployment: string;
+  readonly hostingCost: string;
   readonly id: string;
   readonly level: string;
   readonly name: string;
   readonly revenue: string;
   readonly status: string;
+  readonly switchDeploymentLabel: string;
+  readonly switchDeploymentMode: ProjectDeploymentMode;
 }
 
 export interface RefactorView {
@@ -406,6 +423,7 @@ export interface GameOverView {
 
 export interface ShellUiView {
   readonly bootSeen: boolean;
+  readonly hasSave: boolean;
   readonly scene: SceneId;
   readonly windows: Record<AppId, WindowState>;
 }
@@ -468,6 +486,7 @@ export interface AppActions {
   maximizeApp(appId: AppId, bounds: WindowBounds): void;
   minimizeApp(appId: AppId): void;
   moveApp(appId: AppId, frame: Pick<WindowFrame, "x" | "y">, bounds: WindowBounds): void;
+  fitOpenWindowsToBounds(bounds: WindowBounds): void;
   openApp(appId: AppId, bounds: WindowBounds): void;
   fixBug(productId: string): void;
   playBootSound(): void;
@@ -489,7 +508,9 @@ export interface AppActions {
   fundAuroraPhase(): void;
   rentAuroraHost(): void;
   releaseAuroraHost(): void;
-  startProject(id: string): void;
+  setProjectDeploymentMode(productId: string, mode: ProjectDeploymentMode): void;
+  startNewGame(): void;
+  startProject(id: string, deploymentMode?: ProjectDeploymentMode): void;
   startRefactor(): void;
   toggleAutomation(id: string, enabled: boolean): void;
   tutorialBack(): void;

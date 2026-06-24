@@ -105,6 +105,8 @@ describe("M6 automation", () => {
     state.projects.portfolio.push({
       id: "p_llama_todo.1",
       bugged: true,
+      computeUse: 0,
+      deploymentMode: "selfHosted",
       level: 1,
       projectId: "p_llama_todo",
       revenue: Big.fromNumber(1),
