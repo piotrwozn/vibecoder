@@ -2092,10 +2092,16 @@
   width: 14.8611%;
 }
 
+.boot-scene__button--discord {
+  top: 65%;
+  left: 43.3333%;
+  width: 13%;
+}
+
 .boot-scene__button--credits {
   top: 64.7778%;
-  left: 56.8%;
-  width: 14.5833%;
+  left: 57.2222%;
+  width: 13%;
 }
 
 .boot-scene__button:hover,

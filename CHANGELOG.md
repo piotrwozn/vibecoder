@@ -4,6 +4,7 @@ All notable changes for VIBECODER are tracked here before a release build.
 
 ## [Unreleased]
 
+- Added creator credits for Pjoter00 and a Discord invite link to the boot menu.
 - Split the app bootstrap, actions, view-model builders, render submodules, and layout CSS into clearer implementation layers.
 - Added Roadmap sprint priorities, production incidents, strategic story decisions, run styles, save diagnostics, and post-Aurora/endgame content hooks.
 - Added Endless Mode with procedural contracts, local seasons, rotating events, challenge runs, soft caps, Endless-only currencies, prestige reset/continue decisions, cosmetics, UI, save migration, and repair.

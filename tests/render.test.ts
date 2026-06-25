@@ -1483,6 +1483,45 @@ describe("M13 desktop shell rendering", () => {
     expect(settingsPanel?.hidden).toBe(true);
   });
 
+  it("places Discord between language and credits and opens the invite", async () => {
+    installDom();
+    await loadLocale("en");
+    const root = document.createElement("div");
+    let openedDiscord = false;
+
+    mountApp(
+      root,
+      { ...createDevFloorView(false), ui: createShellUiView("boot") },
+      {
+        ...createActions(),
+        openDiscord: () => {
+          openedDiscord = true;
+        }
+      }
+    );
+
+    const languageButton = root.querySelector<HTMLButtonElement>(".boot-scene__button--language");
+    const discordButton = root.querySelector<HTMLButtonElement>(".boot-scene__button--discord");
+    const creditsButton = root.querySelector<HTMLButtonElement>(".boot-scene__button--credits");
+    const buttons = Array.from(
+      root.querySelectorAll<HTMLButtonElement>(".boot-scene__actions .boot-scene__button")
+    );
+
+    expect(languageButton).not.toBeNull();
+    expect(discordButton?.textContent).toBe("Discord");
+    expect(discordButton?.title).toBe("Discord");
+    expect(creditsButton).not.toBeNull();
+    expect(buttons.indexOf(discordButton as HTMLButtonElement)).toBe(
+      buttons.indexOf(languageButton as HTMLButtonElement) + 1
+    );
+    expect(buttons.indexOf(creditsButton as HTMLButtonElement)).toBe(
+      buttons.indexOf(discordButton as HTMLButtonElement) + 1
+    );
+
+    discordButton?.click();
+    expect(openedDiscord).toBe(true);
+  });
+
   it("wires boot settings controls to existing actions", () => {
     installDom();
     const root = document.createElement("div");
@@ -1840,6 +1879,7 @@ function createActions(): AppActions {
     minimizeApp(): void {},
     moveApp(): void {},
     openApp(): void {},
+    openDiscord(): void {},
     playBootSound(): void {},
     playUiClick(): void {},
     prompt: () => ({ loc: "0" }),

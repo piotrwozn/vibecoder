@@ -511,10 +511,17 @@ function createBootScene(view: DevFloorView, actions: AppActions): BootNodes {
   langButton.addEventListener("click", () => {
     actions.changeLang(nodes.currentLang === "en" ? "pl" : "en");
   });
+  const discordButton = el("button", {
+    className: "boot-scene__button boot-scene__button--link boot-scene__button--discord",
+    title: t("ui.boot.discord")
+  });
+  discordButton.type = "button";
+  discordButton.append(text(t("ui.boot.discord")));
+  discordButton.addEventListener("click", actions.openDiscord);
   const creditsButton = createBootToggle("ui.boot.credits", credits);
   creditsButton.classList.add("boot-scene__button--link", "boot-scene__button--credits");
   const buttons = el("div", { className: "boot-scene__actions" });
-  buttons.append(start, continueButton, settingsButton, langButton, creditsButton);
+  buttons.append(start, continueButton, settingsButton, langButton, discordButton, creditsButton);
   screen.append(stickyNotes, title, terminalLine, statusLine, buttons, settings, credits);
   monitor.append(screen);
   room.append(mugSteam, monitor);

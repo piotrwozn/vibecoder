@@ -567,6 +567,7 @@ export interface AppActions {
   moveApp(appId: AppId, frame: Pick<WindowFrame, "x" | "y">, bounds: WindowBounds): void;
   fitOpenWindowsToBounds(bounds: WindowBounds): void;
   openApp(appId: AppId, bounds: WindowBounds): void;
+  openDiscord(): void;
   fixBug(productId: string): void;
   playBootSound(): void;
   playUiClick(): void;

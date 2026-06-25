@@ -107,6 +107,8 @@ export interface AppActionsRuntime {
   readonly vibexSession: VibexSession;
 }
 
+const DISCORD_INVITE_URL = "https://discord.gg/Wz3SU4yrzt";
+
 export function createAppActions(runtime: AppActionsRuntime): AppActions {
   const getCurrentEraModel = (): string => t(getCurrentEra(runtime.getState()).modelKey);
   let vibexResponseToken = 0;
@@ -516,6 +518,10 @@ export function createAppActions(runtime: AppActionsRuntime): AppActions {
       state.ui.scene = "desktop";
       runtime.updateVisibleView();
       void runtime.persistNow();
+    },
+
+    openDiscord(): void {
+      runtime.platform.openExternal(DISCORD_INVITE_URL);
     },
 
     playBootSound(): void {
