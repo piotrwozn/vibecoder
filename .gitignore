@@ -6,6 +6,7 @@ node_modules/
 dist/
 models/*.gguf
 release/
+new_plan/
 src-tauri/target/
 coverage/
 .vite/
