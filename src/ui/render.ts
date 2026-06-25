@@ -18,6 +18,7 @@ import {
 import { createAppIcon, getShortcutApp, screenLinks } from "./render/app-icons";
 import { createAuroraScreen, resetAuroraRenderCache, updateAurora } from "./render/aurora";
 import { createCommsPanels, updateComms, type CommsNodes } from "./render/comms";
+import { createEndlessScreen, resetEndlessRenderCache, updateEndless } from "./render/endless";
 import {
   createHardwareScreen,
   createUpgradesScreen,
@@ -82,6 +83,11 @@ export type {
   ComputeBreakdownView,
   ComputeRowView,
   DevFloorView,
+  EndlessActiveContractView,
+  EndlessChallengeView,
+  EndlessMilestoneView,
+  EndlessOfferView,
+  EndlessView,
   EndingModalView,
   EquityPerkView,
   ExitPreviewView,
@@ -202,6 +208,7 @@ interface DesktopIconNodes {
 }
 
 interface TaskbarNodes {
+  activeAppId?: AppId;
   readonly items: Record<AppId, TaskbarItemNodes>;
   readonly root: HTMLElement;
 }
@@ -383,6 +390,10 @@ export function mountApp(root: HTMLElement, view: DevFloorView, actions: AppActi
         updateRoadmap(screens.roadmap, nextView.roadmap, actions);
       }
 
+      if (isAppVisible(nextView.ui.windows, "endless")) {
+        updateEndless(screens.endless, nextView.endless, actions);
+      }
+
       if (isAppVisible(nextView.ui.windows, "aurora")) {
         updateAurora(nextView.aurora);
       }
@@ -434,6 +445,7 @@ function resetRenderCaches(): void {
   resetHardwareUpgradeRenderCache();
   resetProjectsRenderCache();
   resetRoadmapRenderCache();
+  resetEndlessRenderCache();
   resetResearchRenderCache();
   resetRewriteRenderCache();
   resetStatsAchievementRenderCaches();
@@ -1529,6 +1541,8 @@ function getWindowContent(
       return screens.projects;
     case "roadmap":
       return screens.roadmap;
+    case "endless":
+      return screens.endless;
     case "aurora":
       return screens.aurora;
     case "research":
@@ -1780,6 +1794,7 @@ function updateDesktopIcons(nodes: DesktopNodes, view: DevFloorView): void {
 
 function updateTaskbar(nodes: DesktopNodes, view: DevFloorView): void {
   const activeZ = getTopVisibleZ(view.ui.windows);
+  let activeAppId: AppId | undefined;
 
   for (const appId of APP_IDS) {
     const item = nodes.taskbarNodes.items[appId];
@@ -1787,9 +1802,10 @@ function updateTaskbar(nodes: DesktopNodes, view: DevFloorView): void {
     const available = isAppAvailable(view, appId);
     const open = windowState.open;
     const visible = isWindowVisible(windowState) && available;
+    const active = visible && windowState.z === activeZ;
 
     item.button.hidden = !open || !available;
-    item.button.classList.toggle("taskbar-item--active", visible && windowState.z === activeZ);
+    item.button.classList.toggle("taskbar-item--active", active);
     item.button.classList.toggle("taskbar-item--minimized", open && windowState.minimized);
     item.button.classList.toggle(
       "taskbar-item--glitch",
@@ -1801,7 +1817,20 @@ function updateTaskbar(nodes: DesktopNodes, view: DevFloorView): void {
         ? t("ui.taskbar.restoreLabel", { label: item.label })
         : item.label
     );
+
+    if (active) {
+      activeAppId = appId;
+    }
   }
+
+  if (activeAppId !== undefined && activeAppId !== nodes.taskbarNodes.activeAppId) {
+    nodes.taskbarNodes.items[activeAppId].button.scrollIntoView?.({
+      block: "nearest",
+      inline: "nearest"
+    });
+  }
+
+  nodes.taskbarNodes.activeAppId = activeAppId;
 }
 
 function isAppAvailable(view: DevFloorView, appId: AppId): boolean {
@@ -2202,6 +2231,7 @@ function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
   const upgradesScreen = createUpgradesScreen(view.upgrades, actions);
   const projectsScreen = createProjectsScreen(view.projects, actions);
   const roadmapScreen = createRoadmapScreen(view.roadmap, actions);
+  const endlessScreen = createEndlessScreen(view.endless, actions);
   const auroraScreen = createAuroraScreen(view.aurora, actions);
   const researchScreen = createResearchScreen(view.research, actions);
   const rewriteScreen = createRewriteScreen(view.rewrite, actions);
@@ -2212,6 +2242,7 @@ function createScreens(view: DevFloorView, actions: AppActions): ScreenNodes {
     achievements: achievementsScreen,
     agents,
     aurora: auroraScreen,
+    endless: endlessScreen,
     hardware: hardwareScreen,
     projects: projectsScreen,
     roadmap: roadmapScreen,
@@ -2227,6 +2258,7 @@ interface ScreenNodes {
   readonly achievements: HTMLElement;
   readonly agents: HTMLElement;
   readonly aurora: HTMLElement;
+  readonly endless: HTMLElement;
   readonly hardware: HTMLElement;
   readonly projects: HTMLElement;
   readonly roadmap: HTMLElement;

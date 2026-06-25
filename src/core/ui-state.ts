@@ -5,6 +5,7 @@ export const APP_IDS = [
   "upgrades",
   "projects",
   "roadmap",
+  "endless",
   "aurora",
   "research",
   "rewrite",
@@ -70,77 +71,82 @@ export interface WindowDefinition {
 
 export const WINDOW_DEFINITIONS: Record<AppId, WindowDefinition> = {
   vibex: {
-    defaultFrame: { h: 640, w: 1000, x: 72, y: 112 },
+    defaultFrame: { h: 640, w: 1000, x: 240, y: 112 },
     minH: 640,
     minW: 1000
   },
   agents: {
-    defaultFrame: { h: 560, w: 860, x: 96, y: 132 },
+    defaultFrame: { h: 560, w: 860, x: 256, y: 132 },
     minH: 560,
     minW: 860
   },
   hardware: {
-    defaultFrame: { h: 620, w: 960, x: 112, y: 144 },
+    defaultFrame: { h: 620, w: 960, x: 256, y: 144 },
     minH: 620,
     minW: 960
   },
   upgrades: {
-    defaultFrame: { h: 520, w: 760, x: 128, y: 156 },
+    defaultFrame: { h: 520, w: 760, x: 272, y: 156 },
     minH: 520,
     minW: 760
   },
   projects: {
-    defaultFrame: { h: 520, w: 760, x: 120, y: 152 },
+    defaultFrame: { h: 520, w: 760, x: 272, y: 152 },
     minH: 520,
     minW: 760
   },
   roadmap: {
-    defaultFrame: { h: 600, w: 920, x: 128, y: 160 },
+    defaultFrame: { h: 600, w: 920, x: 280, y: 160 },
     minH: 560,
     minW: 860
   },
+  endless: {
+    defaultFrame: { h: 620, w: 980, x: 260, y: 168 },
+    minH: 600,
+    minW: 920
+  },
   aurora: {
-    defaultFrame: { h: 620, w: 920, x: 132, y: 164 },
+    defaultFrame: { h: 620, w: 920, x: 280, y: 164 },
     minH: 620,
     minW: 920
   },
   research: {
-    defaultFrame: { h: 520, w: 760, x: 144, y: 172 },
+    defaultFrame: { h: 520, w: 760, x: 288, y: 172 },
     minH: 520,
     minW: 760
   },
   rewrite: {
-    defaultFrame: { h: 520, w: 760, x: 168, y: 192 },
+    defaultFrame: { h: 520, w: 760, x: 304, y: 192 },
     minH: 520,
     minW: 760
   },
   stats: {
-    defaultFrame: { h: 520, w: 760, x: 192, y: 212 },
+    defaultFrame: { h: 520, w: 760, x: 320, y: 212 },
     minH: 520,
     minW: 760
   },
   achievements: {
-    defaultFrame: { h: 520, w: 760, x: 216, y: 232 },
+    defaultFrame: { h: 520, w: 760, x: 336, y: 232 },
     minH: 520,
     minW: 760
   },
   chat: {
-    defaultFrame: { h: 520, w: 760, x: 232, y: 244 },
+    defaultFrame: { h: 520, w: 760, x: 352, y: 244 },
     minH: 520,
     minW: 760
   },
   mail: {
-    defaultFrame: { h: 520, w: 760, x: 240, y: 252 },
+    defaultFrame: { h: 520, w: 760, x: 368, y: 252 },
     minH: 520,
     minW: 760
   },
   feed: {
-    defaultFrame: { h: 520, w: 760, x: 256, y: 268 },
+    defaultFrame: { h: 520, w: 760, x: 384, y: 268 },
     minH: 520,
     minW: 760
   },
   settings: {
-    defaultFrame: { h: 520, w: 760, x: 248, y: 264 },
+    defaultFrame: { h: 520, w: 760, x: 376, y: 264 },
     maxH: 760,
     maxW: 980,
     minH: 520,

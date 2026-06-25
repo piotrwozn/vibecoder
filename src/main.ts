@@ -47,7 +47,7 @@ const cache = createDerivedCache();
 ensureProjectBoard(state);
 recomputeDerivedCache(state, cache);
 const audio = createAudioController(state.settings);
-let offlineSummary = applyOfflineOnReturn(Date.now());
+let offlineSummary = hasPersistedSave ? applyOfflineOnReturn(Date.now()) : undefined;
 let devPerfPanel: DevPerfPanel | undefined;
 
 const MS_PER_HOUR = 60 * 60 * 1000;

@@ -37,6 +37,7 @@ import {
   isPositiveFinite,
   spendBig
 } from "./resources";
+import { checkCondition } from "./unlocks";
 
 const PROJECT_STARTED_STAT = "projects.started";
 const PROJECT_SHIPPED_STAT = "projects.shipped";
@@ -881,8 +882,7 @@ function isProjectUnlocked(state: GameState, project: ProjectDefinition): boolea
   return (
     !isDemoLocked(state, project) &&
     project.era <= state.era &&
-    (project.unlock === undefined ||
-      (project.unlock.flag !== undefined && state.story.flags.has(project.unlock.flag)))
+    (project.unlock === undefined || checkCondition(state, project.unlock))
   );
 }
 

@@ -42,6 +42,16 @@ describe("M13 window manager", () => {
     expect(windows.agents.y + windows.agents.h).toBeLessThanOrEqual(720);
   });
 
+  it("keeps restored windows off the desktop launcher rail when space allows", () => {
+    const windows = createDefaultWindowStates();
+
+    openWindow(windows, "vibex", { height: 720, width: 1280 });
+    openWindow(windows, "projects", { height: 720, width: 1280 });
+
+    expect(windows.vibex.x).toBeGreaterThanOrEqual(240);
+    expect(windows.projects.x).toBeGreaterThanOrEqual(240);
+  });
+
   it("keeps oversized settings windows compact after old persisted resizes", () => {
     const windows = createDefaultWindowStates();
 

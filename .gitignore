@@ -13,6 +13,7 @@ coverage/
 .tmp-lighthouse/
 .tmp-lighthouse-profile/
 .lighthouse*.json
+.codex-*.log
 .vite-*.log
 npm-debug.log*
 ruvector.db

@@ -4,6 +4,7 @@ import type { GameState } from "../core/state";
 import { AURORA_HOSTING_PER_SERVER_S, AURORA_SERVER_COMPONENT_IDS } from "../data/aurora";
 import { HARDWARE_POWER_RATES } from "../data/billing";
 import { accrueBankOverdraft, repayBankOverdraft } from "./bank";
+import { getEndlessEffects } from "./endless";
 import { getIncidentEffects } from "./incidents";
 import { getProjectHostingRate } from "./projects";
 import type { DerivedCache } from "./production";
@@ -26,7 +27,13 @@ export function createBillingBreakdown(state: GameState, cache?: DerivedCache): 
   const hardwarePower = getHardwarePowerRate(state);
   const auroraPower = getAuroraDedicatedPowerRate(state);
   const auroraHosting = getAuroraHostingRate(state);
-  const projectHosting = cache === undefined ? Big.zero() : getProjectHostingRate(state, cache);
+  const projectHosting =
+    cache === undefined
+      ? Big.zero()
+      : Big.mul(
+          getProjectHostingRate(state, cache),
+          Big.fromNumber(getEndlessEffects(state).hostingCostMultiplier)
+        );
 
   return {
     auroraHosting,

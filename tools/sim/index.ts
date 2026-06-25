@@ -686,6 +686,10 @@ function maybeExit(state: GameState, cache: DerivedCache): void {
     return;
   }
 
+  if (state.prestige.exits === 0 && state.story.act < 4) {
+    return;
+  }
+
   const preview = createExitPreview(state);
 
   if (

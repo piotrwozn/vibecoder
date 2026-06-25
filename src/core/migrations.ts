@@ -21,7 +21,7 @@ type MigratedProjectProduct = RawSaveObject & {
   shippedAtS: number;
 };
 
-export const SAVE_VERSION = 14;
+export const SAVE_VERSION = 16;
 
 export interface MigrationResult {
   readonly raw: RawSaveObject;
@@ -82,7 +82,9 @@ const migrations: readonly Migration[] = [
   migrateProjectLevels,
   migrateRoadmapIncidentsAndRunStyle,
   migrateBankState,
-  migrateProjectDeployment
+  migrateProjectDeployment,
+  migrateEndlessState,
+  migrateEndlessV16
 ];
 
 export function migrateRawSave(rawValue: unknown): MigrationResult {
@@ -425,6 +427,57 @@ function migrateProjectDeployment(raw: RawSaveObject): RawSaveObject {
       portfolio: migratePortfolioDeployment(projects.portfolio)
     },
     v: 14
+  };
+}
+
+function migrateEndlessState(raw: RawSaveObject): RawSaveObject {
+  return {
+    ...raw,
+    endless: isRecord(raw.endless)
+      ? raw.endless
+      : {
+          completedContracts: 0,
+          empireScore: "0e0",
+          legacyScore: 0,
+          milestones: [],
+          offers: [],
+          offerSeed: 1,
+          seasonEndsAtS: 0,
+          seasonId: "bug_storm",
+          tier: 1,
+          unlocked: false
+        },
+    v: 15
+  };
+}
+
+function migrateEndlessV16(raw: RawSaveObject): RawSaveObject {
+  const endless = isRecord(raw.endless) ? raw.endless : {};
+  return {
+    ...raw,
+    endless: {
+      ...endless,
+      challengeCompletions: Array.isArray(endless.challengeCompletions)
+        ? endless.challengeCompletions
+        : [],
+      completedContracts:
+        typeof endless.completedContracts === "number" ? endless.completedContracts : 0,
+      cosmetics: Array.isArray(endless.cosmetics) ? endless.cosmetics : [],
+      currencies: isRecord(endless.currencies)
+        ? endless.currencies
+        : {
+            automationRank: 0,
+            enterpriseTrust: 0,
+            influence: 0,
+            legacyPoints: 0,
+            modelResearch: 0,
+            stabilityScore: 0
+          },
+      decision: endless.decision === "reset" ? "reset" : "continue",
+      nextEventAtS: typeof endless.nextEventAtS === "number" ? endless.nextEventAtS : 0,
+      softCaps: Array.isArray(endless.softCaps) ? endless.softCaps : []
+    },
+    v: 16
   };
 }
 

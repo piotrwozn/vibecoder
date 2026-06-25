@@ -22,6 +22,7 @@ import {
 import { calculateAchievementMultiplier } from "./achievements";
 import { calculatePrestigeMultiplierBig } from "./prestige-math";
 import { getIncidentEffects } from "./incidents";
+import { getEndlessEffects } from "./endless";
 import { getBuildMomentumEffects } from "./momentum";
 import { getProjectChainEffects } from "./project-chains";
 import { getSprintEffects } from "./roadmap";
@@ -631,14 +632,19 @@ function collectEffects(state: GameState): EffectAccumulator {
 function applyStrategicEffects(state: GameState, effects: EffectAccumulator): void {
   const sprint = getSprintEffects(state);
   const incidents = getIncidentEffects(state);
+  const endless = getEndlessEffects(state);
   const runStyle = getRunStyleEffects(state);
   const decisions = getStoryDecisionEffects(state);
 
   effects.bugChanceMultiplier *=
-    sprint.bugChanceMultiplier * incidents.bugChanceMultiplier * decisions.bugChanceMultiplier;
+    sprint.bugChanceMultiplier *
+    incidents.bugChanceMultiplier *
+    endless.bugChanceMultiplier *
+    decisions.bugChanceMultiplier;
   effects.debtFactor *=
     sprint.debtFactorMultiplier *
     incidents.debtFactorMultiplier *
+    endless.debtFactorMultiplier *
     runStyle.debtFactorMultiplier *
     decisions.debtFactorMultiplier;
   effects.generatorCostMultiplier *= decisions.generatorCostMultiplier;
@@ -648,14 +654,19 @@ function applyStrategicEffects(state: GameState, effects: EffectAccumulator): vo
     runStyle.hypeShipMultiplier *
     decisions.hypeShipMultiplier;
   effects.payoutMultiplier *=
-    sprint.payoutMultiplier * runStyle.payoutMultiplier * decisions.payoutMultiplier;
+    sprint.payoutMultiplier *
+    endless.payoutMultiplier *
+    runStyle.payoutMultiplier *
+    decisions.payoutMultiplier;
   effects.qaMultiplier *= decisions.qaMultiplier;
   effects.revenueMultiplier *=
     sprint.revenueMultiplier *
     incidents.revenueMultiplier *
+    endless.payoutMultiplier *
     runStyle.revenueMultiplier *
     decisions.revenueMultiplier;
-  effects.rpMultiplier *= sprint.rpMultiplier * runStyle.rpMultiplier * decisions.rpMultiplier;
+  effects.rpMultiplier *=
+    sprint.rpMultiplier * endless.rpMultiplier * runStyle.rpMultiplier * decisions.rpMultiplier;
   effects.autoPromptRate *= sprint.autoPromptMultiplier * decisions.autoPromptMultiplier;
   effects.autoFixDelayS *= sprint.autoFixDelayMultiplier;
 }

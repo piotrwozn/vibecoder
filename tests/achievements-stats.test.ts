@@ -15,8 +15,8 @@ import { getLocRateSamples, tickStats } from "../src/systems/stats";
 import { createAudioController } from "../src/ui/audio";
 
 describe("M11 achievements", () => {
-  it("transcribes all 50 planned achievements with a one-percent LoC bonus", () => {
-    expect(ACHIEVEMENTS).toHaveLength(50);
+  it("transcribes 65+ planned achievements with a one-percent LoC bonus", () => {
+    expect(ACHIEVEMENTS.length).toBeGreaterThanOrEqual(65);
     expect(ACHIEVEMENT_LOC_BONUS).toBe(0.01);
   });
 

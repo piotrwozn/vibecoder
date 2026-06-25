@@ -218,6 +218,16 @@ describe("M17 Aurora Project", () => {
     expect(state.aurora.currentPhase).toBe(1);
   });
 
+  it("keeps the final Aurora phases on the post-refactor endgame curve", () => {
+    const delegation = AURORA_PHASES.find((phase) => phase.id === "delegation_layer");
+    const goLive = AURORA_PHASES.find((phase) => phase.id === "aurora_go_live");
+
+    expect(delegation?.costLoc.eq(Big.from("1e31"))).toBe(true);
+    expect(delegation?.costMoney.eq(Big.from("6e33"))).toBe(true);
+    expect(goLive?.costLoc.eq(Big.from("3e31"))).toBe(true);
+    expect(goLive?.costMoney.eq(Big.from("1.2e34"))).toBe(true);
+  });
+
   it("charges 10 money per second for one full PC tier", () => {
     const { state } = createFullState();
     for (const id of ["h_cpu", "h_ram", "h_ssd", "h_psu_pc", "h_cooling_pc", "h_gpu"]) {

@@ -209,6 +209,12 @@
   display: grid;
   grid-template-columns: repeat(2, 84px);
   gap: var(--sp-3);
+  max-height: max(220px, calc(100vh - 224px));
+  padding-right: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .desktop-icon {

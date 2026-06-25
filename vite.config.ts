@@ -35,6 +35,10 @@ function copyBundledVibexModel() {
 
 export default defineConfig({
   base: "./",
+  build: {
+    // Full edition intentionally ships local AI wasm and large desktop/audio assets.
+    chunkSizeWarningLimit: 8_000
+  },
   plugins: [copyLicenses, copyBundledVibexModel()],
   test: {
     environment: "node",

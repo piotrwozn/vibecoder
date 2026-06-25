@@ -562,6 +562,12 @@
   left: clamp(18px, 2vw, 42px);
   grid-template-columns: repeat(2, 92px);
   gap: 14px;
+  max-height: max(220px, calc(100vh - 288px));
+  padding-right: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .desktop-icon {
@@ -609,7 +615,7 @@
   color: var(--fg-0);
   font-size: 0.72rem;
   line-height: 1.15;
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   text-shadow: 0 1px 8px rgb(0 0 0 / 0.7);
 }
 
@@ -720,17 +726,26 @@
   box-shadow:
     0 24px 70px rgb(0 0 0 / 0.52),
     var(--glow-acc);
+  user-select: none;
   pointer-events: auto;
 }
 
-.tutorial-overlay[data-step="resources"] .tutorial-card,
-.tutorial-overlay[data-step="done"] .tutorial-card {
+.tutorial-overlay[data-step="resources"] .tutorial-card {
   top: auto;
   right: clamp(20px, 4vw, 72px);
   bottom: 96px;
 }
 
-.tutorial-overlay[data-step="projects"] .tutorial-card,
+.tutorial-overlay[data-step="projects"] .tutorial-card {
+  top: 260px;
+  right: clamp(18px, 3vw, 52px);
+}
+
+.tutorial-overlay[data-step="done"] .tutorial-card {
+  top: 188px;
+  bottom: auto;
+}
+
 .tutorial-overlay[data-step="agents"] .tutorial-card,
 .tutorial-overlay[data-step="hardware"] .tutorial-card,
 .tutorial-overlay[data-step="comms"] .tutorial-card,
@@ -1313,6 +1328,9 @@
     bottom: 86px;
     left: var(--sp-3);
     grid-template-columns: repeat(auto-fit, minmax(74px, 1fr));
+    max-height: none;
+    padding-right: 0;
+    overflow: visible;
   }
 
   .desktop-icon {

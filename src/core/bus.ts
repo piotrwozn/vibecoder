@@ -25,6 +25,10 @@ export interface Events {
     id: string;
     type: ProductionIncidentType;
   };
+  "endless:challenge": { id: string };
+  "endless:completed": { id: string; tier: number };
+  "endless:event": { id: string };
+  "endless:season": { id: string };
   "momentum:changed": { delta: number; value: number };
   "project-chain:completed": { chainId: string };
   "res:changed": keyof GameState["res"];

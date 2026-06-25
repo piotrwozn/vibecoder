@@ -18,6 +18,28 @@ import {
 } from "../data/aurora.ts";
 import { HARDWARE_POWER_RATES } from "../data/billing.ts";
 import type { Condition } from "../data/conditions.ts";
+import {
+  ENDLESS_BASE_LOC_COST,
+  ENDLESS_BASE_MONEY_REWARD,
+  ENDLESS_BASE_WORK_S,
+  ENDLESS_CHALLENGES,
+  ENDLESS_CONTRACT_OFFER_COUNT,
+  ENDLESS_COSMETICS,
+  ENDLESS_EVENT_INTERVAL_S,
+  ENDLESS_EVENTS,
+  ENDLESS_INDUSTRIES,
+  ENDLESS_MILESTONES,
+  ENDLESS_MODIFIERS,
+  ENDLESS_MODULES,
+  ENDLESS_PRODUCT_TYPES,
+  ENDLESS_RISKS,
+  ENDLESS_SCALES,
+  ENDLESS_SEASON_DURATION_S,
+  ENDLESS_SEASONS,
+  ENDLESS_SOFT_CAPS,
+  ENDLESS_UNLOCK_REPUTATION,
+  type EndlessEffectKind
+} from "../data/endless.ts";
 import { ERAS } from "../data/eras.ts";
 import { GENERATORS } from "../data/generators.ts";
 import { HARDWARE } from "../data/hardware.ts";
@@ -225,6 +247,10 @@ function validateContentDefinitions(): void {
   validateUniqueIds("paradox item", PARADOX_ITEMS);
   validateUniqueIds("Vibex canned pair", VIBEX_CANNED_PAIRS);
   validateUniqueIds("Vibex file", VIBEX_CODE_FILES);
+
+  validateMinimumCount("project catalog", PROJECTS, 100);
+  validateMinimumCount("agent/generator catalog", GENERATORS, 30);
+  validateMinimumCount("achievement catalog", ACHIEVEMENTS, 65);
 
   for (const generator of GENERATORS) {
     requireMessage(generator.nameKey, `generator ${generator.id}`, en, pl);
@@ -475,6 +501,7 @@ function validateContentDefinitions(): void {
     }
   }
 
+  validateEndlessContent(en, pl);
   validateVibexContent(en, pl);
 
   for (const event of STORY_EVENTS) {
@@ -526,6 +553,12 @@ function validateUniqueIds(label: string, entries: readonly { readonly id: strin
       fail(`duplicate ${label} id ${entry.id}`);
     }
     seen.add(entry.id);
+  }
+}
+
+function validateMinimumCount(label: string, entries: readonly unknown[], minimum: number): void {
+  if (entries.length < minimum) {
+    fail(`${label} must have at least ${minimum} entries, got ${entries.length}`);
   }
 }
 
@@ -825,6 +858,148 @@ function validatePositiveNumberRecord(owner: string, values: object): void {
     }
 
     validateFinitePositive(`${owner} ${key}`, value);
+  }
+}
+
+function validateEndlessContent(
+  en: Readonly<Record<string, unknown>>,
+  pl: Readonly<Record<string, unknown>>
+): void {
+  const milestoneIds = new Set(ENDLESS_MILESTONES.map((entry) => entry.id));
+  const softCapEffectIds = new Set(["coordination", "cloud_cost", "context", "governance"]);
+
+  validateMinimumCount("Endless modules", ENDLESS_MODULES, 20);
+  validateMinimumCount("Endless challenges", ENDLESS_CHALLENGES, 10);
+  validateMinimumCount("Endless events", ENDLESS_EVENTS, 12);
+  validateMinimumCount("Endless milestones", ENDLESS_MILESTONES, 7);
+
+  validateUniqueIds("Endless season", ENDLESS_SEASONS);
+  validateUniqueIds("Endless product type", ENDLESS_PRODUCT_TYPES);
+  validateUniqueIds("Endless industry", ENDLESS_INDUSTRIES);
+  validateUniqueIds("Endless scale", ENDLESS_SCALES);
+  validateUniqueIds("Endless module", ENDLESS_MODULES);
+  validateUniqueIds("Endless modifier", ENDLESS_MODIFIERS);
+  validateUniqueIds("Endless risk", ENDLESS_RISKS);
+  validateUniqueIds("Endless milestone", ENDLESS_MILESTONES);
+  validateUniqueIds("Endless challenge", ENDLESS_CHALLENGES);
+  validateUniqueIds("Endless event", ENDLESS_EVENTS);
+  validateUniqueIds("Endless cosmetic", ENDLESS_COSMETICS);
+  validateUniqueIds("Endless soft cap", ENDLESS_SOFT_CAPS);
+
+  validateFinitePositive("Endless unlock reputation", ENDLESS_UNLOCK_REPUTATION);
+  validateFinitePositive("Endless contract offer count", ENDLESS_CONTRACT_OFFER_COUNT);
+  validateFinitePositive("Endless season duration", ENDLESS_SEASON_DURATION_S);
+  validateFinitePositive("Endless event interval", ENDLESS_EVENT_INTERVAL_S);
+  validateFinitePositive("Endless base work", ENDLESS_BASE_WORK_S);
+  validatePositiveBig("Endless base LoC cost", ENDLESS_BASE_LOC_COST);
+  validatePositiveBig("Endless base money reward", ENDLESS_BASE_MONEY_REWARD);
+
+  for (const season of ENDLESS_SEASONS) {
+    requireMessage(season.nameKey, `Endless season ${season.id}`, en, pl, { requirePl: true });
+    requireMessage(season.descriptionKey, `Endless season ${season.id}`, en, pl, {
+      requirePl: true
+    });
+    validateEndlessEffects(`Endless season ${season.id}`, season.effects);
+  }
+
+  for (const component of [
+    ...ENDLESS_PRODUCT_TYPES,
+    ...ENDLESS_INDUSTRIES,
+    ...ENDLESS_SCALES,
+    ...ENDLESS_MODIFIERS
+  ]) {
+    requireMessage(component.nameKey, `Endless component ${component.id}`, en, pl, {
+      requirePl: true
+    });
+    validateFinitePositive(`Endless component ${component.id} weight`, component.weight);
+  }
+
+  for (const module of ENDLESS_MODULES) {
+    requireMessage(module.nameKey, `Endless module ${module.id}`, en, pl, { requirePl: true });
+    validateFinitePositive(`Endless module ${module.id} weight`, module.weight);
+    validateFinitePositive(`Endless module ${module.id} workMultiplier`, module.workMultiplier);
+  }
+
+  for (const risk of ENDLESS_RISKS) {
+    requireMessage(risk.nameKey, `Endless risk ${risk.id}`, en, pl, { requirePl: true });
+    validateFinitePositive(`Endless risk ${risk.id} risk`, risk.risk);
+    validateFinitePositive(`Endless risk ${risk.id} weight`, risk.weight);
+    validateFinitePositive(`Endless risk ${risk.id} debtMultiplier`, risk.debtMultiplier);
+  }
+
+  let lastMilestoneTarget = 0;
+  for (const milestone of ENDLESS_MILESTONES) {
+    requireMessage(milestone.descriptionKey, `Endless milestone ${milestone.id}`, en, pl, {
+      requirePl: true
+    });
+    validateFinitePositive(`Endless milestone ${milestone.id} target`, milestone.target);
+    if (milestone.target <= lastMilestoneTarget) {
+      fail(`Endless milestone ${milestone.id} target must increase`);
+    }
+    lastMilestoneTarget = milestone.target;
+  }
+
+  for (const challenge of ENDLESS_CHALLENGES) {
+    requireMessage(challenge.nameKey, `Endless challenge ${challenge.id}`, en, pl, {
+      requirePl: true
+    });
+    requireMessage(challenge.descriptionKey, `Endless challenge ${challenge.id}`, en, pl, {
+      requirePl: true
+    });
+    validateFinitePositive(
+      `Endless challenge ${challenge.id} completionTier`,
+      challenge.completionTier
+    );
+    validateEndlessEffects(`Endless challenge ${challenge.id}`, challenge.effects);
+    if (Object.keys(challenge.reward).length === 0) {
+      fail(`Endless challenge ${challenge.id} has no reward`);
+    }
+    for (const [currency, amount] of Object.entries(challenge.reward)) {
+      validateFiniteNonNegative(`Endless challenge ${challenge.id} reward ${currency}`, amount);
+    }
+  }
+
+  for (const event of ENDLESS_EVENTS) {
+    requireMessage(event.nameKey, `Endless event ${event.id}`, en, pl, { requirePl: true });
+    requireMessage(event.descriptionKey, `Endless event ${event.id}`, en, pl, {
+      requirePl: true
+    });
+    validateFinitePositive(`Endless event ${event.id} durationS`, event.durationS);
+    validateEndlessEffects(`Endless event ${event.id}`, event.effects);
+  }
+
+  for (const cosmetic of ENDLESS_COSMETICS) {
+    requireMessage(cosmetic.nameKey, `Endless cosmetic ${cosmetic.id}`, en, pl, {
+      requirePl: true
+    });
+    if (!milestoneIds.has(cosmetic.requiredMilestoneId)) {
+      fail(
+        `Endless cosmetic ${cosmetic.id} references missing milestone ${cosmetic.requiredMilestoneId}`
+      );
+    }
+  }
+
+  for (const softCap of ENDLESS_SOFT_CAPS) {
+    requireMessage(softCap.descriptionKey, `Endless soft cap ${softCap.id}`, en, pl, {
+      requirePl: true
+    });
+    validateFinitePositive(`Endless soft cap ${softCap.id} threshold`, softCap.threshold);
+    if (!softCapEffectIds.has(softCap.id)) {
+      fail(`Endless soft cap ${softCap.id} has no system effect`);
+    }
+  }
+}
+
+function validateEndlessEffects(
+  owner: string,
+  effects: readonly { readonly kind: EndlessEffectKind; readonly multiplier: number }[]
+): void {
+  if (effects.length === 0) {
+    fail(`${owner} has no effects`);
+  }
+
+  for (const effect of effects) {
+    validateFinitePositive(`${owner} ${effect.kind}`, effect.multiplier);
   }
 }
 

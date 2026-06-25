@@ -45,6 +45,55 @@ describe("view models", () => {
 
     expect(scope?.tag).toBe("Standard");
   });
+
+  it("does not reopen the finale modal after an ending was chosen", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+
+    state.story.act = 5;
+    state.story.seen.add("a5_11_finale");
+    state.story.seen.add("a5_12_final_choice");
+    state.prestige.endingChoice = "merge";
+    state.story.flags.add("iteration_unlocked");
+    state.story.flags.add("achievement.ending_merge");
+    recomputeDerivedCache(state, cache);
+
+    const builder = createViewModelBuilder({
+      cache,
+      comms: createCommsStub(),
+      formatters: createAppFormatters(() => state),
+      getOfflineSummary: () => undefined,
+      hasPersistedSave: () => false,
+      getState: () => state,
+      vibexAi: createVibexAiStub(),
+      vibexSession: createVibexSession(state.vibex)
+    });
+
+    expect(builder.createDevFloorView(cache, true).ending.visible).toBe(false);
+  });
+
+  it("refreshes the Aurora unlock state even while the Aurora window is closed", () => {
+    const state = createDefaultGameState();
+    const cache = createDerivedCache();
+    const builder = createViewModelBuilder({
+      cache,
+      comms: createCommsStub(),
+      formatters: createAppFormatters(() => state),
+      getOfflineSummary: () => undefined,
+      hasPersistedSave: () => false,
+      getState: () => state,
+      vibexAi: createVibexAiStub(),
+      vibexSession: createVibexSession(state.vibex)
+    });
+
+    expect(builder.createDevFloorView(cache, false).aurora.unlocked).toBe(false);
+
+    state.aurora.unlocked = true;
+    state.aurora.status = "funding";
+    state.story.flags.add("aurora_unlocked");
+
+    expect(builder.createDevFloorView(cache, false).aurora.unlocked).toBe(true);
+  });
 });
 
 function createCommsStub(): CommsController {

@@ -57,6 +57,11 @@ export const screenLinks: readonly ScreenLink[] = [
     iconPath: "M5 6h14 M5 12h14 M5 18h14 M8 6v12 M16 6v12"
   },
   {
+    appId: "endless",
+    key: "ui.app.endless",
+    iconPath: "M12 4c4 0 7 2.5 7 6s-3 6-7 6-7-2.5-7-6 3-6 7-6z M12 8l3 2-3 2-3-2z M8 19h8"
+  },
+  {
     appId: "aurora",
     key: "ui.app.aurora",
     iconPath:

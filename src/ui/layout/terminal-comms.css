@@ -558,18 +558,20 @@
 
 .dev-perf {
   position: fixed;
-  right: var(--sp-3);
-  bottom: var(--sp-3);
+  right: auto;
+  bottom: calc(18px + 58px + var(--sp-3));
+  left: calc(240px + var(--sp-3));
   z-index: 20;
   display: grid;
   gap: var(--sp-3);
-  width: min(260px, calc(100vw - 32px));
+  width: min(260px, calc(100vw - 288px));
   padding: var(--sp-3);
   color: var(--fg-0);
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-radius: var(--r-s);
   box-shadow: var(--shadow);
+  pointer-events: none;
 }
 
 .dev-perf__title,
@@ -606,6 +608,7 @@
   border: 1px solid var(--border);
   border-radius: var(--r-s);
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .dev-perf__button:focus-visible {
@@ -613,10 +616,18 @@
   outline-offset: 2px;
 }
 
+@media (max-width: 899px) {
+  .dev-perf {
+    left: var(--sp-3);
+    width: min(260px, calc(100vw - 32px));
+  }
+}
+
 .toast-stack {
   position: fixed;
   top: var(--sp-4);
-  right: var(--sp-4);
+  right: auto;
+  left: var(--sp-4);
   z-index: 12;
   display: grid;
   gap: var(--sp-2);

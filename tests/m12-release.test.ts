@@ -21,6 +21,7 @@ import { buyUpgrade, getVisibleUpgrades } from "../src/systems/upgrades";
 describe("M12 demo gating", () => {
   it("builds browser demo assets with relative paths for itch and Pages", () => {
     expect(viteConfig.base).toBe("./");
+    expect(viteConfig.build?.chunkSizeWarningLimit).toBeGreaterThanOrEqual(8_000);
   });
 
   it("blocks E3 era upgrades in demo while allowing full saves to continue", () => {

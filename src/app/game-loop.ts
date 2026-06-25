@@ -8,6 +8,7 @@ import { tickAurora } from "../systems/aurora";
 import { isBankrupt } from "../systems/bank";
 import { tickBilling } from "../systems/billing";
 import { tickDebt } from "../systems/debt";
+import { tickEndless } from "../systems/endless";
 import { tickHype } from "../systems/hype";
 import { tickProductionIncidents } from "../systems/incidents";
 import { tickBuildMomentum } from "../systems/momentum";
@@ -76,6 +77,7 @@ export function startVibecoderLoop(options: GameLoopOptions): void {
       }
 
       options.invalidation.markVisibleChanged(tickAurora(state, dtS, options.bus));
+      options.invalidation.markVisibleChanged(tickEndless(state, dtS, options.bus));
       options.invalidation.markVisibleChanged(tickRoadmap(state, options.bus));
       options.invalidation.markVisibleChanged(tickProductionIncidents(state, options.bus));
       options.invalidation.markVisibleChanged(tickHype(state, dtS, options.cache, options.bus));

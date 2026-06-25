@@ -91,8 +91,8 @@ export const AURORA_PHASES: readonly AuroraPhaseDefinition[] = [
     id: "delegation_layer",
     nameKey: "aurora.phase.delegation_layer.name",
     percent: 15,
-    costLoc: big("1e32"),
-    costMoney: big("6e34"),
+    costLoc: big("1e31"),
+    costMoney: big("6e33"),
     workS: 21600,
     requiredServers: 6
   },
@@ -100,8 +100,8 @@ export const AURORA_PHASES: readonly AuroraPhaseDefinition[] = [
     id: "aurora_go_live",
     nameKey: "aurora.phase.aurora_go_live.name",
     percent: 10,
-    costLoc: big("3e33"),
-    costMoney: big("2e35"),
+    costLoc: big("3e31"),
+    costMoney: big("1.2e34"),
     workS: 30600,
     requiredServers: 8
   }

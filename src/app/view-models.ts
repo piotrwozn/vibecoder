@@ -5,6 +5,21 @@ import { TUTORIAL_STEPS, type TutorialStep } from "../core/ui-state";
 import { ACHIEVEMENTS, ACHIEVEMENT_LOC_BONUS } from "../data/achievements";
 import { AURORA_PHASES } from "../data/aurora";
 import { C } from "../data/constants";
+import {
+  ENDLESS_CHALLENGES,
+  ENDLESS_COSMETICS,
+  ENDLESS_INDUSTRIES,
+  ENDLESS_MILESTONES,
+  ENDLESS_MODIFIERS,
+  ENDLESS_MODULES,
+  ENDLESS_PRODUCT_TYPES,
+  ENDLESS_RISKS,
+  ENDLESS_SCALES,
+  ENDLESS_SOFT_CAPS,
+  getEndlessChallenge,
+  getEndlessEvent,
+  getEndlessSeason
+} from "../data/endless";
 import { GENERATORS } from "../data/generators";
 import { getIncidentDefinition, getIncidentResponse } from "../data/incidents";
 import { PROJECTS, REFACTOR_PROJECT, type ProjectDefinition } from "../data/projects";
@@ -57,6 +72,12 @@ import {
   isHardwareMaxed
 } from "../systems/compute";
 import { isDemoLocked } from "../systems/demo";
+import {
+  getEndlessContractCost,
+  getEndlessContractProgress,
+  getEndlessMilestoneIds,
+  isEndlessUnlockReady
+} from "../systems/endless";
 import { canBuyEra, getCurrentEra, getEraCost, getNextEra } from "../systems/eras";
 import { isIterationUnlocked } from "../systems/iteration";
 import type { OfflineProgressResult } from "../systems/offline";
@@ -139,6 +160,11 @@ import type {
   AuroraView,
   AutomationToggleView,
   DevFloorView,
+  EndlessActiveContractView,
+  EndlessChallengeView,
+  EndlessMilestoneView,
+  EndlessOfferView,
+  EndlessView,
   EndingModalView,
   EquityPerkView,
   ExitPreviewView,
@@ -252,7 +278,7 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
     const buildUpgrades = shouldBuildAppView(state.ui.windows, "upgrades", includeClosedApps);
     const buildProjects = shouldBuildAppView(state.ui.windows, "projects", includeClosedApps);
     const buildRoadmap = shouldBuildAppView(state.ui.windows, "roadmap", includeClosedApps);
-    const buildAurora = shouldBuildAppView(state.ui.windows, "aurora", includeClosedApps);
+    const buildEndless = shouldBuildAppView(state.ui.windows, "endless", includeClosedApps);
     const buildResearch = shouldBuildAppView(state.ui.windows, "research", includeClosedApps);
     const buildRewrite = shouldBuildAppView(state.ui.windows, "rewrite", includeClosedApps);
     const buildStats = shouldBuildAppView(state.ui.windows, "stats", includeClosedApps);
@@ -271,12 +297,13 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
         ? createAchievementsView()
         : (previous?.achievements ?? createAchievementsView()),
       automation: buildAgents ? createAutomationViews(derived) : (previous?.automation ?? []),
-      aurora: buildAurora ? createAuroraView() : (previous?.aurora ?? createAuroraView()),
+      aurora: createAuroraView(),
       comms: comms.getView(),
       compute: buildAgents
         ? createComputeBreakdownView(derived)
         : (previous?.compute ?? createComputeBreakdownView(derived)),
       ending: createEndingModalView(),
+      endless: buildEndless ? createEndlessView() : (previous?.endless ?? createEndlessView()),
       flowActive,
       flowMeter: flowActive ? "100%" : `${Math.floor(state.flow.meter * 100)}%`,
       flowProgress: flowActive ? 1 : state.flow.meter,
@@ -776,7 +803,8 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
           entry !== undefined &&
           state.story.seen.has(entry.id) &&
           entry.choices !== undefined &&
-          state.story.choices[entry.id] === undefined
+          state.story.choices[entry.id] === undefined &&
+          (entry.id !== "a5_12_final_choice" || state.prestige.endingChoice === undefined)
       );
 
     if (event === undefined) {
@@ -1253,6 +1281,186 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
     }
 
     return t("ui.projects.nextUnlockCost", { cost: formatMoney(cost), model });
+  }
+
+  function createEndlessView(): EndlessView {
+    const season = getEndlessSeason(state.endless.seasonId);
+    const active = state.endless.active;
+    const activeEvent = state.endless.activeEvent;
+
+    return {
+      active: active === undefined ? undefined : createEndlessActiveView(active),
+      activeChallenge:
+        state.endless.activeChallenge === undefined
+          ? undefined
+          : t(getEndlessChallenge(state.endless.activeChallenge).nameKey),
+      activeEvent:
+        activeEvent === undefined
+          ? undefined
+          : {
+              description: t(getEndlessEvent(activeEvent.id).descriptionKey),
+              name: t(getEndlessEvent(activeEvent.id).nameKey),
+              remaining: formatTime(Math.max(0, activeEvent.activeUntilS - state.meta.playtimeS))
+            },
+      canRefresh: state.endless.unlocked && active === undefined,
+      challenges: createEndlessChallengeViews(),
+      cosmetics: state.endless.cosmetics.map((id) =>
+        t(ENDLESS_COSMETICS.find((cosmetic) => cosmetic.id === id)?.nameKey ?? "ui.endless.unknown")
+      ),
+      completed: formatCountValue(state.endless.completedContracts),
+      currencies: createEndlessCurrencyViews(),
+      decision: t(`ui.endless.decision.${state.endless.decision}`),
+      empireScore: formatBig(state.endless.empireScore, state.settings.notation),
+      legacyScore: formatCountValue(state.endless.legacyScore),
+      milestones: createEndlessMilestoneViews(),
+      offers: state.endless.offers.map((offer): EndlessOfferView => {
+        const cost = getEndlessContractCost(offer);
+
+        return {
+          id: offer.id,
+          canAccept:
+            state.endless.unlocked && active === undefined && canSpendBig(state.res.loc, cost),
+          cost: formatLoc(cost),
+          modules: formatEndlessComponentList(offer.moduleIds, ENDLESS_MODULES),
+          modifiers: formatEndlessComponentList(offer.modifierIds, ENDLESS_MODIFIERS),
+          name: createEndlessContractName(offer.productTypeId, offer.industryId, offer.scaleId),
+          reward: formatEndlessReward(offer.rewardMoney, offer.rewardRp),
+          risks: formatEndlessComponentList(offer.riskIds, ENDLESS_RISKS),
+          tier: t("ui.endless.tierValue", { tier: offer.tier }),
+          work: formatTime(offer.workS)
+        };
+      }),
+      seasonDescription: t(season.descriptionKey),
+      seasonName: t(season.nameKey),
+      seasonRemaining: formatTime(Math.max(0, state.endless.seasonEndsAtS - state.meta.playtimeS)),
+      softCaps: state.endless.softCaps.map((id) =>
+        t(ENDLESS_SOFT_CAPS.find((cap) => cap.id === id)?.descriptionKey ?? "ui.endless.unknown")
+      ),
+      tier: t("ui.endless.tierValue", { tier: state.endless.tier }),
+      unlocked: state.endless.unlocked,
+      unlockHint: isEndlessUnlockReady(state)
+        ? t("ui.endless.unlockReady")
+        : t("ui.endless.unlockHint")
+    };
+  }
+
+  function createEndlessCurrencyViews(): EndlessView["currencies"] {
+    const currencies = state.endless.currencies;
+    const rows: readonly [keyof GameState["endless"]["currencies"], number][] = [
+      ["legacyPoints", currencies.legacyPoints],
+      ["influence", currencies.influence],
+      ["modelResearch", currencies.modelResearch],
+      ["stabilityScore", currencies.stabilityScore],
+      ["automationRank", currencies.automationRank],
+      ["enterpriseTrust", currencies.enterpriseTrust]
+    ];
+
+    return rows.map(([id, value]) => ({
+      label: t(`ui.endless.currency.${id}`),
+      value: formatCountValue(value)
+    }));
+  }
+
+  function createEndlessChallengeViews(): readonly EndlessChallengeView[] {
+    return ENDLESS_CHALLENGES.map((challenge): EndlessChallengeView => {
+      const progress = state.endless.challengeCompletions.find(
+        (entry) => entry.id === challenge.id
+      );
+      return {
+        active: state.endless.activeChallenge === challenge.id,
+        bestTier: t("ui.endless.tierValue", { tier: progress?.bestTier ?? 0 }),
+        canStart: state.endless.unlocked && state.endless.active === undefined,
+        completed: progress?.completed ?? false,
+        description: t(challenge.descriptionKey),
+        id: challenge.id,
+        name: t(challenge.nameKey),
+        reward: formatEndlessChallengeReward(challenge.reward)
+      };
+    });
+  }
+
+  function formatEndlessChallengeReward(
+    reward: Partial<Record<keyof GameState["endless"]["currencies"], number>>
+  ): string {
+    const parts = Object.entries(reward)
+      .filter(([, value]) => typeof value === "number" && value > 0)
+      .map(([key, value]) =>
+        t("ui.endless.challengeRewardPart", {
+          label: t(`ui.endless.currency.${key}`),
+          value: formatCountValue(value as number)
+        })
+      );
+
+    return parts.length === 0 ? t("ui.endless.none") : parts.join(", ");
+  }
+
+  function createEndlessActiveView(
+    active: NonNullable<GameState["endless"]["active"]>
+  ): EndlessActiveContractView {
+    const progress = getEndlessContractProgress(active);
+
+    return {
+      name: createEndlessContractName(active.productTypeId, active.industryId, active.scaleId),
+      progress,
+      progressLabel: `${Math.floor(progress * 100)}%`,
+      remaining: formatTime(Math.max(0, active.workS - active.elapsedS)),
+      reward: formatEndlessReward(active.rewardMoney, active.rewardRp),
+      risks: formatEndlessComponentList(active.riskIds, ENDLESS_RISKS)
+    };
+  }
+
+  function createEndlessMilestoneViews(): readonly EndlessMilestoneView[] {
+    const reachedIds = getEndlessMilestoneIds(state);
+
+    return ENDLESS_MILESTONES.map(
+      (milestone): EndlessMilestoneView => ({
+        id: milestone.id,
+        description: t(milestone.descriptionKey),
+        reached: reachedIds.has(milestone.id),
+        target: t("ui.endless.tierValue", { tier: milestone.target })
+      })
+    );
+  }
+
+  function createEndlessContractName(
+    productTypeId: string,
+    industryId: string,
+    scaleId: string
+  ): string {
+    return t("ui.endless.contractName", {
+      industry: formatEndlessComponent(industryId, ENDLESS_INDUSTRIES),
+      product: formatEndlessComponent(productTypeId, ENDLESS_PRODUCT_TYPES),
+      scale: formatEndlessComponent(scaleId, ENDLESS_SCALES)
+    });
+  }
+
+  function formatEndlessReward(money: Big, rp: number): string {
+    return t("ui.endless.reward", {
+      money: formatMoney(money),
+      rp: formatRp(rp)
+    });
+  }
+
+  function formatEndlessComponentList(
+    ids: readonly string[],
+    definitions: readonly { readonly id: string; readonly nameKey: string }[]
+  ): string {
+    if (ids.length === 0) {
+      return t("ui.endless.none");
+    }
+
+    return ids.map((id) => formatEndlessComponent(id, definitions)).join(", ");
+  }
+
+  function formatEndlessComponent(
+    id: string,
+    definitions: readonly { readonly id: string; readonly nameKey: string }[]
+  ): string {
+    return t(definitions.find((entry) => entry.id === id)?.nameKey ?? "ui.endless.unknown");
+  }
+
+  function formatCountValue(value: number): string {
+    return new Intl.NumberFormat(state.settings.lang).format(value);
   }
 
   function createRoadmapView(derived: DerivedCache): RoadmapView {

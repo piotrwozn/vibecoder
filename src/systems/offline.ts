@@ -1,7 +1,9 @@
 import { Big } from "../core/bignum";
 import type { GameState } from "../core/state";
-import { isBankrupt, repayBankOverdraft } from "./bank";
-import { getNetMoneyRate } from "./billing";
+import { tickAurora } from "./aurora";
+import { isBankrupt } from "./bank";
+import { tickBilling } from "./billing";
+import { tickEndless } from "./endless";
 import { getAngelNetworkUntilS, type DerivedCache } from "./production";
 import { getProjectIncomeRate, tickProjectBuilds } from "./projects";
 import { addNonNegativeBig, isNonNegativeBig } from "./resources";
@@ -43,9 +45,7 @@ export function applyOfflineProgress(
   }
 
   const rawLoc = Big.mul(cache.locRate, Big.fromNumber(cappedS));
-  const rawMoney = calculateOfflineMoney(state, cache, cappedS);
   const loc = isNonNegativeBig(rawLoc) ? rawLoc : Big.zero();
-  const money = isNonNegativeBig(rawMoney) ? rawMoney : Big.zero();
   const hypeBefore = state.res.hype;
   const hypeAfter =
     cappedS > 0
@@ -58,20 +58,13 @@ export function applyOfflineProgress(
     addNonNegativeBig(state.lifetime.locSinceExit, loc);
   }
 
-  if (!money.eq0()) {
-    addNonNegativeBig(state.res.money, money);
-    addNonNegativeBig(state.lifetime.money, money);
-    repayBankOverdraft(state);
-  }
+  const playtimeBefore = state.meta.playtimeS;
+  const money = applyOfflineEconomy(state, cache, cappedS);
 
   // Achievements intentionally reconcile on the first live tick after offline catch-up.
   // The unlock UI coalesces those notifications into one batched toast per animation frame.
   state.res.hype = hypeAfter;
-  state.meta.playtimeS += cappedS;
-  const moneyBeforeBuilds = state.res.money.copy();
-  tickProjectBuilds(state, cache, cappedS);
-  const buildMoney = Big.sub(state.res.money, moneyBeforeBuilds);
-  const totalMoney = buildMoney.gt(Big.zero()) ? Big.add(money, buildMoney) : money;
+  state.meta.playtimeS = playtimeBefore + cappedS;
   state.meta.lastSimTickMs = effectiveNowMs;
 
   return {
@@ -80,7 +73,7 @@ export function applyOfflineProgress(
     hypeAfter,
     hypeBefore,
     loc,
-    money: totalMoney
+    money
   };
 }
 
@@ -100,25 +93,89 @@ export function clampOfflineNowMs(
   return Math.min(nowMs, lastSimTickMs + maxElapsedMs);
 }
 
-function calculateOfflineMoney(state: GameState, cache: DerivedCache, cappedS: number): Big {
+function applyOfflineIncomeAndBilling(state: GameState, cache: DerivedCache, cappedS: number): Big {
   let remainingS = cappedS;
   let cursorS = state.meta.playtimeS;
-  const money = Big.zero();
+  const moneyBefore = state.res.money.copy();
 
-  while (remainingS > 0) {
+  while (remainingS > 0 && !isBankrupt(state)) {
     const nextSegmentS = getOfflineSegmentS(state, cursorS, remainingS);
     // Offline income uses neutral hype while the saved hype value still decays during catch-up.
     const grossMoneyRate = getProjectIncomeRate(state, cache, 1, cursorS);
-    const segmentMoney = Big.mul(
-      Big.max(Big.zero(), getNetMoneyRate(grossMoneyRate, state, cache)),
-      Big.fromNumber(nextSegmentS)
-    );
-    Big.addIn(money, segmentMoney);
+    const segmentMoney = Big.mul(grossMoneyRate, Big.fromNumber(nextSegmentS));
+
+    if (addNonNegativeBig(state.res.money, segmentMoney)) {
+      addNonNegativeBig(state.lifetime.money, segmentMoney);
+    }
+
+    state.meta.playtimeS = cursorS;
+    tickOfflineBilling(state, cache, nextSegmentS);
     cursorS += nextSegmentS;
     remainingS -= nextSegmentS;
   }
 
-  return money;
+  state.meta.playtimeS = cursorS;
+  return Big.max(Big.zero(), Big.sub(state.res.money, moneyBefore));
+}
+
+function tickOfflineBilling(state: GameState, cache: DerivedCache, dtS: number): void {
+  const savedHype = state.res.hype;
+  state.res.hype = 1;
+
+  try {
+    tickBilling(state, cache, dtS);
+  } finally {
+    state.res.hype = savedHype;
+  }
+}
+
+function applyOfflineEconomy(state: GameState, cache: DerivedCache, cappedS: number): Big {
+  let remainingS = cappedS;
+  let totalMoney = Big.zero();
+
+  while (remainingS > 0 && !isBankrupt(state)) {
+    const buildCompletionS = getNextBuildCompletionS(state);
+    const segmentS =
+      buildCompletionS === undefined ? remainingS : Math.min(remainingS, buildCompletionS);
+    const advancedS = segmentS > 0 ? segmentS : Math.min(remainingS, Number.EPSILON);
+    const incomeMoney = applyOfflineIncomeAndBilling(state, cache, advancedS);
+
+    if (incomeMoney.gt(Big.zero())) {
+      totalMoney = Big.add(totalMoney, incomeMoney);
+    }
+
+    const moneyBeforeLongRunningSystems = state.res.money.copy();
+    tickAurora(state, advancedS);
+    tickEndless(state, advancedS);
+    const longRunningSystemMoney = Big.sub(state.res.money, moneyBeforeLongRunningSystems);
+
+    if (longRunningSystemMoney.gt(Big.zero())) {
+      totalMoney = Big.add(totalMoney, longRunningSystemMoney);
+    }
+
+    const moneyBeforeBuilds = state.res.money.copy();
+    tickProjectBuilds(state, cache, advancedS);
+    const buildMoney = Big.sub(state.res.money, moneyBeforeBuilds);
+
+    if (buildMoney.gt(Big.zero())) {
+      totalMoney = Big.add(totalMoney, buildMoney);
+    }
+
+    remainingS -= advancedS;
+  }
+
+  return totalMoney;
+}
+
+function getNextBuildCompletionS(state: GameState): number | undefined {
+  let nextS: number | undefined;
+
+  for (const build of state.projects.active) {
+    const remainingS = Math.max(0, build.buildS - build.elapsedS);
+    nextS = nextS === undefined ? remainingS : Math.min(nextS, remainingS);
+  }
+
+  return nextS;
 }
 
 function getOfflineSegmentS(state: GameState, cursorS: number, remainingS: number): number {

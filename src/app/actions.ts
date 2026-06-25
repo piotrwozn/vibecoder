@@ -29,6 +29,12 @@ import { buyHardware as purchaseHardware } from "../systems/compute";
 import { fixBug as repairBug } from "../systems/debt";
 import { buyNextEra, getCurrentEra } from "../systems/eras";
 import {
+  acceptEndlessContract as acceptGeneratedEndlessContract,
+  chooseEndlessDecision as chooseGeneratedEndlessDecision,
+  refreshEndlessOffers as rerollEndlessContractOffers,
+  startEndlessChallenge as startGeneratedEndlessChallenge
+} from "../systems/endless";
+import {
   buyEquityPerk as purchaseEquityPerk,
   buyInsightNode as purchaseInsightNode,
   buyParadoxItem as purchaseParadoxItem,
@@ -170,6 +176,34 @@ export function createAppActions(runtime: AppActionsRuntime): AppActions {
         void runtime.persistNow();
       } else {
         runtime.invalidation.markVisibleChanged(false);
+      }
+      runtime.flushActionInvalidation();
+    },
+
+    acceptEndlessContract(id: string): void {
+      if (!beginGameplayAction()) {
+        return;
+      }
+
+      const result = acceptGeneratedEndlessContract(runtime.getState(), id, runtime.bus);
+      runtime.invalidation.markVisibleChanged(result.ok);
+
+      if (result.ok) {
+        void runtime.persistNow();
+      }
+      runtime.flushActionInvalidation();
+    },
+
+    chooseEndlessDecision(decision: "continue" | "reset"): void {
+      if (!beginGameplayAction()) {
+        return;
+      }
+
+      const result = chooseGeneratedEndlessDecision(runtime.getState(), decision, runtime.bus);
+      runtime.invalidation.markStructuralChanged();
+
+      if (result.ok) {
+        void runtime.persistNow();
       }
       runtime.flushActionInvalidation();
     },
@@ -647,6 +681,38 @@ export function createAppActions(runtime: AppActionsRuntime): AppActions {
       resetPersistedWindowLayout(runtime.getState().ui.windows);
       runtime.updateVisibleView();
       void runtime.persistNow();
+    },
+
+    refreshEndlessOffers(): void {
+      if (!beginGameplayAction()) {
+        return;
+      }
+
+      const result = rerollEndlessContractOffers(runtime.getState(), runtime.bus);
+      runtime.invalidation.markVisibleChanged(result.ok);
+
+      if (result.ok) {
+        void runtime.persistNow();
+      }
+      runtime.flushActionInvalidation();
+    },
+
+    startEndlessChallenge(id: string): void {
+      if (!beginGameplayAction()) {
+        return;
+      }
+
+      const result = startGeneratedEndlessChallenge(
+        runtime.getState(),
+        id as Parameters<typeof startGeneratedEndlessChallenge>[1],
+        runtime.bus
+      );
+      runtime.invalidation.markStructuralChanged();
+
+      if (result.ok) {
+        void runtime.persistNow();
+      }
+      runtime.flushActionInvalidation();
     },
 
     resolveIncident(id: string, response: IncidentResponseId): void {

@@ -42,6 +42,47 @@ export type RunStyleId =
   | "open_source_collective"
   | "research_lab"
   | "vc_backed";
+export type EndlessSeasonId =
+  | "agent_swarm"
+  | "bug_storm"
+  | "cloud_crisis"
+  | "enterprise"
+  | "model_outage"
+  | "open_source"
+  | "security"
+  | "speed";
+export type EndlessChallengeId =
+  | "cheap_cloud"
+  | "enterprise_only"
+  | "max_automation"
+  | "no_agents"
+  | "no_failed_deploy"
+  | "no_manual_coding"
+  | "one_model"
+  | "open_source_only"
+  | "security_first"
+  | "zero_debt";
+export type EndlessDecision = "continue" | "reset";
+export type EndlessEventId =
+  | "agent_market_crash"
+  | "cloud_price_increase"
+  | "competitor_launch"
+  | "cve_wave"
+  | "dependency_collapse"
+  | "enterprise_audit_wave"
+  | "global_model_outage"
+  | "investor_hype_cycle"
+  | "new_model_release"
+  | "open_source_wave"
+  | "production_chain"
+  | "viral_launch_spike";
+export type EndlessCosmeticId =
+  | "aurora_frame"
+  | "compliance_terminal"
+  | "empire_badge"
+  | "legacy_wallpaper"
+  | "seasonal_desktop"
+  | "swarm_icon_pack";
 
 export interface ProjectOffer {
   readonly id: string;
@@ -147,6 +188,74 @@ export interface AutomationRule {
   readonly enabled: boolean;
 }
 
+export interface EndlessContractOffer {
+  readonly id: string;
+  readonly industryId: string;
+  readonly modifierIds: readonly string[];
+  readonly moduleIds: readonly string[];
+  readonly productTypeId: string;
+  readonly rewardMoney: Big;
+  readonly rewardRp: number;
+  readonly riskIds: readonly string[];
+  readonly riskScore: number;
+  readonly scaleId: string;
+  readonly tier: number;
+  readonly workS: number;
+}
+
+export interface ActiveEndlessContract extends EndlessContractOffer {
+  readonly acceptedAtS: number;
+  readonly costLoc: Big;
+  readonly elapsedS: number;
+}
+
+export interface EndlessMilestoneProgress {
+  readonly id: string;
+}
+
+export interface EndlessChallengeState {
+  readonly bestTier: number;
+  readonly completed: boolean;
+  readonly id: EndlessChallengeId;
+}
+
+export interface EndlessEventState {
+  readonly activeUntilS: number;
+  readonly id: EndlessEventId;
+  readonly startedAtS: number;
+}
+
+export interface EndlessCurrencies {
+  automationRank: number;
+  enterpriseTrust: number;
+  influence: number;
+  legacyPoints: number;
+  modelResearch: number;
+  stabilityScore: number;
+}
+
+export interface EndlessState {
+  active?: ActiveEndlessContract;
+  activeChallenge?: EndlessChallengeId;
+  activeEvent?: EndlessEventState;
+  challengeCompletions: EndlessChallengeState[];
+  completedContracts: number;
+  cosmetics: EndlessCosmeticId[];
+  currencies: EndlessCurrencies;
+  decision: EndlessDecision;
+  empireScore: Big;
+  legacyScore: number;
+  milestones: EndlessMilestoneProgress[];
+  nextEventAtS: number;
+  offers: EndlessContractOffer[];
+  offerSeed: number;
+  seasonEndsAtS: number;
+  seasonId: EndlessSeasonId;
+  softCaps: string[];
+  tier: number;
+  unlocked: boolean;
+}
+
 export interface GameState {
   v: number;
   meta: {
@@ -187,6 +296,7 @@ export interface GameState {
     pcComplete: boolean;
   };
   aurora: AuroraState;
+  endless: EndlessState;
   roadmap: SprintState;
   incidents: ProductionIncidentsState;
   metaprogression: MetaprogressionState;
@@ -285,6 +395,7 @@ export function createDefaultGameState(
       pcComplete: false
     },
     aurora: createDefaultAuroraState(),
+    endless: createDefaultEndlessState(rngSeed),
     roadmap: createDefaultSprintState(),
     incidents: createDefaultProductionIncidentsState(),
     metaprogression: createDefaultMetaprogressionState(),
@@ -344,6 +455,36 @@ function createDefaultAuroraState(): AuroraState {
     phaseActive: false,
     phaseElapsedS: 0,
     status: "locked",
+    unlocked: false
+  };
+}
+
+function createDefaultEndlessState(rngSeed: number): EndlessState {
+  return {
+    activeChallenge: undefined,
+    activeEvent: undefined,
+    challengeCompletions: [],
+    completedContracts: 0,
+    cosmetics: [],
+    currencies: {
+      automationRank: 0,
+      enterpriseTrust: 0,
+      influence: 0,
+      legacyPoints: 0,
+      modelResearch: 0,
+      stabilityScore: 0
+    },
+    decision: "continue",
+    empireScore: Big.zero(),
+    legacyScore: 0,
+    milestones: [],
+    nextEventAtS: 0,
+    offers: [],
+    offerSeed: deriveSeed(rngSeed, "endless.offers"),
+    seasonEndsAtS: 0,
+    seasonId: "bug_storm",
+    softCaps: [],
+    tier: 1,
     unlocked: false
   };
 }

@@ -12,6 +12,12 @@ export interface WindowBounds {
   readonly width: number;
 }
 
+interface ClampWindowOptions {
+  readonly reserveDesktopLauncher?: boolean;
+}
+
+const DESKTOP_ICON_RAIL_WIDTH = 240;
+
 export function focusWindow(windows: Record<AppId, WindowState>, appId: AppId): void {
   windows[appId].z = getTopZ(windows) + 1;
 }
@@ -30,7 +36,7 @@ export function openWindow(
   }
 
   focusWindow(windows, appId);
-  clampWindow(windowState, bounds);
+  clampWindow(windowState, bounds, { reserveDesktopLauncher: true });
 }
 
 export function closeWindow(windows: Record<AppId, WindowState>, appId: AppId): void {
@@ -128,7 +134,7 @@ export function fitOpenWindowsToBounds(
       windowState.maximized = true;
     }
 
-    clampWindow(windowState, bounds);
+    clampWindow(windowState, bounds, { reserveDesktopLauncher: true });
     changed = changed || !sameFittableWindowState(before, windowState);
   }
 
@@ -148,7 +154,11 @@ export function resetWindowLayout(windows: Record<AppId, WindowState>): void {
   }
 }
 
-export function clampWindow(windowState: WindowState, bounds: WindowBounds): void {
+export function clampWindow(
+  windowState: WindowState,
+  bounds: WindowBounds,
+  options: ClampWindowOptions = {}
+): void {
   const definition = WINDOW_DEFINITIONS[windowState.appId];
 
   if (windowState.maximized) {
@@ -165,7 +175,12 @@ export function clampWindow(windowState: WindowState, bounds: WindowBounds): voi
   const maxH = Math.max(minH, Math.min(definition.maxH ?? bounds.height, bounds.height));
   windowState.w = Math.min(Math.max(windowState.w, minW), maxW);
   windowState.h = Math.min(Math.max(windowState.h, minH), maxH);
-  windowState.x = clamp(windowState.x, 0, Math.max(0, bounds.width - windowState.w));
+  const maxX = Math.max(0, bounds.width - windowState.w);
+  const minX =
+    options.reserveDesktopLauncher === true && maxX >= DESKTOP_ICON_RAIL_WIDTH
+      ? DESKTOP_ICON_RAIL_WIDTH
+      : 0;
+  windowState.x = clamp(windowState.x, minX, maxX);
   windowState.y = clamp(windowState.y, 0, Math.max(0, bounds.height - windowState.h));
 }
 

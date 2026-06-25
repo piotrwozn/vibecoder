@@ -1,6 +1,19 @@
 import type { Platform } from "../platform/platform";
 import { Big, type BigInput } from "./bignum";
 import { C } from "../data/constants";
+import {
+  ENDLESS_CHALLENGES,
+  ENDLESS_COSMETICS,
+  ENDLESS_EVENTS,
+  ENDLESS_INDUSTRIES,
+  ENDLESS_MODIFIERS,
+  ENDLESS_MODULES,
+  ENDLESS_PRODUCT_TYPES,
+  ENDLESS_RISKS,
+  ENDLESS_SCALES,
+  ENDLESS_SEASONS,
+  ENDLESS_SOFT_CAPS
+} from "../data/endless";
 import { GENERATORS } from "../data/generators";
 import { HARDWARE, LEGACY_HARDWARE_ID } from "../data/hardware";
 import { PROJECTS, REFACTOR_PROJECT } from "../data/projects";
@@ -16,7 +29,15 @@ import {
   type BankState,
   type BankWarningLevel,
   type Edition,
+  type ActiveEndlessContract,
   type EndingChoice,
+  type EndlessChallengeId,
+  type EndlessContractOffer,
+  type EndlessCosmeticId,
+  type EndlessDecision,
+  type EndlessEventId,
+  type EndlessSeasonId,
+  type EndlessState,
   type GameState,
   type IncidentResponseId,
   type InboxEntry,
@@ -54,7 +75,18 @@ const PROJECT_IDS = new Set(PROJECTS.map((project) => project.id));
 const ACTIVE_BUILD_PROJECT_IDS = new Set([...PROJECT_IDS, REFACTOR_PROJECT.id]);
 const GENERATOR_IDS = new Set(GENERATORS.map((generator) => generator.id));
 const HARDWARE_IDS = new Set([...HARDWARE.map((hardware) => hardware.id), LEGACY_HARDWARE_ID]);
+const ENDLESS_PRODUCT_TYPE_IDS = new Set(ENDLESS_PRODUCT_TYPES.map((entry) => entry.id));
+const ENDLESS_INDUSTRY_IDS = new Set(ENDLESS_INDUSTRIES.map((entry) => entry.id));
+const ENDLESS_SCALE_IDS = new Set(ENDLESS_SCALES.map((entry) => entry.id));
+const ENDLESS_MODULE_IDS = new Set(ENDLESS_MODULES.map((entry) => entry.id));
+const ENDLESS_MODIFIER_IDS = new Set(ENDLESS_MODIFIERS.map((entry) => entry.id));
+const ENDLESS_RISK_IDS = new Set(ENDLESS_RISKS.map((entry) => entry.id));
+const ENDLESS_CHALLENGE_IDS = new Set(ENDLESS_CHALLENGES.map((entry) => entry.id));
+const ENDLESS_EVENT_IDS = new Set(ENDLESS_EVENTS.map((entry) => entry.id));
+const ENDLESS_COSMETIC_IDS = new Set(ENDLESS_COSMETICS.map((entry) => entry.id));
+const ENDLESS_SOFT_CAP_IDS = new Set(ENDLESS_SOFT_CAPS.map((entry) => entry.id));
 const BANK_DEFAULT_OVERDRAFT = Big.fromNumber(10_000);
+const BANK_THRESHOLD_LOG10_PER_ERA_AFTER_MUSE = 5;
 
 export interface SaveDecodeOptions {
   readonly edition?: Edition;
@@ -406,6 +438,7 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   );
 
   defaults.aurora = repairAurora(raw.aurora, defaults.aurora, "aurora", mark);
+  defaults.endless = repairEndless(raw.endless, defaults.endless, "endless", mark);
   defaults.roadmap = repairSprintState(raw.roadmap, defaults.roadmap, "roadmap", mark);
   defaults.incidents = repairProductionIncidents(
     raw.incidents,
@@ -419,12 +452,12 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     "metaprogression",
     mark
   );
-  defaults.bank = repairBank(raw.bank, defaults.bank, "bank", mark);
 
   defaults.era = repairNumber(raw.era, defaults.era, "era", mark, {
     integer: true,
     positive: true
   });
+  defaults.bank = repairBank(raw.bank, defaults.bank, defaults.era, "bank", mark);
 
   const projects = readRecord(raw, "projects", mark);
   defaults.projects.active = repairActiveBuilds(projects.active, "projects.active", mark);
@@ -578,6 +611,7 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
   defaults.ui.windows = repairWindows(ui.windows, defaults.ui.windows, "ui.windows", mark);
 
   repairPostExitOnRamp(defaults, mark);
+  repairComputeCapFromOwnedHardware(defaults, mark);
 
   return {
     repaired,
@@ -585,6 +619,26 @@ function repairGameState(rawValue: unknown, options: SaveDecodeOptions): SaveDec
     state: defaults,
     warnings
   };
+}
+
+function repairComputeCapFromOwnedHardware(state: GameState, mark: (path: string) => void): void {
+  let cap = C.HW_BASE_CAP + (state.owned.hardware[LEGACY_HARDWARE_ID] ?? 0);
+
+  for (const hardware of HARDWARE) {
+    const level = Math.min(Math.max(0, state.owned.hardware[hardware.id] ?? 0), hardware.maxLevel);
+
+    if (level <= 0) {
+      continue;
+    }
+
+    const firstLevelCap = hardware.firstLevelCap ?? hardware.capPerLevel;
+    cap += firstLevelCap + (level - 1) * hardware.capPerLevel;
+  }
+
+  if (state.res.computeCap !== cap) {
+    state.res.computeCap = cap;
+    mark("res.computeCap");
+  }
 }
 
 function repairPostExitOnRamp(state: GameState, mark: (path: string) => void): void {
@@ -1064,6 +1118,426 @@ function repairAuroraStatus(
   return fallback;
 }
 
+function repairEndless(
+  value: unknown,
+  fallback: EndlessState,
+  path: string,
+  mark: (path: string) => void
+): EndlessState {
+  if (!isRecord(value)) {
+    mark(path);
+    return {
+      activeChallenge: undefined,
+      activeEvent: undefined,
+      challengeCompletions: [],
+      completedContracts: fallback.completedContracts,
+      cosmetics: [],
+      currencies: { ...fallback.currencies },
+      decision: fallback.decision,
+      empireScore: fallback.empireScore.copy(),
+      legacyScore: fallback.legacyScore,
+      milestones: [],
+      nextEventAtS: fallback.nextEventAtS,
+      offers: [],
+      offerSeed: fallback.offerSeed,
+      seasonEndsAtS: fallback.seasonEndsAtS,
+      seasonId: fallback.seasonId,
+      softCaps: [],
+      tier: fallback.tier,
+      unlocked: fallback.unlocked
+    };
+  }
+
+  const active = repairEndlessActiveContract(value.active, `${path}.active`, mark);
+  const activeChallenge = repairEndlessChallengeId(
+    value.activeChallenge,
+    `${path}.activeChallenge`,
+    mark
+  );
+  const activeEvent = repairEndlessEvent(value.activeEvent, `${path}.activeEvent`, mark);
+  const endless: EndlessState = {
+    challengeCompletions: repairEndlessChallenges(
+      value.challengeCompletions,
+      `${path}.challengeCompletions`,
+      mark
+    ),
+    completedContracts: repairNumber(
+      value.completedContracts,
+      fallback.completedContracts,
+      `${path}.completedContracts`,
+      mark,
+      { integer: true, nonNegative: true }
+    ),
+    cosmetics: repairKnownStringList(
+      value.cosmetics,
+      ENDLESS_COSMETIC_IDS,
+      `${path}.cosmetics`,
+      mark
+    ) as EndlessCosmeticId[],
+    currencies: repairEndlessCurrencies(
+      value.currencies,
+      fallback.currencies,
+      `${path}.currencies`,
+      mark
+    ),
+    decision: repairEndlessDecision(value.decision, fallback.decision, `${path}.decision`, mark),
+    empireScore: repairBig(value.empireScore, fallback.empireScore, `${path}.empireScore`, mark, {
+      nonNegative: true
+    }),
+    legacyScore: repairNumber(
+      value.legacyScore,
+      fallback.legacyScore,
+      `${path}.legacyScore`,
+      mark,
+      {
+        integer: true,
+        nonNegative: true
+      }
+    ),
+    milestones: repairEndlessMilestones(value.milestones, `${path}.milestones`, mark),
+    nextEventAtS: repairNumber(
+      value.nextEventAtS,
+      fallback.nextEventAtS,
+      `${path}.nextEventAtS`,
+      mark,
+      { nonNegative: true }
+    ),
+    offers: repairEndlessOffers(value.offers, `${path}.offers`, mark),
+    offerSeed: repairNumber(value.offerSeed, fallback.offerSeed, `${path}.offerSeed`, mark, {
+      integer: true
+    }),
+    seasonEndsAtS: repairNumber(
+      value.seasonEndsAtS,
+      fallback.seasonEndsAtS,
+      `${path}.seasonEndsAtS`,
+      mark,
+      { nonNegative: true }
+    ),
+    seasonId: repairEndlessSeason(value.seasonId, fallback.seasonId, `${path}.seasonId`, mark),
+    softCaps: repairKnownStringList(value.softCaps, ENDLESS_SOFT_CAP_IDS, `${path}.softCaps`, mark),
+    tier: repairNumber(value.tier, fallback.tier, `${path}.tier`, mark, {
+      integer: true,
+      positive: true
+    }),
+    unlocked: repairBoolean(value.unlocked, fallback.unlocked, `${path}.unlocked`, mark)
+  };
+
+  if (active !== undefined) {
+    endless.active = active;
+  } else if (value.active !== undefined) {
+    mark(`${path}.active`);
+  }
+
+  if (activeChallenge !== undefined) {
+    endless.activeChallenge = activeChallenge;
+  } else if (value.activeChallenge !== undefined) {
+    mark(`${path}.activeChallenge`);
+  }
+
+  if (activeEvent !== undefined) {
+    endless.activeEvent = activeEvent;
+  } else if (value.activeEvent !== undefined) {
+    mark(`${path}.activeEvent`);
+  }
+
+  return endless;
+}
+
+function repairEndlessDecision(
+  value: unknown,
+  fallback: EndlessDecision,
+  path: string,
+  mark: (path: string) => void
+): EndlessDecision {
+  if (value === "continue" || value === "reset") {
+    return value;
+  }
+
+  mark(path);
+  return fallback;
+}
+
+function repairEndlessChallengeId(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): EndlessChallengeId | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const repaired = repairKnownString(value, ENDLESS_CHALLENGE_IDS, path, mark);
+  return repaired as EndlessChallengeId | undefined;
+}
+
+function repairEndlessEvent(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): EndlessState["activeEvent"] {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    mark(path);
+    return undefined;
+  }
+
+  const id = repairKnownString(value.id, ENDLESS_EVENT_IDS, `${path}.id`, mark);
+  if (id === undefined) {
+    return undefined;
+  }
+
+  return {
+    activeUntilS: repairNumber(value.activeUntilS, 0, `${path}.activeUntilS`, mark, {
+      nonNegative: true
+    }),
+    id: id as EndlessEventId,
+    startedAtS: repairNumber(value.startedAtS, 0, `${path}.startedAtS`, mark, {
+      nonNegative: true
+    })
+  };
+}
+
+function repairEndlessCurrencies(
+  value: unknown,
+  fallback: EndlessState["currencies"],
+  path: string,
+  mark: (path: string) => void
+): EndlessState["currencies"] {
+  if (!isRecord(value)) {
+    mark(path);
+    return { ...fallback };
+  }
+
+  return {
+    automationRank: repairNumber(
+      value.automationRank,
+      fallback.automationRank,
+      `${path}.automationRank`,
+      mark,
+      { integer: true, nonNegative: true }
+    ),
+    enterpriseTrust: repairNumber(
+      value.enterpriseTrust,
+      fallback.enterpriseTrust,
+      `${path}.enterpriseTrust`,
+      mark,
+      { integer: true, nonNegative: true }
+    ),
+    influence: repairNumber(value.influence, fallback.influence, `${path}.influence`, mark, {
+      integer: true,
+      nonNegative: true
+    }),
+    legacyPoints: repairNumber(
+      value.legacyPoints,
+      fallback.legacyPoints,
+      `${path}.legacyPoints`,
+      mark,
+      { integer: true, nonNegative: true }
+    ),
+    modelResearch: repairNumber(
+      value.modelResearch,
+      fallback.modelResearch,
+      `${path}.modelResearch`,
+      mark,
+      { integer: true, nonNegative: true }
+    ),
+    stabilityScore: repairNumber(
+      value.stabilityScore,
+      fallback.stabilityScore,
+      `${path}.stabilityScore`,
+      mark,
+      { integer: true, nonNegative: true }
+    )
+  };
+}
+
+function repairEndlessChallenges(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): EndlessState["challengeCompletions"] {
+  if (!Array.isArray(value)) {
+    mark(path);
+    return [];
+  }
+
+  const repaired: EndlessState["challengeCompletions"] = [];
+  const seen = new Set<string>();
+
+  for (const entry of value) {
+    if (!isRecord(entry)) {
+      mark(path);
+      continue;
+    }
+
+    const id = repairKnownString(entry.id, ENDLESS_CHALLENGE_IDS, `${path}.id`, mark);
+    if (id === undefined || seen.has(id)) {
+      mark(path);
+      continue;
+    }
+
+    seen.add(id);
+    repaired.push({
+      bestTier: repairNumber(entry.bestTier, 0, `${path}.bestTier`, mark, {
+        integer: true,
+        nonNegative: true
+      }),
+      completed: repairBoolean(entry.completed, false, `${path}.completed`, mark),
+      id: id as EndlessChallengeId
+    });
+  }
+
+  return repaired;
+}
+
+function repairEndlessSeason(
+  value: unknown,
+  fallback: EndlessSeasonId,
+  path: string,
+  mark: (path: string) => void
+): EndlessSeasonId {
+  if (typeof value === "string" && ENDLESS_SEASONS.some((season) => season.id === value)) {
+    return value as EndlessSeasonId;
+  }
+
+  mark(path);
+  return fallback;
+}
+
+function repairEndlessMilestones(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): EndlessState["milestones"] {
+  if (!Array.isArray(value)) {
+    mark(path);
+    return [];
+  }
+
+  const repaired: EndlessState["milestones"] = [];
+
+  for (const entry of value) {
+    if (isRecord(entry) && typeof entry.id === "string") {
+      repaired.push({ id: entry.id });
+    } else {
+      mark(path);
+    }
+  }
+
+  return repaired;
+}
+
+function repairEndlessOffers(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): EndlessContractOffer[] {
+  if (!Array.isArray(value)) {
+    mark(path);
+    return [];
+  }
+
+  const repaired: EndlessContractOffer[] = [];
+
+  for (const entry of value) {
+    const offer = repairEndlessContract(entry, path, mark);
+    if (offer !== undefined) {
+      repaired.push(offer);
+    }
+  }
+
+  return repaired;
+}
+
+function repairEndlessActiveContract(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): ActiveEndlessContract | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const contract = repairEndlessContract(value, path, mark);
+  if (contract === undefined || !isRecord(value)) {
+    return undefined;
+  }
+
+  return {
+    ...contract,
+    acceptedAtS: repairNumber(value.acceptedAtS, 0, `${path}.acceptedAtS`, mark, {
+      nonNegative: true
+    }),
+    costLoc: repairBig(value.costLoc, Big.zero(), `${path}.costLoc`, mark, { nonNegative: true }),
+    elapsedS: repairNumber(value.elapsedS, 0, `${path}.elapsedS`, mark, { nonNegative: true })
+  };
+}
+
+function repairEndlessContract(
+  value: unknown,
+  path: string,
+  mark: (path: string) => void
+): EndlessContractOffer | undefined {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    mark(path);
+    return undefined;
+  }
+
+  const productTypeId = repairKnownString(
+    value.productTypeId,
+    ENDLESS_PRODUCT_TYPE_IDS,
+    `${path}.productTypeId`,
+    mark
+  );
+  const industryId = repairKnownString(
+    value.industryId,
+    ENDLESS_INDUSTRY_IDS,
+    `${path}.industryId`,
+    mark
+  );
+  const scaleId = repairKnownString(value.scaleId, ENDLESS_SCALE_IDS, `${path}.scaleId`, mark);
+
+  if (productTypeId === undefined || industryId === undefined || scaleId === undefined) {
+    return undefined;
+  }
+
+  return {
+    id: value.id,
+    industryId,
+    modifierIds: repairKnownStringList(
+      value.modifierIds,
+      ENDLESS_MODIFIER_IDS,
+      `${path}.modifierIds`,
+      mark
+    ),
+    moduleIds: repairKnownStringList(
+      value.moduleIds,
+      ENDLESS_MODULE_IDS,
+      `${path}.moduleIds`,
+      mark
+    ),
+    productTypeId,
+    rewardMoney: repairBig(value.rewardMoney, Big.zero(), `${path}.rewardMoney`, mark, {
+      nonNegative: true
+    }),
+    rewardRp: repairNumber(value.rewardRp, 0, `${path}.rewardRp`, mark, {
+      integer: true,
+      nonNegative: true
+    }),
+    riskIds: repairKnownStringList(value.riskIds, ENDLESS_RISK_IDS, `${path}.riskIds`, mark),
+    riskScore: repairNumber(value.riskScore, 0, `${path}.riskScore`, mark, {
+      integer: true,
+      nonNegative: true
+    }),
+    scaleId,
+    tier: repairNumber(value.tier, 1, `${path}.tier`, mark, { integer: true, positive: true }),
+    workS: repairNumber(value.workS, 1, `${path}.workS`, mark, { positive: true })
+  };
+}
+
 function repairSprintState(
   value: unknown,
   fallback: SprintState,
@@ -1154,6 +1628,7 @@ function repairMetaprogression(
 function repairBank(
   value: unknown,
   fallback: BankState,
+  era: number,
   path: string,
   mark: (path: string) => void
 ): BankState {
@@ -1179,9 +1654,16 @@ function repairBank(
     warningsIssued
   };
 
-  if (bank.overdraft.gte(BANK_DEFAULT_OVERDRAFT) && !bank.defaulted) {
+  const defaultThreshold = getBankDefaultOverdraftForEra(era);
+
+  if (bank.overdraft.gte(defaultThreshold) && !bank.defaulted) {
     mark(`${path}.defaulted`);
     bank.defaulted = true;
+  }
+
+  if (bank.overdraft.lt(defaultThreshold) && bank.defaulted) {
+    mark(`${path}.defaulted`);
+    bank.defaulted = false;
   }
 
   if (bank.defaulted && bank.warningsIssued < 2) {
@@ -1205,6 +1687,18 @@ function repairBank(
   }
 
   return bank;
+}
+
+function getBankDefaultOverdraftForEra(era: number): Big {
+  const scaledEra = Math.max(0, era - 2);
+  if (scaledEra <= 0) {
+    return BANK_DEFAULT_OVERDRAFT.copy();
+  }
+
+  return Big.mul(
+    BANK_DEFAULT_OVERDRAFT,
+    Big.fromLog10(scaledEra * BANK_THRESHOLD_LOG10_PER_ERA_AFTER_MUSE)
+  );
 }
 
 function repairBankWarningLevel(
@@ -1386,6 +1880,44 @@ function repairStringSet(
   for (const entry of value) {
     if (typeof entry === "string") {
       repaired.add(entry);
+    } else {
+      mark(path);
+    }
+  }
+
+  return repaired;
+}
+
+function repairKnownString(
+  value: unknown,
+  validValues: ReadonlySet<string>,
+  path: string,
+  mark: (path: string) => void
+): string | undefined {
+  if (typeof value === "string" && validValues.has(value)) {
+    return value;
+  }
+
+  mark(path);
+  return undefined;
+}
+
+function repairKnownStringList(
+  value: unknown,
+  validValues: ReadonlySet<string>,
+  path: string,
+  mark: (path: string) => void
+): string[] {
+  if (!Array.isArray(value)) {
+    mark(path);
+    return [];
+  }
+
+  const repaired: string[] = [];
+
+  for (const entry of value) {
+    if (typeof entry === "string" && validValues.has(entry)) {
+      repaired.push(entry);
     } else {
       mark(path);
     }

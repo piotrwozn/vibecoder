@@ -1111,6 +1111,34 @@ describe("M17 Aurora desktop visibility", () => {
     expect(css).toContain(".desktop-icon[hidden]");
     expect(css).toContain(".taskbar-item[hidden]");
   });
+
+  it("keeps the desktop launcher scrollable above the taskbar on short viewports", () => {
+    const css = readLayoutCss();
+
+    expect(css).toMatch(
+      /\.desktop-icons\s*\{[^}]*max-height:\s*max\(220px,\s*calc\(100vh - 288px\)\);[^}]*overflow-y:\s*auto;/s
+    );
+    expect(css).toMatch(
+      /@media\s*\(max-width:\s*899px\)\s*\{[\s\S]*?\.desktop-icons\s*\{[^}]*max-height:\s*none;[^}]*overflow:\s*visible;/s
+    );
+  });
+
+  it("keeps the dev performance panel out of the launcher, taskbar, and action rail", () => {
+    const css = readLayoutCss();
+
+    expect(css).toMatch(
+      /\.dev-perf\s*\{[^}]*right:\s*auto;[^}]*left:\s*calc\(240px \+ var\(--sp-3\)\);/s
+    );
+    expect(css).toMatch(/\.dev-perf\s*\{[^}]*bottom:\s*calc\(18px \+ 58px \+ var\(--sp-3\)\);/s);
+    expect(css).toMatch(/\.dev-perf\s*\{[^}]*pointer-events:\s*none;/s);
+    expect(css).toMatch(/\.dev-perf__button\s*\{[^}]*pointer-events:\s*auto;/s);
+  });
+
+  it("keeps toast notifications away from right-side window controls", () => {
+    const css = readLayoutCss();
+
+    expect(css).toMatch(/\.toast-stack\s*\{[^}]*right:\s*auto;[^}]*left:\s*var\(--sp-4\);/s);
+  });
 });
 
 describe("M11 Rewrite rendering", () => {
@@ -1632,6 +1660,18 @@ describe("M13 desktop shell rendering", () => {
     finish?.click();
     expect(nextCount).toBe(2);
   });
+
+  it("keeps the projects tutorial card away from the model upgrade controls", () => {
+    const css = readLayoutCss();
+
+    expect(css).toMatch(
+      /\.tutorial-overlay\[data-step="projects"\]\s+\.tutorial-card\s*\{[^}]*top:\s*260px;/s
+    );
+    expect(css).toMatch(
+      /\.tutorial-overlay\[data-step="done"\]\s+\.tutorial-card\s*\{[^}]*bottom:\s*auto;/s
+    );
+    expect(css).toMatch(/\.tutorial-card\s*\{[^}]*pointer-events:\s*auto;/s);
+  });
 });
 
 function createCommsView(entryIds: readonly string[]): CommsView {
@@ -1720,6 +1760,7 @@ function readLayoutCss(): string {
 
 function createActions(): AppActions {
   return {
+    acceptEndlessContract(): void {},
     buyEra(): void {},
     buyEquityPerk(): void {},
     buyGenerator(): void {},
@@ -1733,6 +1774,7 @@ function createActions(): AppActions {
     changeGlitch(): void {},
     changeLang(): void {},
     changeNotation(): void {},
+    chooseEndlessDecision(): void {},
     changeReducedFx(): void {},
     changeSkipIntro(): void {},
     changeSound(): void {},
@@ -1761,6 +1803,7 @@ function createActions(): AppActions {
     quitToTitle(): void {},
     resetSettings(): void {},
     resetWindowLayout(): void {},
+    refreshEndlessOffers(): void {},
     resolveIncident(): void {},
     replayTutorial(): void {},
     resizeApp(): void {},
@@ -1778,6 +1821,7 @@ function createActions(): AppActions {
       response: "ok"
     }),
     startDesktop(): void {},
+    startEndlessChallenge(): void {},
     startNewGame(): void {},
     startProject(): void {},
     startRefactor(): void {},
@@ -1918,6 +1962,25 @@ function createDevFloorView(booting: boolean): DevFloorView {
       eventId: "a5_12_final_choice",
       lines: [],
       visible: false
+    },
+    endless: {
+      canRefresh: false,
+      challenges: [],
+      cosmetics: [],
+      completed: "0",
+      currencies: [],
+      decision: "Continue",
+      empireScore: "0",
+      legacyScore: "0",
+      milestones: [],
+      offers: [],
+      seasonDescription: "",
+      seasonName: "",
+      seasonRemaining: "-",
+      softCaps: [],
+      tier: "T1",
+      unlockHint: "",
+      unlocked: false
     },
     flowActive: false,
     flowMeter: "0%",

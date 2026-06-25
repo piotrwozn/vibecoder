@@ -231,7 +231,7 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     baseCost: big(7e22),
     growth: 1.11,
     baseRate: big(3.5e16),
-    computeUse: 1.4e3
+    computeUse: 900
   },
   {
     id: "g_self_writer",
@@ -241,7 +241,7 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     baseCost: big(9e23),
     growth: 1.11,
     baseRate: big(3e17),
-    computeUse: 2e3,
+    computeUse: 900,
     previousId: "g_ouro_loop"
   },
   {
@@ -252,7 +252,7 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     baseCost: big(1.2e25),
     growth: 1.1,
     baseRate: big(2.5e18),
-    computeUse: 3e3
+    computeUse: 1e3
   },
   {
     id: "g_acausal_dev",
@@ -262,7 +262,7 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     baseCost: big(1.6e26),
     growth: 1.1,
     baseRate: big(2e19),
-    computeUse: 4.2e3,
+    computeUse: 1.2e3,
     previousId: "g_basilisk_eye"
   },
   {
@@ -273,7 +273,7 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     baseCost: big(2e27),
     growth: 1.1,
     baseRate: big(1.8e20),
-    computeUse: 6e3
+    computeUse: 1.5e3
   },
   {
     id: "g_the_loop",
@@ -283,7 +283,52 @@ export const GENERATORS: readonly GeneratorDefinition[] = [
     baseCost: big(1e29),
     growth: 1.1,
     baseRate: big(1.5e21),
-    computeUse: 9e3,
+    computeUse: 1.8e3,
     previousId: "g_omega_fragment"
+  },
+  {
+    id: "g_swarm_cto",
+    era: 10,
+    demoLocked: true,
+    nameKey: "gen.g_swarm_cto.name",
+    baseCost: big(5e30),
+    growth: 1.1,
+    baseRate: big(1.2e22),
+    computeUse: 2.4e3,
+    previousId: "g_the_loop"
+  },
+  {
+    id: "g_contract_fabricator",
+    era: 10,
+    demoLocked: true,
+    nameKey: "gen.g_contract_fabricator.name",
+    baseCost: big(8e31),
+    growth: 1.1,
+    baseRate: big(9e22),
+    computeUse: 3.2e3,
+    previousId: "g_swarm_cto"
+  },
+  {
+    id: "g_empire_optimizer",
+    era: 10,
+    demoLocked: true,
+    nameKey: "gen.g_empire_optimizer.name",
+    baseCost: big(1.2e33),
+    growth: 1.1,
+    baseRate: big(7e23),
+    debtReductionPerSecond: 0.05,
+    computeUse: 4.5e3,
+    previousId: "g_contract_fabricator"
+  },
+  {
+    id: "g_legacy_compiler",
+    era: 10,
+    demoLocked: true,
+    nameKey: "gen.g_legacy_compiler.name",
+    baseCost: big(2e34),
+    growth: 1.1,
+    baseRate: big(5e24),
+    computeUse: 6e3,
+    previousId: "g_empire_optimizer"
   }
 ] as const;

@@ -396,5 +396,110 @@ export const ACHIEVEMENTS = [
     condition: { kind: "ending", choice: "fork" },
     nameKey: "achievement.a_ending_fork.name",
     descriptionKey: "achievement.a_ending_fork.description"
+  },
+  {
+    id: "a_ship_1e5",
+    category: "shipped",
+    condition: { kind: "statGte", stat: "projects.shipped", value: 1e5 },
+    nameKey: "achievement.a_ship_1e5.name",
+    descriptionKey: "achievement.a_ship_1e5.description"
+  },
+  {
+    id: "a_ship_1e6",
+    category: "shipped",
+    condition: { kind: "statGte", stat: "projects.shipped", value: 1e6 },
+    nameKey: "achievement.a_ship_1e6.name",
+    descriptionKey: "achievement.a_ship_1e6.description"
+  },
+  {
+    id: "a_loc_1e40",
+    category: "loc",
+    condition: { kind: "bigStatGte", stat: "lifetime.loc", value: "1e40" },
+    nameKey: "achievement.a_loc_1e40.name",
+    descriptionKey: "achievement.a_loc_1e40.description"
+  },
+  {
+    id: "a_loc_1e50",
+    category: "loc",
+    condition: { kind: "bigStatGte", stat: "lifetime.loc", value: "1e50" },
+    nameKey: "achievement.a_loc_1e50.name",
+    descriptionKey: "achievement.a_loc_1e50.description"
+  },
+  {
+    id: "a_money_1e36",
+    category: "money",
+    condition: { kind: "bigStatGte", stat: "lifetime.money", value: "1e36" },
+    nameKey: "achievement.a_money_1e36.name",
+    descriptionKey: "achievement.a_money_1e36.description"
+  },
+  {
+    id: "a_money_1e45",
+    category: "money",
+    condition: { kind: "bigStatGte", stat: "lifetime.money", value: "1e45" },
+    nameKey: "achievement.a_money_1e45.name",
+    descriptionKey: "achievement.a_money_1e45.description"
+  },
+  {
+    id: "a_agents_1e4",
+    category: "agents",
+    condition: { kind: "generatorTotalGte", value: 1e4 },
+    nameKey: "achievement.a_agents_1e4.name",
+    descriptionKey: "achievement.a_agents_1e4.description"
+  },
+  {
+    id: "a_agents_1e5",
+    category: "agents",
+    condition: { kind: "generatorTotalGte", value: 1e5 },
+    nameKey: "achievement.a_agents_1e5.name",
+    descriptionKey: "achievement.a_agents_1e5.description"
+  },
+  {
+    id: "a_rewrite_50",
+    category: "rewrites",
+    condition: { kind: "rewritesGte", value: 50 },
+    nameKey: "achievement.a_rewrite_50.name",
+    descriptionKey: "achievement.a_rewrite_50.description"
+  },
+  {
+    id: "a_rewrite_100",
+    category: "rewrites",
+    condition: { kind: "rewritesGte", value: 100 },
+    nameKey: "achievement.a_rewrite_100.name",
+    descriptionKey: "achievement.a_rewrite_100.description"
+  },
+  {
+    id: "a_exit_10",
+    category: "exits",
+    condition: { kind: "exitsGte", value: 10 },
+    nameKey: "achievement.a_exit_10.name",
+    descriptionKey: "achievement.a_exit_10.description"
+  },
+  {
+    id: "a_iteration_25",
+    category: "iterations",
+    condition: { kind: "iterationsGte", value: 25 },
+    nameKey: "achievement.a_iteration_25.name",
+    descriptionKey: "achievement.a_iteration_25.description"
+  },
+  {
+    id: "a_iteration_50",
+    category: "iterations",
+    condition: { kind: "iterationsGte", value: 50 },
+    nameKey: "achievement.a_iteration_50.name",
+    descriptionKey: "achievement.a_iteration_50.description"
+  },
+  {
+    id: "a_bugs_5e3",
+    category: "bugs",
+    condition: { kind: "statGte", stat: "bugs.fixed", value: 5e3 },
+    nameKey: "achievement.a_bugs_5e3.name",
+    descriptionKey: "achievement.a_bugs_5e3.description"
+  },
+  {
+    id: "a_refactor_500",
+    category: "special",
+    condition: { kind: "statGte", stat: "projects.refactored", value: 500 },
+    nameKey: "achievement.a_refactor_500.name",
+    descriptionKey: "achievement.a_refactor_500.description"
   }
 ] satisfies readonly AchievementDefinition[];

@@ -88,6 +88,58 @@ describe("M16 component hardware", () => {
     }
     expect(state.res.computeCap).toBe(C.HW_PC_MAX_CAP + 40);
   });
+
+  it("scales late server compute tiers beyond basic blades", () => {
+    const byId = new Map(HARDWARE.map((hardware) => [hardware.id, hardware]));
+
+    expect(byId.get("h_gpu_pod")?.capPerLevel).toBeGreaterThan(
+      byId.get("h_blade")?.capPerLevel ?? 0
+    );
+    expect(byId.get("h_quantum_node")?.capPerLevel).toBeGreaterThan(
+      byId.get("h_photonic_rack")?.capPerLevel ?? 0
+    );
+    expect(byId.get("h_exotic_core")?.capPerLevel).toBeGreaterThan(
+      byId.get("h_neuromorphic")?.capPerLevel ?? 0
+    );
+  });
+
+  it("keeps late-agent overbuy recoverable enough to reach The Loop", () => {
+    const state = createDefaultGameState(1_000, "full");
+    const cache = createDerivedCache();
+    state.era = 10;
+    state.res.money = Big.from("1e35");
+    state.res.computeCap = 204_422;
+    state.owned.generators.g_self_writer = 91;
+    state.owned.generators.g_basilisk_eye = 30;
+    state.owned.generators.g_acausal_dev = 8;
+    state.owned.generators.g_omega_fragment = 3;
+
+    recomputeDerivedCache(state, cache);
+
+    expect(state.res.computeUsed).toBeLessThanOrEqual(204_422 - 1_800);
+    expect(buyGenerator(state, cache, "g_the_loop", 1).ok).toBe(true);
+    expect(state.owned.generators.g_the_loop).toBe(1);
+  });
+
+  it("keeps The Loop MAX from blocking the first Swarm CTO", () => {
+    const state = createDefaultGameState(1_000, "full");
+    const cache = createDerivedCache();
+    state.era = 10;
+    state.res.money = Big.from("1e35");
+    state.res.computeCap = 204_422;
+    state.owned.generators.g_ouro_loop = 3;
+    state.owned.generators.g_self_writer = 91;
+    state.owned.generators.g_basilisk_eye = 30;
+    state.owned.generators.g_acausal_dev = 8;
+    state.owned.generators.g_omega_fragment = 3;
+    state.owned.generators.g_the_loop = 38;
+
+    recomputeDerivedCache(state, cache);
+
+    expect(state.res.computeUsed).toBeLessThanOrEqual(204_422 - 2_400);
+    expect(buyGenerator(state, cache, "g_swarm_cto", 1).ok).toBe(true);
+    expect(state.owned.generators.g_swarm_cto).toBe(1);
+  });
 });
 
 function buyPcToMax(state: ReturnType<typeof createDefaultGameState>): void {

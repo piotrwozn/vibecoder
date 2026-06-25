@@ -268,7 +268,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(8e7),
     growth: 2,
-    capPerLevel: 8,
+    capPerLevel: 16,
     unlock: [{ kind: "era", era: 4 }],
     isEnclosure: false,
     demoLocked: true,
@@ -281,7 +281,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(5e9),
     growth: 2.1,
-    capPerLevel: 8,
+    capPerLevel: 32,
     unlock: [
       { kind: "era", era: 5 },
       { kind: "hardware", id: "h_row", level: 1 }
@@ -297,7 +297,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(8e11),
     growth: 2.1,
-    capPerLevel: 8,
+    capPerLevel: 64,
     unlock: [
       { kind: "era", era: 6 },
       { kind: "hardware", id: "h_datahall", level: 1 }
@@ -313,7 +313,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(3e13),
     growth: 2.1,
-    capPerLevel: 8,
+    capPerLevel: 160,
     unlock: [{ kind: "era", era: 7 }],
     isEnclosure: false,
     demoLocked: true,
@@ -326,7 +326,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(5e14),
     growth: 2.2,
-    capPerLevel: 8,
+    capPerLevel: 400,
     unlock: [
       { kind: "era", era: 8 },
       { kind: "hardware", id: "h_dc_campus", level: 1 }
@@ -342,7 +342,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(4e16),
     growth: 2.2,
-    capPerLevel: 8,
+    capPerLevel: 1000,
     unlock: [{ kind: "era", era: 9 }],
     isEnclosure: false,
     demoLocked: true,
@@ -355,7 +355,7 @@ export const HARDWARE: readonly HardwareDefinition[] = [
     maxLevel: HARDWARE_UNBOUNDED_LEVEL,
     baseCost: big(1e18),
     growth: 2.2,
-    capPerLevel: 8,
+    capPerLevel: 2500,
     unlock: [
       { kind: "era", era: 10 },
       { kind: "hardware", id: "h_dyson_frame", level: 1 }

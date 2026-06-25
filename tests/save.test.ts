@@ -90,6 +90,22 @@ describe("M4 save/load", () => {
     expect(result.state.meta.lastSimTickMs).toBe(1_000);
   });
 
+  it("repairs stale compute cap from the current hardware table", () => {
+    const state = createDefaultGameState(1_000, "full");
+    state.owned.hardware.h_exotic_core = 2;
+    const raw = JSON.parse(serializeGameState(state)) as { res: { computeCap: number } };
+    raw.res.computeCap = 1;
+
+    const result = deserializeGameState(JSON.stringify(raw), {
+      edition: "full",
+      nowMs: 2_000
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.state.res.computeCap).toBeGreaterThan(1);
+    expect(recomputeComputeCap(result.state)).toBe(result.state.res.computeCap);
+  });
+
   it("repairs post-EXIT Head Start saves that have no playable on-ramp", () => {
     const state = createDefaultGameState(1_000, "full");
 
@@ -883,6 +899,37 @@ describe("M4 save/load", () => {
     expect(result.state.bank.defaulted).toBe(true);
     expect(result.state.bank.defaultedAtS).toBe(0);
     expect(result.state.bank.overdraft.toNumber()).toBe(10_000);
+    expect(result.state.bank.warningsIssued).toBe(2);
+  });
+
+  it("repairs stale late-game bank defaults using era-scaled thresholds", () => {
+    const raw = JSON.parse(serializeGameState(createDefaultGameState(1_000, "full"))) as {
+      bank: {
+        defaulted: boolean;
+        defaultedAtS?: unknown;
+        overdraft: unknown;
+        warningsIssued: unknown;
+      };
+      era: number;
+    };
+    raw.era = 5;
+    raw.bank = {
+      defaulted: true,
+      defaultedAtS: 123,
+      overdraft: "5.79e12",
+      warningsIssued: 2
+    };
+
+    const result = deserializeGameState(JSON.stringify(raw), {
+      edition: "full",
+      nowMs: 10_000
+    });
+
+    expect(result.repaired).toBe(true);
+    expect(result.state.era).toBe(5);
+    expect(result.state.bank.defaulted).toBe(false);
+    expect(result.state.bank.defaultedAtS).toBeUndefined();
+    expect(result.state.bank.overdraft.toNumber()).toBeCloseTo(5.79e12);
     expect(result.state.bank.warningsIssued).toBe(2);
   });
 });

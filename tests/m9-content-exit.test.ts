@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Big } from "../src/core/bignum";
 import { createDefaultGameState } from "../src/core/state";
+import { ACHIEVEMENTS } from "../src/data/achievements";
 import { C, OMEGA } from "../src/data/constants";
 import { ERAS } from "../src/data/eras";
 import { GENERATORS } from "../src/data/generators";
@@ -36,11 +37,13 @@ import { chooseStoryOption, tickStory } from "../src/systems/story";
 describe("M9 content tables", () => {
   it("transcribes the referenced era, generator, hardware, project, and Equity tables", () => {
     expect(ERAS.map((era) => era.index)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    expect(GENERATORS).toHaveLength(26);
+    expect(GENERATORS).toHaveLength(30);
     expect(HARDWARE).toHaveLength(23);
     expect(HARDWARE.map((hardware) => hardware.id)).toContain("h_cpu");
     expect(HARDWARE.map((hardware) => hardware.id)).toContain("h_exotic_core");
+    expect(PROJECTS).toHaveLength(100);
     expect(PROJECTS.map((project) => project.id)).toContain("p_omega_request");
+    expect(ACHIEVEMENTS.length).toBeGreaterThanOrEqual(65);
     expect(EQUITY_PERKS).toHaveLength(15);
     expect(RUN_MODIFIERS.map((modifier) => modifier.id)).toEqual([
       "no_click",
@@ -243,7 +246,7 @@ describe("M9 EXIT prestige", () => {
     expect(state.era).toBe(4);
     expect(cheapestVisibleOffer).toBeDefined();
     expect(state.res.loc.gte(cheapestVisibleOffer!.cost)).toBe(true);
-    expect(startProject(state, cheapestVisibleOffer!.id, cache).ok).toBe(true);
+    expect(startProject(state, cheapestVisibleOffer!.id, cache, "hosted").ok).toBe(true);
   });
 
   it("turns Golden Gut into a real x3 payout effect", () => {

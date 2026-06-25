@@ -271,6 +271,80 @@ export interface RoadmapView {
   readonly sprintRemaining: string;
 }
 
+export interface EndlessOfferView {
+  readonly canAccept: boolean;
+  readonly cost: string;
+  readonly id: string;
+  readonly modules: string;
+  readonly modifiers: string;
+  readonly name: string;
+  readonly reward: string;
+  readonly risks: string;
+  readonly tier: string;
+  readonly work: string;
+}
+
+export interface EndlessActiveContractView {
+  readonly name: string;
+  readonly progress: number;
+  readonly progressLabel: string;
+  readonly remaining: string;
+  readonly reward: string;
+  readonly risks: string;
+}
+
+export interface EndlessMilestoneView {
+  readonly description: string;
+  readonly id: string;
+  readonly reached: boolean;
+  readonly target: string;
+}
+
+export interface EndlessChallengeView {
+  readonly active: boolean;
+  readonly bestTier: string;
+  readonly canStart: boolean;
+  readonly completed: boolean;
+  readonly description: string;
+  readonly id: string;
+  readonly name: string;
+  readonly reward: string;
+}
+
+export interface EndlessCurrencyView {
+  readonly label: string;
+  readonly value: string;
+}
+
+export interface EndlessEventView {
+  readonly description: string;
+  readonly name: string;
+  readonly remaining: string;
+}
+
+export interface EndlessView {
+  readonly active?: EndlessActiveContractView;
+  readonly activeChallenge?: string;
+  readonly activeEvent?: EndlessEventView;
+  readonly canRefresh: boolean;
+  readonly challenges: readonly EndlessChallengeView[];
+  readonly cosmetics: readonly string[];
+  readonly completed: string;
+  readonly currencies: readonly EndlessCurrencyView[];
+  readonly decision: string;
+  readonly empireScore: string;
+  readonly legacyScore: string;
+  readonly milestones: readonly EndlessMilestoneView[];
+  readonly offers: readonly EndlessOfferView[];
+  readonly seasonDescription: string;
+  readonly seasonName: string;
+  readonly seasonRemaining: string;
+  readonly softCaps: readonly string[];
+  readonly tier: string;
+  readonly unlockHint: string;
+  readonly unlocked: boolean;
+}
+
 export interface AuroraNodeView {
   readonly id: string;
   readonly name: string;
@@ -436,6 +510,7 @@ export interface DevFloorView {
   readonly comms: CommsView;
   readonly compute: ComputeBreakdownView;
   readonly ending: EndingModalView;
+  readonly endless: EndlessView;
   readonly flowActive: boolean;
   readonly flowMeter: string;
   readonly flowProgress: number;
@@ -459,8 +534,10 @@ export interface DevFloorView {
 }
 
 export interface AppActions {
+  acceptEndlessContract(id: string): void;
   changeGlitch(enabled: boolean): void;
   changeLang(lang: string): void;
+  chooseEndlessDecision(decision: "continue" | "reset"): void;
   buyEra(): void;
   buyEquityPerk(id: string): void;
   buyInsightNode(id: string): void;
@@ -498,6 +575,7 @@ export interface AppActions {
   iterate(): void;
   rewrite(): void;
   resetWindowLayout(): void;
+  refreshEndlessOffers(): void;
   replayTutorial(): void;
   resizeApp(appId: AppId, frame: WindowFrame, bounds: WindowBounds): void;
   resolveIncident(id: string, response: IncidentResponseId): void;
@@ -511,6 +589,7 @@ export interface AppActions {
   setProjectDeploymentMode(productId: string, mode: ProjectDeploymentMode): void;
   startNewGame(): void;
   startProject(id: string, deploymentMode?: ProjectDeploymentMode): void;
+  startEndlessChallenge(id: string): void;
   startRefactor(): void;
   toggleAutomation(id: string, enabled: boolean): void;
   tutorialBack(): void;

@@ -9,7 +9,8 @@ import {
   BANK_WARNING_1_THRESHOLD,
   BANK_WARNING_2_THRESHOLD,
   repayBankOverdraft,
-  syncBankThresholds
+  syncBankThresholds,
+  getBankThresholds
 } from "../src/systems/bank";
 import { createBillingBreakdown, tickBilling } from "../src/systems/billing";
 import { buyGenerator, createDerivedCache, recomputeDerivedCache } from "../src/systems/production";
@@ -53,6 +54,46 @@ describe("bank overdraft", () => {
     expect(syncBankThresholds(state, bus)).toBe(false);
     expect(messages).toHaveLength(3);
     expect(state.story.inbox.map((entry) => entry.eventId)).toEqual(messages);
+  });
+
+  it("scales default thresholds for late-game billing spikes", () => {
+    const state = createDefaultGameState(0, "full");
+    const bus = createEventBus();
+    const messages: string[] = [];
+    bus.on("story:message", ({ eventId }) => {
+      messages.push(eventId);
+    });
+    state.era = 5;
+    const thresholds = getBankThresholds(state);
+
+    expect(thresholds.default.eq(Big.fromNumber(1e19))).toBe(true);
+    expect(accrueBankOverdraft(state, Big.fromNumber(5.79e12), bus)).toBe(true);
+    expect(state.bank.warningsIssued).toBe(0);
+    expect(state.bank.defaulted).toBe(false);
+    expect(messages).toEqual([]);
+
+    expect(accrueBankOverdraft(state, Big.sub(thresholds.default, state.bank.overdraft), bus)).toBe(
+      true
+    );
+    expect(state.bank.defaulted).toBe(true);
+    expect(messages).toEqual([
+      "bank_overdraft_warning_1",
+      "bank_overdraft_warning_2",
+      "bank_overdraft_default"
+    ]);
+  });
+
+  it("clears a stale default when a late-game threshold now covers the overdraft", () => {
+    const state = createDefaultGameState(0, "full");
+    state.era = 5;
+    state.bank.overdraft = Big.fromNumber(5.79e12);
+    state.bank.defaulted = true;
+    state.bank.defaultedAtS = 123;
+    state.bank.warningsIssued = 2;
+
+    expect(syncBankThresholds(state)).toBe(true);
+    expect(state.bank.defaulted).toBe(false);
+    expect(state.bank.defaultedAtS).toBeUndefined();
   });
 
   it("repays overdraft from money before cash is spendable", () => {
