@@ -504,6 +504,43 @@ describe("M13 desktop window interactions", () => {
     expect(product?.textContent).toContain("$1.25/s");
   });
 
+  it("shows deployment choices only for the first project ship", () => {
+    installDom();
+    const root = document.createElement("div");
+    const view = createDevFloorView(false);
+    const starts: string[] = [];
+    view.ui.windows.projects.open = true;
+    view.ui.windows.projects.z = 4;
+    const populated = {
+      ...view,
+      projects: {
+        ...view.projects,
+        offers: [
+          createProjectOfferView("p_landing", true, "0/10", "$20", "$1/s", false),
+          createProjectOfferView("p_mvp", true, "1/10", "First ship only", "$2/s", true, "hosted")
+        ]
+      }
+    };
+    mountApp(root, populated, {
+      ...createActions(),
+      startProject(id, deploymentMode): void {
+        starts.push(`${id}:${deploymentMode ?? "selfHosted"}`);
+      }
+    });
+
+    const firstShip = root.querySelector<HTMLElement>('[data-project-id="p_landing"]');
+    const continuation = root.querySelector<HTMLElement>('[data-project-id="p_mvp"]');
+    const firstShipButtons = getVisibleButtons(firstShip);
+    const continuationButtons = getVisibleButtons(continuation);
+
+    expect(firstShipButtons.map((button) => button.textContent)).toEqual(["Local", "Hosted"]);
+    expect(continuationButtons.map((button) => button.textContent)).toEqual(["Continue project"]);
+
+    continuationButtons[0]?.click();
+
+    expect(starts).toEqual(["p_mvp:hosted"]);
+  });
+
   it("updates the refactor build time without a page refresh", () => {
     installDom();
     const root = document.createElement("div");
@@ -1745,6 +1782,12 @@ function getVisibleVibexCodeLines(root: ParentNode | null | undefined): HTMLElem
   );
 }
 
+function getVisibleButtons(root: ParentNode | null | undefined): HTMLButtonElement[] {
+  return Array.from(root?.querySelectorAll<HTMLButtonElement>("button") ?? []).filter(
+    (button) => !button.hidden
+  );
+}
+
 function readLayoutCss(): string {
   return [
     "src/ui/layout.css",
@@ -1891,7 +1934,9 @@ function createProjectOfferView(
   canStart: boolean,
   level = "0/10",
   payout = "$20",
-  revenue = "$1/s"
+  revenue = "$1/s",
+  isContinuation = level !== "0/10",
+  continueDeploymentMode: "hosted" | "selfHosted" = "selfHosted"
 ): DevFloorView["projects"]["offers"][number] {
   return {
     buildTime: "10s",
@@ -1899,9 +1944,11 @@ function createProjectOfferView(
     canStartHosted: canStart,
     canStartSelfHosted: canStart,
     compute: "0",
+    continueDeploymentMode: isContinuation ? continueDeploymentMode : undefined,
     cost: "10 LoC",
     hostingCost: "$0/s",
     id,
+    isContinuation,
     level,
     name: id,
     payout,

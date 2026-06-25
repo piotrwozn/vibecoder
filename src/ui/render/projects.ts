@@ -12,6 +12,7 @@ import type {
 interface ProjectOfferNodes {
   readonly buildTime: Text;
   readonly compute: Text;
+  readonly continueButton: HTMLButtonElement;
   readonly cost: Text;
   readonly hostedButton: HTMLButtonElement;
   readonly hostingCost: Text;
@@ -157,8 +158,14 @@ function createProjectOffer(view: ProjectOfferView, actions: AppActions): HTMLEl
   const hostedButton = createProjectButton("ui.projects.buildHosted", () =>
     actions.startProject(view.id, "hosted")
   );
+  const continueButton = createProjectButton("ui.projects.continueProject", () =>
+    actions.startProject(
+      view.id,
+      continueButton.dataset.deploymentMode === "hosted" ? "hosted" : "selfHosted"
+    )
+  );
   const buttons = el("div", { className: "project-card__actions" });
-  buttons.append(selfHostedButton, hostedButton);
+  buttons.append(selfHostedButton, hostedButton, continueButton);
 
   root.append(
     name,
@@ -176,6 +183,7 @@ function createProjectOffer(view: ProjectOfferView, actions: AppActions): HTMLEl
   projectOffers.set(view.id, {
     buildTime,
     compute,
+    continueButton,
     cost,
     hostedButton,
     hostingCost,
@@ -334,7 +342,12 @@ function updateProjectOffer(view: ProjectOfferView): void {
   setText(row.payout, view.payout);
   setText(row.revenue, view.revenue);
   setText(row.buildTime, view.buildTime);
+  row.continueButton.hidden = !view.isContinuation;
+  row.continueButton.disabled = !view.canStart;
+  row.continueButton.dataset.deploymentMode = view.continueDeploymentMode ?? "selfHosted";
+  row.selfHostedButton.hidden = view.isContinuation;
   row.selfHostedButton.disabled = !view.canStartSelfHosted;
+  row.hostedButton.hidden = view.isContinuation;
   row.hostedButton.disabled = !view.canStartHosted;
 }
 

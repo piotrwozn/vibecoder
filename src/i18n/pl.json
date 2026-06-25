@@ -180,6 +180,7 @@
   "ui.projects.compute": "Compute",
   "ui.projects.computeBuild": "{name} build",
   "ui.projects.computeProduct": "{name} live",
+  "ui.projects.continueProject": "Kontynuuj projekt",
   "ui.projects.cost": "Koszt",
   "ui.projects.debt": "Dług",
   "ui.projects.deployment.hosted": "Hosting",

@@ -1767,28 +1767,51 @@ export function createViewModelBuilder(runtime: ViewModelBuilderRuntime): ViewMo
     const maxLevel = getProjectMaxLevel(project);
     const nextLevel = getProjectNextLevel(state, project);
     const atMaxLevel = project.kind === "standard" && level >= maxLevel;
+    const continuationProduct =
+      project.kind === "standard" && level > 0
+        ? [...state.projects.portfolio]
+            .reverse()
+            .find((product) => product.projectId === project.id && product.level === level)
+        : undefined;
     const payout = level === 0 ? getProjectPayout(project, cache, state) : Big.zero();
     const revenue = getProjectRevenue(project, cache, nextLevel, state);
     const computeUse = getProjectBuildComputeUse(state, project, nextLevel, "selfHosted");
     const canAffordBuild = canSpendBig(state.res.loc, cost);
     const canStartProject = !hasActiveProjectBuild(state);
+    const canContinueSelfHosted =
+      continuationProduct === undefined ||
+      continuationProduct.deploymentMode === "hosted" ||
+      computeUse <= cache.compute.available;
+    const canContinue =
+      continuationProduct !== undefined &&
+      canStartProject &&
+      !atMaxLevel &&
+      canAffordBuild &&
+      canContinueSelfHosted;
 
     return {
       id: project.id,
       name: t(project.nameKey),
       buildTime: formatTime(getProjectBuildTime(project, cache)),
       canStart:
-        canStartProject && !atMaxLevel && canAffordBuild && computeUse <= cache.compute.available,
+        continuationProduct === undefined
+          ? canStartProject &&
+            !atMaxLevel &&
+            canAffordBuild &&
+            computeUse <= cache.compute.available
+          : canContinue,
       canStartHosted: canStartProject && !atMaxLevel && canAffordBuild,
       canStartSelfHosted:
         canStartProject && !atMaxLevel && canAffordBuild && computeUse <= cache.compute.available,
       compute: formatCompute(computeUse),
+      continueDeploymentMode: continuationProduct?.deploymentMode,
       cost: formatLoc(cost),
       hostingCost: formatMoneyRate(getProjectExpectedHostingRate(project, cache, nextLevel, state)),
       level:
         project.kind === "standard"
           ? formatProjectLevel(level, maxLevel)
           : t("ui.projects.levelNone"),
+      isContinuation: continuationProduct !== undefined,
       payout: level === 0 ? formatMoney(payout) : t("ui.projects.payoutFirstOnly"),
       revenue: formatMoneyRate(revenue),
       tag: getProjectTag(project)

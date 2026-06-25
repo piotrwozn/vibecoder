@@ -871,6 +871,7 @@
   "ui.projects.compute": "Compute",
   "ui.projects.computeBuild": "{name} build",
   "ui.projects.computeProduct": "{name} live",
+  "ui.projects.continueProject": "Continue project",
   "ui.projects.cost": "Cost",
   "ui.projects.debt": "Debt",
   "ui.projects.deployment.hosted": "Hosted",

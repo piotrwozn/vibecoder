@@ -169,9 +169,11 @@ export interface ProjectOfferView {
   readonly canStartHosted: boolean;
   readonly canStartSelfHosted: boolean;
   readonly compute: string;
+  readonly continueDeploymentMode?: ProjectDeploymentMode;
   readonly cost: string;
   readonly hostingCost: string;
   readonly id: string;
+  readonly isContinuation: boolean;
   readonly level: string;
   readonly name: string;
   readonly payout: string;

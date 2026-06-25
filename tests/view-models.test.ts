@@ -46,6 +46,45 @@ describe("view models", () => {
     expect(scope?.tag).toBe("Standard");
   });
 
+  it("continues existing hosted projects without showing a fresh deployment choice", () => {
+    const state = createDefaultGameState(0, "full");
+    const cache = createDerivedCache();
+    state.res.loc = Big.fromNumber(10_000);
+    state.res.computeCap = 0;
+    state.projects.board = [{ id: "p_landing", projectId: "p_landing" }];
+    state.projects.portfolio.push({
+      id: "p_landing.1",
+      bugged: false,
+      computeUse: 4,
+      deploymentMode: "hosted",
+      level: 1,
+      projectId: "p_landing",
+      revenue: Big.fromNumber(1),
+      shippedAtS: 0
+    });
+    recomputeDerivedCache(state, cache);
+
+    const builder = createViewModelBuilder({
+      cache,
+      comms: createCommsStub(),
+      formatters: createAppFormatters(() => state),
+      getOfflineSummary: () => undefined,
+      hasPersistedSave: () => false,
+      getState: () => state,
+      vibexAi: createVibexAiStub(),
+      vibexSession: createVibexSession(state.vibex)
+    });
+
+    const offer = builder.createDevFloorView(cache, true).projects.offers.find((entry) => {
+      return entry.id === "p_landing";
+    });
+
+    expect(offer?.isContinuation).toBe(true);
+    expect(offer?.continueDeploymentMode).toBe("hosted");
+    expect(offer?.canStart).toBe(true);
+    expect(offer?.canStartSelfHosted).toBe(false);
+  });
+
   it("does not reopen the finale modal after an ending was chosen", () => {
     const state = createDefaultGameState();
     const cache = createDerivedCache();
