@@ -120,10 +120,10 @@ const CORE_PROJECTS: readonly ProjectDefinition[] = [
     bugResistant: true
   },
   {
-    id: "p_copilot_clone",
+    id: "p_ai_pair_programmer",
     era: 5,
     demoLocked: true,
-    nameKey: "project.p_copilot_clone.name",
+    nameKey: "project.p_ai_pair_programmer.name",
     costLoC: big(5e10),
     valueRatio: 1.3,
     buildS: 60,
@@ -315,7 +315,7 @@ const EXPANSION_PROJECT_SPECS: readonly ExpansionProjectSpec[] = [
   ["p_t6_distributed_job_runner", 6, "1.7e13", 1.5, 125],
   ["p_t6_incident_command_center", 6, "2.5e13", 1.44, 130],
   ["p_t6_agent_memory_fabric", 6, "3.8e13", 1.56, 135],
-  ["p_t6_compliance_copilot", 6, "5.7e13", 1.5, 145],
+  ["p_t6_compliance_navigator", 6, "5.7e13", 1.5, 145],
   ["p_t6_legacy_migration_ai", 6, "8.5e13", 1.58, 155],
   ["p_t6_multi_region_control", 6, "1.3e14", 1.54, 165],
   ["p_t7_autonomous_saas_factory", 7, "1.1e15", 1.64, 120],

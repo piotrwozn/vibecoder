@@ -41,7 +41,7 @@ export const PROJECT_CHAINS: readonly ProjectChainDefinition[] = [
     id: "chain_enterprise_stack",
     nameKey: "projectChain.chain_enterprise_stack.name",
     descriptionKey: "projectChain.chain_enterprise_stack.description",
-    projectIds: ["p_enterprise_mig", "p_compliance", "p_copilot_clone", "p_cloud_platform"],
+    projectIds: ["p_enterprise_mig", "p_compliance", "p_ai_pair_programmer", "p_cloud_platform"],
     reward: {
       momentum: 12,
       revenueMultiplier: 1.03,

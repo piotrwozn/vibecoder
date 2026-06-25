@@ -4,6 +4,8 @@ All notable changes for VIBECODER are tracked here before a release build.
 
 ## [Unreleased]
 
+- Added copyright readiness notices for bundled fonts, visual assets, runtime npm dependencies, and Tauri/Rust crates.
+- Replaced public-facing and internal third-party brand flavor references with neutral VIBECODER names.
 - Added creator credits for Pjoter00 and a Discord invite link to the boot menu.
 - Split the app bootstrap, actions, view-model builders, render submodules, and layout CSS into clearer implementation layers.
 - Added Roadmap sprint priorities, production incidents, strategic story decisions, run styles, save diagnostics, and post-Aurora/endgame content hooks.
