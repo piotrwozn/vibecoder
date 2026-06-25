@@ -1,12 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { error } from "node:console";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import process from "node:process";
 import { format } from "prettier";
 
 const outputPath = join("licenses", "THIRD_PARTY_NOTICES.md");
 const checkOnly = process.argv.includes("--check");
+const LICENSE_FILE_RE = /^(license|licence|notice|copying|copyright|unlicense)(\.|-|$)/i;
 
 const notice = await format(buildNotice(), { parser: "markdown" });
 
@@ -31,6 +33,11 @@ function buildNotice() {
   const npmRuntimePackages = collectNpmRuntimePackages();
   const cargoPackages = collectCargoPackages();
   const cargoLicenseCounts = countBy(cargoPackages, (pkg) => pkg.license);
+  const allPackages = [...npmRuntimePackages, ...cargoPackages];
+  const licenseBundle = collectLicenseBundle(allPackages);
+  const packagesWithoutLocalLicenseFiles = allPackages.filter(
+    (pkg) => pkg.licenseFiles.length === 0
+  );
 
   return [
     "# VIBECODER Third-Party Notices",
@@ -60,8 +67,14 @@ function buildNotice() {
     "## Runtime npm Dependencies",
     "",
     toMarkdownTable(
-      ["Package", "Version", "License", "Source"],
-      npmRuntimePackages.map((pkg) => [pkg.name, pkg.version, pkg.license, pkg.source])
+      ["Package", "Version", "License", "Local license/notice files", "Source"],
+      npmRuntimePackages.map((pkg) => [
+        pkg.name,
+        pkg.version,
+        pkg.license,
+        formatLicenseFileList(pkg.licenseFiles),
+        pkg.source
+      ])
     ),
     "",
     "## Rust/Tauri License Summary",
@@ -76,9 +89,44 @@ function buildNotice() {
     "## Rust/Tauri Crates",
     "",
     toMarkdownTable(
-      ["Package", "Version", "License", "Source"],
-      cargoPackages.map((pkg) => [pkg.name, pkg.version, pkg.license, pkg.source])
+      ["Package", "Version", "License", "Local license/notice files", "Source"],
+      cargoPackages.map((pkg) => [
+        pkg.name,
+        pkg.version,
+        pkg.license,
+        formatLicenseFileList(pkg.licenseFiles),
+        pkg.source
+      ])
     ),
+    "",
+    "## Packages Without Local License/Notice Files",
+    "",
+    "These packages declare license expressions in package metadata, but the installed npm package or",
+    "Cargo registry package did not include a separate `LICENSE`, `NOTICE`, `COPYING`, `COPYRIGHT`,",
+    "or `UNLICENSE` file at package root. They remain listed above and the full license texts discovered",
+    "from other packages are included below where available. For store submissions with stricter legal",
+    "review, these rows are the exact follow-up list to inspect against upstream repositories.",
+    "",
+    toMarkdownTable(
+      ["Ecosystem", "Package", "Version", "License", "Authors", "Source"],
+      packagesWithoutLocalLicenseFiles.map((pkg) => [
+        pkg.ecosystem,
+        pkg.name,
+        pkg.version,
+        pkg.license,
+        pkg.authors.join("; ") || "NOASSERTION",
+        pkg.source
+      ])
+    ),
+    "",
+    "## Full Dependency License And Notice Texts",
+    "",
+    "The entries below are exact local `LICENSE`, `NOTICE`, `COPYING`, `COPYRIGHT`, and `UNLICENSE`",
+    "files discovered in installed runtime npm packages and Cargo registry package directories.",
+    "Identical files are deduplicated by SHA-256; each entry lists every package/file reference that",
+    "uses that exact text.",
+    "",
+    formatLicenseBundle(licenseBundle),
     ""
   ].join("\n");
 }
@@ -91,11 +139,15 @@ function collectNpmRuntimePackages() {
   return runtimeNames
     .map((name) => {
       const lockEntry = packageLock.packages?.[`node_modules/${name}`];
+      const packageRoot = join("node_modules", name);
       return {
+        ecosystem: "npm",
         name,
         version: lockEntry?.version ?? packageJson.dependencies[name],
         license: lockEntry?.license ?? "NOASSERTION",
-        source: lockEntry?.resolved ?? `https://www.npmjs.com/package/${name}`
+        source: lockEntry?.resolved ?? `https://www.npmjs.com/package/${name}`,
+        authors: [],
+        licenseFiles: collectLocalLicenseFiles(packageRoot)
       };
     })
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -112,18 +164,126 @@ function collectCargoPackages() {
 
   return metadata.packages
     .filter((pkg) => pkg.source !== null)
-    .map((pkg) => ({
-      name: pkg.name,
-      version: pkg.version,
-      license:
-        pkg.license ??
-        (pkg.license_file === null ? "NOASSERTION" : `LicenseRef-file:${pkg.license_file}`),
-      source: pkg.repository ?? pkg.homepage ?? pkg.documentation ?? cratesIoUrl(pkg)
-    }))
+    .map((pkg) => {
+      const packageRoot = dirname(pkg.manifest_path);
+      return {
+        ecosystem: "cargo",
+        name: pkg.name,
+        version: pkg.version,
+        license:
+          pkg.license ??
+          (pkg.license_file === null ? "NOASSERTION" : `LicenseRef-file:${pkg.license_file}`),
+        source: pkg.repository ?? pkg.homepage ?? pkg.documentation ?? cratesIoUrl(pkg),
+        authors: pkg.authors ?? [],
+        licenseFiles: collectLocalLicenseFiles(packageRoot, pkg.license_file)
+      };
+    })
     .sort(
       (left, right) =>
         left.name.localeCompare(right.name) || left.version.localeCompare(right.version)
     );
+}
+
+function collectLocalLicenseFiles(packageRoot, declaredLicenseFile) {
+  const absoluteRoot = resolve(packageRoot);
+  const candidates = new Map();
+
+  if (existsSync(absoluteRoot)) {
+    for (const entry of readdirSync(absoluteRoot)) {
+      if (LICENSE_FILE_RE.test(entry)) {
+        const absolutePath = join(absoluteRoot, entry);
+        if (statSync(absolutePath).isFile()) {
+          candidates.set(resolve(absolutePath), entry);
+        }
+      }
+    }
+  }
+
+  if (declaredLicenseFile !== undefined && declaredLicenseFile !== null) {
+    const absolutePath = resolve(absoluteRoot, declaredLicenseFile);
+    if (existsSync(absolutePath) && statSync(absolutePath).isFile()) {
+      candidates.set(absolutePath, relative(absoluteRoot, absolutePath).replaceAll("\\", "/"));
+    }
+  }
+
+  return [...candidates.entries()]
+    .map(([absolutePath, displayName]) => ({
+      absolutePath,
+      displayName
+    }))
+    .sort((left, right) => left.displayName.localeCompare(right.displayName));
+}
+
+function collectLicenseBundle(packages) {
+  const byHash = new Map();
+
+  for (const pkg of packages) {
+    for (const licenseFile of pkg.licenseFiles) {
+      const text = readLicenseText(licenseFile.absolutePath);
+      const hash = createHash("sha256").update(text).digest("hex");
+      const reference = `${pkg.ecosystem}:${pkg.name}@${pkg.version}/${licenseFile.displayName}`;
+      const entry = byHash.get(hash);
+
+      if (entry === undefined) {
+        byHash.set(hash, {
+          hash,
+          text,
+          references: [reference],
+          primaryName: basename(licenseFile.displayName)
+        });
+      } else {
+        entry.references.push(reference);
+      }
+    }
+  }
+
+  return [...byHash.values()]
+    .map((entry) => ({
+      ...entry,
+      references: entry.references.sort((left, right) => left.localeCompare(right))
+    }))
+    .sort((left, right) => left.references[0].localeCompare(right.references[0]));
+}
+
+function readLicenseText(path) {
+  return readFileSync(path, "utf8").replace(/\r\n/g, "\n").trimEnd();
+}
+
+function formatLicenseFileList(files) {
+  return files.length === 0
+    ? "metadata only"
+    : files.map((file) => `\`${file.displayName}\``).join(", ");
+}
+
+function formatLicenseBundle(entries) {
+  const sections = [];
+
+  entries.forEach((entry, index) => {
+    sections.push(
+      `### License Text ${String(index + 1).padStart(3, "0")} - ${entry.primaryName}`,
+      "",
+      `SHA-256: \`${entry.hash}\``,
+      "",
+      "Referenced by:",
+      "",
+      ...entry.references.map((reference) => `- \`${reference}\``),
+      "",
+      `${getFence(entry.text)}text`,
+      entry.text,
+      getFence(entry.text),
+      ""
+    );
+  });
+
+  return sections.join("\n");
+}
+
+function getFence(text) {
+  const longestBacktickRun = Math.max(
+    2,
+    ...Array.from(text.matchAll(/`+/g), (match) => match[0].length)
+  );
+  return "`".repeat(longestBacktickRun + 1);
 }
 
 function cratesIoUrl(pkg) {

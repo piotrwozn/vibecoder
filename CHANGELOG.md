@@ -4,6 +4,7 @@ All notable changes for VIBECODER are tracked here before a release build.
 
 ## [Unreleased]
 
+- Expanded third-party notices with full deduplicated dependency license/notice texts and an AI asset evidence-pack checklist.
 - Added copyright readiness notices for bundled fonts, visual assets, runtime npm dependencies, and Tauri/Rust crates.
 - Replaced public-facing and internal third-party brand flavor references with neutral VIBECODER names.
 - Added creator credits for Pjoter00 and a Discord invite link to the boot menu.
